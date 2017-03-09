@@ -9,8 +9,10 @@ from struct import pack, unpack, pack_into, unpack_from
 import json
 from collections import OrderedDict
 from helpers import hexstring, SafeEnum, SafeIntEnum
+from random import SystemRandom
 
 import logging
+import os
 
 class Ikev2ParsingError(Exception):
     pass
@@ -224,9 +226,14 @@ class PayloadVendor(Payload):
         return result
 
 class PayloadNonce(Payload):
-    def __init__(self, nonce, critical=False):
+    def __init__(self, nonce=None, critical=False):
         super(PayloadNonce, self).__init__(Payload.Type.NONCE, critical)
-        self.nonce = nonce
+        if nonce is not None:
+            self.nonce = nonce
+        else:
+            random = SystemRandom()
+            length = random.randrange(16, 256)
+            self.nonce = os.urandom(length)
 
     @classmethod
     def parse(cls, data, critical=False):
