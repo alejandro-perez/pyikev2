@@ -7,11 +7,9 @@ __author__ = 'Alejandro Perez <alex@um.es>'
 
 from struct import pack, unpack, pack_into, unpack_from
 import json
-import codecs
 from collections import OrderedDict
 
-def hexstring(data):
-    return codecs.encode(data, 'hex').decode()
+from helpers import hexstring
 
 class Ikev2ParsingError(Exception):
     pass
