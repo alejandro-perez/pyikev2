@@ -8,21 +8,9 @@ __author__ = 'Alejandro Perez <alex@um.es>'
 from struct import pack, unpack, pack_into, unpack_from
 import json
 from collections import OrderedDict
-from helpers import hexstring
-from enum import Enum
+from helpers import hexstring, SafeEnum, SafeIntEnum
 
 import logging
-
-class SafeEnum(Enum):
-    @classmethod
-    def safe_name(cls, value):
-        try:
-            return cls(value).name
-        except ValueError:
-            return '{} (not registered)'.format(value)
-
-class SafeIntEnum(int, SafeEnum):
-    pass
 
 class Ikev2ParsingError(Exception):
     pass
