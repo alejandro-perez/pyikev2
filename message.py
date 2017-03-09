@@ -59,8 +59,14 @@ class PayloadKE(Payload):
 
     @classmethod
     def parse(cls, data, critical=False):
-        dh_group, _, ke_data = unpack_from('>2H{}s'.format(len(data) - 4), data)
+        dh_group, _, = unpack_from('>2H', data)
+        ke_data = data[4:]
         return PayloadKE(dh_group, ke_data, critical)
+
+    def to_bytes(self):
+        data = bytearray(pack('>2H', self.dh_group, 0))
+        data += self.ke_data
+        return data
 
     def to_dict(self):
         result = super(PayloadKE, self).to_dict()
@@ -252,10 +258,13 @@ class PayloadVendor(Payload):
     def parse(cls, data, critical=False):
         return PayloadVendor(data, critical)
 
+    def to_bytes(self):
+        return self.vendor_id
+
     def to_dict(self):
         result = super(PayloadVendor, self).to_dict()
         result.update(OrderedDict([
-            ('vendor_id', hexstring(self.vendor_id)),
+            ('vendor_id', self.vendor_id.decode()),
         ]))
         return result
 
@@ -272,6 +281,9 @@ class PayloadNonce(Payload):
     @classmethod
     def parse(cls, data, critical=False):
         return PayloadNonce(data, critical)
+
+    def to_bytes(self):
+        return self.nonce
 
     def to_dict(self):
         result = super(PayloadNonce, self).to_dict()
@@ -298,7 +310,8 @@ class PayloadFactory:
             return cls.payload_classes[payload_type].parse(data, critical)
         except KeyError:
             raise Ikev2ParsingError(
-                'Unrecognized payload with code {}'.format(payload_type))
+                'Unrecognized payload with code '
+                '{}'.format(Payload.Type.safe_name(payload_type)))
 
 class Message:
     class Exchange(SafeIntEnum):
@@ -361,6 +374,10 @@ class Message:
             # offset is increased in any case
             offset += length
 
+            # if Payload SK, trick next_payload_type
+            if current_payload_type == Payload.Type.SK:
+                next_payload_type = Payload.Type.NONE
+
         return message
 
     def to_bytes(self):
@@ -371,12 +388,16 @@ class Message:
             (self.major << 4 | self.minor & 0x0F), self.exchange_type, 
             (self.is_response << 5 | self.can_use_higher_version << 4 | 
                 self.is_initiator << 3), 
-            self.message_id, 28)
+            self.message_id, 28
+        )
         for index in range(0, len(self.payloads)):
             payload = self.payloads[index]
             payload_data = payload.to_bytes()
-            next_payload_type = (
-                self.payloads[index].type if index < len(self.payloads) else Payload.Type.NONE)
+            if index < len(self.payloads) - 1:
+                next_payload_type = self.payloads[index + 1].type
+            else:
+                next_payload_type = Payload.Type.NONE
+            
             data += pack('>BBH', next_payload_type, 0, len(payload_data) + 4)
             data += payload_data
 
@@ -389,6 +410,7 @@ class Message:
         return OrderedDict([
             ('spi_i', hexstring(pack('>Q', self.spi_i))),
             ('spi_r', hexstring(pack('>Q', self.spi_r))),
+            ('next_payload_type', Payload.Type.safe_name(self.next_payload_type)),
             ('major', self.major),
             ('minor', self.minor),
             ('exchange_type', Message.Exchange.safe_name(self.exchange_type)),
