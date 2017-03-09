@@ -8,25 +8,59 @@ __author__ = 'Alejandro Perez <alex@um.es>'
 from struct import pack, unpack, pack_into, unpack_from
 import json
 from collections import OrderedDict
-
 from helpers import hexstring
+from enum import Enum
+class SafeEnum(Enum):
+    @classmethod
+    def safe_name(cls, value):
+        try:
+            return cls(value).name
+        except ValueError:
+            return '{} (not registered)'.format(value)
+
+class SafeIntEnum(int, SafeEnum):
+    pass
 
 class Ikev2ParsingError(Exception):
     pass
 
 class Payload:
-    def __init__(self, critical=False):
+    class Type(SafeIntEnum):
+        NONE = 0
+        SA = 33
+        KE = 34
+        IDi = 35
+        IDr = 36
+        CERT = 37
+        CERTREQ = 38
+        AUTH = 39
+        NONCE = 40
+        NOTIFY = 41
+        DELETE = 42
+        VENDOR = 43
+        TSi = 44
+        TSr = 45
+        SK = 46
+        CP = 47
+        EAP = 48
+
+    def __init__(self, type, critical=False):
         self.critical = critical
+        self.type = type
 
     def to_dict(self):
+        result = OrderedDict([
+            ('type', Payload.Type.safe_name(self.type)),
+        ])
         if self.critical:
-            return OrderedDict([('critical', self.critical)])
-        else:
-            return OrderedDict()
+            result.update(OrderedDict([
+                ('critical', self.critical)
+            ]))
+        return result
 
 class PayloadKE(Payload):
     def __init__(self, dh_group, ke_data, critical=False):
-        super(PayloadKE, self).__init__(critical)
+        super(PayloadKE, self).__init__(Payload.Type.KE, critical)
         self.dh_group = dh_group
         self.ke_data = ke_data
 
@@ -38,84 +72,49 @@ class PayloadKE(Payload):
     def to_dict(self):
         result = super(PayloadKE, self).to_dict()
         result.update(OrderedDict([
-            ('type', 'PayloadKE'),
             ('dh_group', self.dh_group),
             ('ke_data', hexstring(self.ke_data))
         ]))
         return result
 
 class Transform:
-    types = [
-        ('ENCR', 1),
-        ('PRF', 2),
-        ('INTEG', 3),
-        ('DH', 4),
-        ('ESN', 5),
-    ]
+    class Algorithm(SafeEnum):
+        ENCR_DES_IV64 = (1, 1)
+        ENCR_DES = (1, 2)
+        ENCR_3DES = (1, 3)
+        ENCR_RC5 = (1, 4)
+        ENCR_IDEA = (1, 5)
+        ENCR_CAST = (1, 6)
+        ENCR_BLOWFISH = (1, 7)
+        ENCR_3IDEA = (1, 8)
+        ENCR_DES_IV32 = (1, 9)
+        ENCR_NULL = (1, 11)
+        ENCR_AES_CBC = (1, 12)
+        ENCR_AES_CTR = (1, 13)
+        PRF_HMAC_MD5 = (2, 1)
+        PRF_HMAC_SHA1 = (2, 2)
+        PRF_HMAC_TIGER = (2, 3)
+        INTEG_NONE = (3, 0)
+        AUTH_HMAC_MD5_96 = (3, 1)
+        AUTH_HMAC_SHA1_96 = (3, 2)
+        AUTH_DES_MAC = (3, 3)
+        AUTH_KPDK_MD5 = (3, 4)
+        AUTH_AES_XCBC_96 = (3, 5)
+        DH_NONE = (4, 0)
+        DH_1 = (4, 1)
+        DH_2 = (4, 2)
+        DH_5 = (4, 5)
+        DH_14 = (4, 14)
+        DH_15 = (4, 15)
+        DH_16 = (4, 16)
+        DH_17 = (4, 17)
+        DH_18 = (4, 18)
+        NO_ESN = (5, 0)
+        ESN = (5, 1)
 
-    algorithms = {
-        # ENCR
-        1: [
-            ('ENCR_DES_IV64', 1),
-            ('ENCR_DES', 2),
-            ('ENCR_3DES', 3),
-            ('ENCR_RC5', 4),
-            ('ENCR_IDEA', 5),
-            ('ENCR_CAST', 6),
-            ('ENCR_BLOWFISH', 7),
-            ('ENCR_3IDEA', 8),
-            ('ENCR_DES_IV32', 9),
-            ('ENCR_NULL', 11),
-            ('ENCR_AES_CBC', 12),
-            ('ENCR_AES_CTR', 13),
-        ],
-        # PRF
-        2: [
-            ('PRF_HMAC_MD5', 1),
-            ('PRF_HMAC_SHA1', 2),
-            ('PRF_HMAC_TIGER', 3),
-        ],
-        # INTEG
-        3: [
-            ('INTEG_NONE', 0),
-            ('AUTH_HMAC_MD5_96', 1),
-            ('AUTH_HMAC_SHA1_96', 2),
-            ('AUTH_DES_MAC', 3),
-            ('AUTH_KPDK_MD5', 4),
-            ('AUTH_AES_XCBC_96', 5),
-        ],
-        # DH
-        4: [
-            ('DH_NONE', 0),
-            ('DH_1', 1),
-            ('DH_2', 2),
-            ('DH_5', 5),
-            ('DH_14', 14),
-            ('DH_14', 14),
-            ('DH_15', 15),
-            ('DH_16', 16),
-            ('DH_17', 17),
-            ('DH_18', 18),
-        ],
-        # ESN
-        5: [
-            ('NO_ESN', 0),
-            ('ESN', 1),
-        ],
-    }
-
-    @classmethod
-    def get_type_name(cls, type_id):
-        return {v:k for k, v in cls.types}.get(type_id, type_id)
-
-    @classmethod
-    def get_alg_name(cls, type_id, transform_id):
-        algs = cls.algorithms.get(type_id, type_id)
-        return {v:k for k, v in algs}.get(transform_id, transform_id)
-
-    def __init__(self, type, transform_id, keylen = None):
-        self.type = type
-        self.transform_id = transform_id
+    def __init__(self, algorithm, keylen = None):
+        self.type = algorithm[0]
+        self.transform_id = algorithm[1]
         self.keylen = keylen
 
     @classmethod
@@ -132,12 +131,12 @@ class Transform:
                 continue
             keylen = attribute[1]
             offset += 4
-        return Transform(transform_type, transform_id, keylen)
+        return Transform((transform_type, transform_id), keylen)
 
     def to_dict(self):
         result = OrderedDict([
-            ('type', Transform.get_type_name(self.type)),
-            ('transform_id', Transform.get_alg_name(self.type, self.transform_id)),
+            ('transform_id', Transform.Algorithm.safe_name(
+                (self.type, self.transform_id))),
         ])
         if self.keylen:
             result['keylen'] = self.keylen
@@ -145,15 +144,10 @@ class Transform:
 
 
 class Proposal:
-    protocols = [
-        ('IKE', 1),
-        ('AH', 2),
-        ('ESP', 3),
-    ]
-
-    @classmethod
-    def get_protocol_name(cls, protocol_id):
-        return {v:k for k, v in cls.protocols}.get(protocol_id, protocol_id)
+    class Protocol(SafeIntEnum):
+        IKE = 1
+        AH = 2
+        ESP = 3
 
     def __init__(self, num, protocol_id, num_transforms, spi):
         self.num = num
@@ -185,7 +179,7 @@ class Proposal:
     def to_dict(self):
         return OrderedDict([
             ('num', self.num),
-            ('protocol_id', Proposal.get_protocol_name(self.protocol_id)),
+            ('protocol_id', Proposal.Protocol.safe_name(self.protocol_id)),
             ('num_transforms', self.num_transforms),
             ('spi', hexstring(self.spi)),
             ('transforms', [x.to_dict() for x in self.transforms]),
@@ -193,7 +187,7 @@ class Proposal:
 
 class PayloadSA(Payload):
     def __init__(self, critical=False):
-        super(PayloadSA, self).__init__(critical)
+        super(PayloadSA, self).__init__(Payload.Type.SA, critical)
         self.proposals = []
 
     @classmethod
@@ -218,14 +212,13 @@ class PayloadSA(Payload):
     def to_dict(self):
         result = super(PayloadSA, self).to_dict()
         result.update(OrderedDict([
-            ('type', 'PayloadSA'),
             ('proposals', [x.to_dict() for x in self.proposals]),
         ]))
         return result
 
 class PayloadVendor(Payload):
     def __init__(self, vendor_id, critical=False):
-        super(PayloadVendor, self).__init__(critical)
+        super(PayloadVendor, self).__init__(Payload.Type.VENDOR, critical)
         self.vendor_id = vendor_id
 
     @classmethod
@@ -235,14 +228,13 @@ class PayloadVendor(Payload):
     def to_dict(self):
         result = super(PayloadVendor, self).to_dict()
         result.update(OrderedDict([
-            ('type', 'PayloadVendor'),
             ('vendor_id', hexstring(self.vendor_id)),
         ]))
         return result
 
 class PayloadNonce(Payload):
     def __init__(self, nonce, critical=False):
-        super(PayloadNonce, self).__init__(critical)
+        super(PayloadNonce, self).__init__(Payload.Type.NONCE, critical)
         self.nonce = nonce
 
     @classmethod
@@ -252,17 +244,16 @@ class PayloadNonce(Payload):
     def to_dict(self):
         result = super(PayloadNonce, self).to_dict()
         result.update(OrderedDict([
-            ('type', 'PayloadNonce'),
             ('nonce', hexstring(self.nonce)),
         ]))
         return result
 
 class PayloadFactory:
     payload_classes = {
-        33: PayloadSA,
-        34: PayloadKE,
-        40: PayloadNonce,
-        43: PayloadVendor,
+        Payload.Type.SA: PayloadSA,
+        Payload.Type.KE: PayloadKE,
+        Payload.Type.NONCE: PayloadNonce,
+        Payload.Type.VENDOR: PayloadVendor,
     }
 
     @classmethod
@@ -281,8 +272,11 @@ class PayloadFactory:
         return payload_class.parse(data, critical)
 
 class Message:
-    def __init__(self, data):
-        # Unpack the header
+    class Exchange(SafeIntEnum):
+        # IKE_SA_INIT = 34
+        IKE_AUTH = 35
+        CREATE_CHILD_SA = 36
+        INFORMATIONAL = 37
         header = unpack_from('>8s8s4B2L', data)
         self.spi_i = header[0]
         self.spi_r = header[1]
@@ -316,7 +310,7 @@ class Message:
             ('spi_r', hexstring(self.spi_r)),
             ('major', self.major),
             ('minor', self.minor),
-            ('type', self.type),
+            ('exchange_type', Message.Exchange.safe_name(self.exchange_type)),
             ('is_response', self.is_response),
             ('can_use_higher_version', self.can_use_higher_version),
             ('is_initiator', self.is_initiator),
