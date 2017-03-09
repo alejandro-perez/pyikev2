@@ -292,12 +292,33 @@ class PayloadNonce(Payload):
         ]))
         return result
 
+
+class PayloadSk(Payload):
+    def __init__(self, payload_data, critical=False):
+        super(PayloadSk, self).__init__(Payload.Type.SK, critical)
+        self.payload_data = payload_data
+
+    @classmethod
+    def parse(cls, data, critical=False):
+        return PayloadSk(data, critical)
+
+    def to_bytes(self):
+        return self.payload_data
+
+    def to_dict(self):
+        result = super(PayloadSk, self).to_dict()
+        result.update(OrderedDict([
+            ('payload_data', hexstring(self.payload_data)),
+        ]))
+        return result
+
 class PayloadFactory:
     payload_classes = {
         Payload.Type.SA: PayloadSA,
         Payload.Type.KE: PayloadKE,
         Payload.Type.NONCE: PayloadNonce,
         Payload.Type.VENDOR: PayloadVendor,
+        Payload.Type.SK: PayloadSk,
     }
 
     @classmethod
