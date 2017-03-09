@@ -10,6 +10,9 @@ import json
 from collections import OrderedDict
 from helpers import hexstring
 from enum import Enum
+
+import logging
+
 class SafeEnum(Enum):
     @classmethod
     def safe_name(cls, value):
@@ -322,6 +325,7 @@ class Message:
                     current_payload_type, data[start:end], critical)
                 message.payloads.append(payload)
             except Ikev2ParsingError as ex:
+                logging.warn(ex)
                 if critical:
                     raise            
             
