@@ -25,4 +25,5 @@ while True:
     data, addr = sock.recvfrom(4096)
     logging.info('Received {} bytes from {}:'.format(len(data), addr))
     data = ike_sa_contorller.dispatch_message(data)
-    sock.sendto(data, addr)
+    if data:
+        sock.sendto(data, addr)

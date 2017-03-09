@@ -5,8 +5,8 @@
 """
 import logging
 import os
-from message import Message
-from helpers import SafeEnum, SafeIntEnum
+from message import Message, Payload, PayloadNonce, PayloadVendor
+from helpers import SafeEnum, SafeIntEnum, hexstring
 from random import SystemRandom
 
 class Ikev2ProtocolError(Exception):
@@ -46,6 +46,23 @@ class IkeSa:
             True, False, self.is_initiator, self.msg_id_r
         )
 
+        # add the response payload SA. So far, we just copy theirs
+        payload_sa = request.get_payload_by_type(Payload.Type.SA)
+        response.payloads.append(payload_sa)
+
+        # add the response payload KE. So far, we just copy theirs
+        payload_ke = request.get_payload_by_type(Payload.Type.KE)
+        response.payloads.append(payload_ke)
+
+        # add the response payload NONCE.
+        payload_nonce = PayloadNonce()
+        response.payloads.append(payload_nonce)
+
+        # add the response payload VENDOR.
+        payload_vendor = PayloadVendor(b'pyikev2-0.1')
+        response.payloads.append(payload_vendor)
+
+
         # increase msg_id and transition
         self.msg_id_r = self.msg_id_r + 1
         self.state = IkeSa.State.HALF_OPEN
@@ -64,16 +81,16 @@ class IkeSaController:
                 header.is_request):
             request = Message.parse(data)
             logging.debug(
-                'Received IKE_SA_INIT request. Creating new IKE_SA.\n'
-                '{}'.format(request))
+                'Received IKE_SA_INIT request: {}'.format(request))
             ike_sa = IkeSa()
             response = ike_sa.process_ike_sa_init_request(request)
             self.ike_sas[ike_sa.spi_r] = ike_sa
-            logging.debug('Response to be sent: {}'.format(response))
-            logging.debug('Binary response to be sent: {}'.format(hexstring(response.to_bytes())))
+            logging.debug('Sending IKE_SA_INIT response: {}'.format(response))
             return response.to_bytes()
 
-        return b''
+        else:
+            logging.debug('Received unexpected IKE message. Omitting: {}'.format(header))
+            return None
 
 
         logging.debug('Received message: {}'.format(message))
