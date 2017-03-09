@@ -262,14 +262,11 @@ class PayloadFactory:
             If the payload type is not recognized and critical, raise and
             exception. Else, returns None
         """
-        payload_class = cls.payload_classes.get(payload_type, None)
-        if payload_class is None:
-            if critical:
-                raise Ikev2ParsingError(
-                    'Unrecognized payload with code {}'.format(payload_type))
-            else:
-                return None
-        return payload_class.parse(data, critical)
+        try:
+            return cls.payload_classes[payload_type].parse(data, critical)
+        except KeyError:
+            raise Ikev2ParsingError(
+                'Unrecognized payload with code {}'.format(payload_type))
 
 class Message:
     class Exchange(SafeIntEnum):
@@ -277,32 +274,61 @@ class Message:
         IKE_AUTH = 35
         CREATE_CHILD_SA = 36
         INFORMATIONAL = 37
+
+    def __init__(self, spi_i, spi_r, next_payload_type, major, minor,
+                 exchange_type, is_response, can_use_higher_version,
+                 is_initiator, message_id, payloads=None):
+        self.spi_i = spi_i
+        self.spi_r = spi_r
+        self.next_payload_type = next_payload_type
+        self.major = major
+        self.minor = minor
+        self.exchange_type = exchange_type
+        self.is_response = is_response
+        self.can_use_higher_version = can_use_higher_version
+        self.is_initiator = is_initiator
+        self.message_id = message_id
+        self.payloads = payloads if payloads is not None else []
+
+    @classmethod
+    def parse_header(cls, data):
         header = unpack_from('>8s8s4B2L', data)
-        self.spi_i = header[0]
-        self.spi_r = header[1]
-        next_payload_type = header[2]
-        self.major = header[3] >> 4
-        self.minor = header[3] & 0x0F
-        self.type = header[4]
-        self.is_response = (header[5] & 0x20) != 0
-        self.can_use_higher_version = (header[5] & 0x10) != 0
-        self.is_initiator = (header[5] & 0x08) != 0
-        self.message_id = header[6]
-        self.payloads = []
+        return Message(
+            spi_i=header[0], spi_r=header[1], next_payload_type=header[2],
+            major=header[3] >> 4, minor=header[3] & 0x0F, exchange_type=header[4],
+            is_response=(header[5] & 0x20) != 0,
+            can_use_higher_version=(header[5] & 0x10) != 0,
+            is_initiator=(header[5] & 0x08) != 0, message_id=header[6],
+        )
+
+    @classmethod
+    def parse(cls, data):
+        message = Message.parse_header(data)
 
         # unpack payloads
         offset = 28
+        next_payload_type = message.next_payload_type
         while next_payload_type != 0:
             current_payload_type = next_payload_type
             next_payload_type, critical, length = unpack_from('>BBH', data, offset)
             critical = critical >> 7
             start = offset + 4
             end = offset + length
-            payload = PayloadFactory.parse(
-                current_payload_type, data[start:end], critical)
-            if payload is not None:
-                self.payloads.append(payload)
+            
+            # We try to parse the payload. If not known and critical, propagate
+            # exception
+            try:
+                payload = PayloadFactory.parse(
+                    current_payload_type, data[start:end], critical)
+                message.payloads.append(payload)
+            except Ikev2ParsingError as ex:
+                if critical:
+                    raise            
+            
+            # offset is increased in any case
             offset += length
+
+        return message
 
     def to_dict(self):
         return OrderedDict([
@@ -311,12 +337,23 @@ class Message:
             ('major', self.major),
             ('minor', self.minor),
             ('exchange_type', Message.Exchange.safe_name(self.exchange_type)),
+            ('is_request', self.is_request),
             ('is_response', self.is_response),
             ('can_use_higher_version', self.can_use_higher_version),
             ('is_initiator', self.is_initiator),
+            ('is_responder', self.is_responder),
             ('message_id', self.message_id),
             ('payloads', [x.to_dict() for x in self.payloads]),
         ])
+
+    @property
+    def is_request(self):
+        return not self.is_response
+
+    @property
+    def is_responder(self):
+        return not self.is_initiator
+
     def __str__(self):
         return json.dumps(self.to_dict(), indent=2)
 
