@@ -23,7 +23,8 @@ ike_sa_contorller = IkeSaController()
 # do server
 while True:
     data, addr = sock.recvfrom(4096)
-    logging.info('Received {} bytes from {}:'.format(len(data), addr))
+    logging.info('Received {} bytes from {}'.format(len(data), addr))
     data = ike_sa_contorller.dispatch_message(data)
     if data:
         sock.sendto(data, addr)
+        logging.info('Sent {} bytes to {}'.format(len(data), addr))
