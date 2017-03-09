@@ -283,7 +283,7 @@ class Message:
 
     @classmethod
     def parse_header(cls, data):
-        header = unpack_from('>8s8s4B2L', data)
+        header = unpack_from('>2Q4B2L', data)
         return Message(
             spi_i=header[0], spi_r=header[1], next_payload_type=header[2],
             major=header[3] >> 4, minor=header[3] & 0x0F, exchange_type=header[4],
@@ -324,8 +324,8 @@ class Message:
 
     def to_dict(self):
         return OrderedDict([
-            ('spi_i', hexstring(self.spi_i)),
-            ('spi_r', hexstring(self.spi_r)),
+            ('spi_i', hexstring(pack('>Q', self.spi_i))),
+            ('spi_r', hexstring(pack('>Q', self.spi_r))),
             ('major', self.major),
             ('minor', self.minor),
             ('exchange_type', Message.Exchange.safe_name(self.exchange_type)),
