@@ -120,11 +120,17 @@ class Transform:
             is_tv = attribute[0] >> 15
             attr_type = attribute[0] & 0x7FFF
             # omit any Transform attribute other than KeyLen
-            if not is_tv or attr_type != 14:
+            if attribute[0] != (14 | 0x8000):
                 continue
             keylen = attribute[1]
             offset += 4
         return Transform((transform_type, transform_id), keylen)
+
+    def to_bytes(self):
+        data = bytearray(pack('>BBH', self.type, 0, self.transform_id))
+        if self.keylen:
+            data += pack('>HH', (14 | 0x8000), self.keylen)
+        return data
 
     def to_dict(self):
         result = OrderedDict([
@@ -169,6 +175,23 @@ class Proposal:
 
         return proposal
 
+    def to_bytes(self):
+        data = bytearray(pack(
+            '>BBBB', self.num, self.protocol_id, len(self.spi), 
+            len(self.transforms)
+        ))
+
+        for index in range(0, len(self.transforms)):
+            transform = self.transforms[index]
+            transform_data = transform.to_bytes()
+            data += pack(
+                '>BBH', (0 if index == len(self.transforms) - 1 else 3),
+                0, len(transform_data) + 4
+            )
+            data += transform_data
+
+        return data
+
     def to_dict(self):
         return OrderedDict([
             ('num', self.num),
@@ -201,6 +224,17 @@ class PayloadSA(Payload):
 
     def add_proposal(self, proposal):
         self.proposals.append(proposal)
+
+    def to_bytes(self):
+        data = bytearray()
+        for index in range(0, len(self.proposals)):
+            proposal_data = self.proposals[index].to_bytes()
+            data += pack(
+                '>BBH', (0 if index == len(self.proposals) - 1 else 2),
+                0, len(proposal_data) + 4
+            )
+            data += proposal_data
+        return data
 
     def to_dict(self):
         result = super(PayloadSA, self).to_dict()
@@ -331,13 +365,25 @@ class Message:
 
     def to_bytes(self):
         first_payload_type = self.payloads[0].type if self.payloads else Payload.Type.NONE
-        header = pack(
-            '>2Q4B2L', self.spi_i, self.spi_r, first_payload_type, 
+        data = bytearray(28)
+        pack_into(
+            '>2Q4B2L', data, 0, self.spi_i, self.spi_r, first_payload_type, 
             (self.major << 4 | self.minor & 0x0F), self.exchange_type, 
             (self.is_response << 5 | self.can_use_higher_version << 4 | 
                 self.is_initiator << 3), 
             self.message_id, 28)
-        return header
+        for index in range(0, len(self.payloads)):
+            payload = self.payloads[index]
+            payload_data = payload.to_bytes()
+            next_payload_type = (
+                self.payloads[index].type if index < len(self.payloads) else Payload.Type.NONE)
+            data += pack('>BBH', next_payload_type, 0, len(payload_data) + 4)
+            data += payload_data
+
+        # update length once we know it
+        pack_into('>L', data, 24, len(data))
+
+        return data
 
     def to_dict(self):
         return OrderedDict([

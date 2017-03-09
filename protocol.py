@@ -70,7 +70,7 @@ class IkeSaController:
             response = ike_sa.process_ike_sa_init_request(request)
             self.ike_sas[ike_sa.spi_r] = ike_sa
             logging.debug('Response to be sent: {}'.format(response))
-            logging.debug('Binary response to be sent: {}'.format(response.to_bytes()))
+            logging.debug('Binary response to be sent: {}'.format(hexstring(response.to_bytes())))
             return response.to_bytes()
 
         return b''
