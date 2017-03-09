@@ -88,11 +88,16 @@ class IkeSaController:
             logging.debug('Sending IKE_SA_INIT response: {}'.format(response))
             return response.to_bytes()
 
+        elif (header.exchange_type == Message.Exchange.IKE_AUTH and 
+                header.is_request):
+            request = Message.parse(data)
+            logging.debug(
+                'Received IKE_AUTH request: {}'.format(request))
+            return None
         else:
             logging.debug('Received unexpected IKE message. Omitting: {}'.format(header))
             return None
 
 
-        logging.debug('Received message: {}'.format(message))
 
 
