@@ -261,7 +261,7 @@ class PayloadFactory:
 
 class Message:
     class Exchange(SafeIntEnum):
-        # IKE_SA_INIT = 34
+        IKE_SA_INIT = 34
         IKE_AUTH = 35
         CREATE_CHILD_SA = 36
         INFORMATIONAL = 37
@@ -321,6 +321,16 @@ class Message:
             offset += length
 
         return message
+
+    def to_bytes(self):
+        first_payload_type = self.payloads[0].type if self.payloads else Payload.Type.NONE
+        header = pack(
+            '>2Q4B2L', self.spi_i, self.spi_r, first_payload_type, 
+            (self.major << 4 | self.minor & 0x0F), self.exchange_type, 
+            (self.is_response << 5 | self.can_use_higher_version << 4 | 
+                self.is_initiator << 3), 
+            self.message_id, 28)
+        return header
 
     def to_dict(self):
         return OrderedDict([
