@@ -504,8 +504,11 @@ class Message:
     def is_responder(self):
         return not self.is_initiator
 
-    def get_payload_by_type(self, payload_type):
+    def get_payload(self, payload_type):
         return next(x for x in self.payloads if x.type == payload_type)
+
+    def get_payloads(self, payload_type):
+        return [x for x in self.payloads if x.type == payload_type]
 
     def __str__(self):
         return json.dumps(self.to_dict(), indent=2)
