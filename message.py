@@ -10,8 +10,7 @@ import os
 from random import SystemRandom
 import json
 from struct import pack, unpack, pack_into, unpack_from, error as struct_error
-from collections import OrderedDict, namedtuple
-
+from collections import OrderedDict
 from helpers import hexstring, SafeTupleEnum, SafeIntEnum
 
 class InvalidSyntax(Exception):
@@ -40,9 +39,8 @@ class Payload:
         CP = 47
         EAP = 48
 
-    def __init__(self, type, critical=False):
+    def __init__(self, critical=False):
         self.critical = critical
-        self.type = type
 
     def to_dict(self):
         result = OrderedDict([
@@ -55,8 +53,10 @@ class Payload:
         return result
 
 class PayloadKE(Payload):
+    type = Payload.Type.KE
+
     def __init__(self, dh_group, ke_data, critical=False):
-        super(PayloadKE, self).__init__(Payload.Type.KE, critical)
+        super(PayloadKE, self).__init__(critical)
         self.dh_group = dh_group
         self.ke_data = ke_data
 
@@ -234,8 +234,10 @@ class Proposal:
         ])
 
 class PayloadSA(Payload):
+    type = Payload.Type.SA
+
     def __init__(self, proposals, critical=False):
-        super(PayloadSA, self).__init__(Payload.Type.SA, critical)
+        super(PayloadSA, self).__init__(critical)
         self.proposals = proposals
         if len(self.proposals) == 0:
             raise InvalidSyntax('Emtpy Payload SA is not allowed')
@@ -275,8 +277,9 @@ class PayloadSA(Payload):
         return result
 
 class PayloadVendor(Payload):
+    type = Payload.Type.VENDOR
     def __init__(self, vendor_id, critical=False):
-        super(PayloadVendor, self).__init__(Payload.Type.VENDOR, critical)
+        super(PayloadVendor, self).__init__(critical)
         if len(vendor_id) == 0:
             raise InvalidSyntax('Vendor ID should have some data.')
         self.vendor_id = vendor_id
@@ -296,8 +299,10 @@ class PayloadVendor(Payload):
         return result
 
 class PayloadNonce(Payload):
+    type = Payload.Type.NONCE
+
     def __init__(self, nonce=None, critical=False):
-        super(PayloadNonce, self).__init__(Payload.Type.NONCE, critical)
+        super(PayloadNonce, self).__init__(critical)
         if nonce is not None:
             if len(nonce) < 16 or len(nonce) > 256:
                 raise InvalidSyntax('Invalid Payload NONCE length: {}'.format(len(nonce)))
@@ -323,8 +328,10 @@ class PayloadNonce(Payload):
 
 
 class PayloadSK(Payload):
+    type = Payload.Type.SK
+
     def __init__(self, payload_data, critical=False):
-        super(PayloadSK, self).__init__(Payload.Type.SK, critical)
+        super(PayloadSK, self).__init__(critical)
         if len(payload_data) == 0:
             raise InvalidSyntax('PayloadSK cannot have 0 length payload data')
         self.payload_data = payload_data
@@ -344,13 +351,7 @@ class PayloadSK(Payload):
         return result
 
 class PayloadFactory:
-    payload_classes = {
-        Payload.Type.SA: PayloadSA,
-        Payload.Type.KE: PayloadKE,
-        Payload.Type.NONCE: PayloadNonce,
-        Payload.Type.VENDOR: PayloadVendor,
-        Payload.Type.SK: PayloadSK,
-    }
+    payload_classes = {x.type: x for x in Payload.__subclasses__()}
 
     @classmethod
     def parse(cls, payload_type, data, critical=False):
