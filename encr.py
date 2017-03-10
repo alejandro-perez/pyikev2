@@ -7,9 +7,11 @@
 from helpers import SafeIntEnum
 
 import os
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.ciphers import Cipher as cypher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 
+class EncrError(Exception):
+    pass
 
 class Cipher:
     class Id(SafeIntEnum):
@@ -44,13 +46,19 @@ class Cipher:
     def key_size(self):
         return (self.negotiated_keylen or self._algorithm.key_sizes[0]) // 8
 
-    def encrypt(self, key, data):
-        iv = os.urandom(self.block_size)
-        cipher = Cipher(self._algorithm(key), modes.CBC(iv), backend=self._backend)
-        encryptor = cipher.encryptor()
+    def encrypt(self, key, iv, data):
+        if len(key) != self.key_size:
+            raise EncrError('Key must be of the indicated size {}'.format(self.key_size))
+        cyph = cypher(self._algorithm(key), modes.CBC(iv), backend=self._backend)
+        encryptor = cyph.encryptor()
         return encryptor.update(data) + encryptor.finalize()
 
-    def decrypt(self, key, data):
-        cipher = Cipher(self._algorithm(key), modes.CBC(iv), backend=self._backend)
-        encryptor = cipher.decryptor()
+    def decrypt(self, key, iv, data):
+        if len(key) != self.key_size:
+            raise EncrError('Key must be of the indicated size {}'.format(self.key_size))
+        cyph = cypher(self._algorithm(key), modes.CBC(iv), backend=self._backend)
+        decryptor = cyph.decryptor()
         return decryptor.update(data) + decryptor.finalize()
+
+    def generate_iv(self):
+        return os.urandom(self.block_size)
