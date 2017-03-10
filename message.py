@@ -77,7 +77,7 @@ class PayloadKE(Payload):
         return result
 
 class Transform:
-    class Algorithm(SafeEnum):
+    class Algorithm(SafeTupleEnum):
         ENCR_DES_IV64 = (1, 1)
         ENCR_DES = (1, 2)
         ENCR_3DES = (1, 3)
