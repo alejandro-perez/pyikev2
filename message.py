@@ -322,22 +322,22 @@ class PayloadNonce(Payload):
         return result
 
 
-class PayloadSk(Payload):
+class PayloadSK(Payload):
     def __init__(self, payload_data, critical=False):
-        super(PayloadSk, self).__init__(Payload.Type.SK, critical)
+        super(PayloadSK, self).__init__(Payload.Type.SK, critical)
         if len(payload_data) == 0:
             raise InvalidSyntax('PayloadSK cannot have 0 length payload data')
         self.payload_data = payload_data
 
     @classmethod
     def parse(cls, data, critical=False):
-        return PayloadSk(data, critical)
+        return PayloadSK(data, critical)
 
     def to_bytes(self):
         return self.payload_data
 
     def to_dict(self):
-        result = super(PayloadSk, self).to_dict()
+        result = super(PayloadSK, self).to_dict()
         result.update(OrderedDict([
             ('payload_data', hexstring(self.payload_data)),
         ]))
@@ -349,7 +349,7 @@ class PayloadFactory:
         Payload.Type.KE: PayloadKE,
         Payload.Type.NONCE: PayloadNonce,
         Payload.Type.VENDOR: PayloadVendor,
-        Payload.Type.SK: PayloadSk,
+        Payload.Type.SK: PayloadSK,
     }
 
     @classmethod
