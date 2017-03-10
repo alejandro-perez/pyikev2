@@ -5,16 +5,19 @@
 """
 __author__ = 'Alejandro Perez <alex@um.es>'
 
-from struct import pack, unpack, pack_into, unpack_from
-import json
-from collections import OrderedDict
-from helpers import hexstring, SafeEnum, SafeIntEnum
-from random import SystemRandom
-
 import logging
 import os
+from random import SystemRandom
+import json
+from struct import pack, unpack, pack_into, unpack_from, error as struct_error
+from collections import OrderedDict, namedtuple
 
-class Ikev2ParsingError(Exception):
+from helpers import hexstring, SafeTupleEnum, SafeIntEnum
+
+class InvalidSyntax(Exception):
+    pass
+
+class UnsupportedCriticalPayload(Exception):
     pass
 
 class Payload:
@@ -59,7 +62,10 @@ class PayloadKE(Payload):
 
     @classmethod
     def parse(cls, data, critical=False):
-        dh_group, _, = unpack_from('>2H', data)
+        try:
+            dh_group, _, = unpack_from('>2H', data)
+        except struct_error:
+            raise InvalidSyntax('Error parsing Payload KE.')
         ke_data = data[4:]
         return PayloadKE(dh_group, ke_data, critical)
 
@@ -118,11 +124,17 @@ class Transform:
 
     @classmethod
     def parse(cls, data):
-        transform_type, _, transform_id = unpack_from('>BBH', data)
+        try:
+            transform_type, _, transform_id = unpack_from('>BBH', data)
+        except struct_error:
+            raise InvalidSyntax('Error parsing Tranform.')
         offset = 4
         keylen = None
         while offset < len(data):
-            attribute = unpack_from('>HH', data, offset)
+            try:
+                attribute = unpack_from('>HH', data, offset)
+            except struct_error:
+                raise InvalidSyntax('Error parsing Transform attribute.')
             is_tv = attribute[0] >> 15
             attr_type = attribute[0] & 0x7FFF
             # omit any Transform attribute other than KeyLen
@@ -160,11 +172,17 @@ class Proposal:
         self.num_transforms = num_transforms
         self.spi = spi
         self.transforms = []
+        if len(self.transforms) == 0:
+            raise InvalidSyntax('A proposal without transforms is not allowed')
 
     @classmethod
     def parse(cls, data):
         spi = b''
-        num, protocol_id, spi_size, num_transforms = unpack_from('>BBBB', data)
+        try:
+            num, protocol_id, spi_size, num_transforms = unpack_from('>BBBB', data)
+        except struct_error:
+            raise InvalidSyntax('Error parsing Proposal')
+
         if spi_size > 0:
             spi = data[4:4 + spi_size]
         proposal = Proposal(num, protocol_id, num_transforms, spi)
@@ -172,7 +190,10 @@ class Proposal:
         # iterate over the transforms (if any)
         offset = 4 + spi_size
         while offset < len(data):
-            more, _, length = unpack_from('>BBH', data, offset)
+            try:
+                more, _, length = unpack_from('>BBH', data, offset)
+            except struct_error:
+                raise InvalidSyntax('Error parsing Transform header')
             start = offset + 4
             end = offset + length
             transform = Transform.parse(data[start:end])
@@ -180,6 +201,10 @@ class Proposal:
             offset += length
 
         return proposal
+        if num_transforms != len(transforms):
+            raise InvalidSyntax(
+                'Indicated # of transforms ({}) differs from the actual # of '
+                ' transforms ({})'.format(num_transforms, len(transforms)))
 
     def to_bytes(self):
         data = bytearray(pack(
@@ -211,6 +236,8 @@ class PayloadSA(Payload):
     def __init__(self, critical=False):
         super(PayloadSA, self).__init__(Payload.Type.SA, critical)
         self.proposals = []
+        if len(self.proposals) == 0:
+            raise InvalidSyntax('Emtpy Payload SA is not allowed')
 
     @classmethod
     def parse(cls, data, critical=False):
@@ -252,6 +279,8 @@ class PayloadSA(Payload):
 class PayloadVendor(Payload):
     def __init__(self, vendor_id, critical=False):
         super(PayloadVendor, self).__init__(Payload.Type.VENDOR, critical)
+        if len(vendor_id) == 0:
+            raise InvalidSyntax('Vendor ID should have some data.')
         self.vendor_id = vendor_id
 
     @classmethod
@@ -272,6 +301,8 @@ class PayloadNonce(Payload):
     def __init__(self, nonce=None, critical=False):
         super(PayloadNonce, self).__init__(Payload.Type.NONCE, critical)
         if nonce is not None:
+            if len(nonce) < 16 or len(nonce) > 256:
+                raise InvalidSyntax('Invalid Payload NONCE length: {}'.format(len(nonce)))
             self.nonce = nonce
         else:
             random = SystemRandom()
@@ -296,6 +327,8 @@ class PayloadNonce(Payload):
 class PayloadSk(Payload):
     def __init__(self, payload_data, critical=False):
         super(PayloadSk, self).__init__(Payload.Type.SK, critical)
+        if len(payload_data) == 0:
+            raise InvalidSyntax('PayloadSK cannot have 0 length payload data')
         self.payload_data = payload_data
 
     @classmethod
@@ -330,7 +363,7 @@ class PayloadFactory:
         try:
             return cls.payload_classes[payload_type].parse(data, critical)
         except KeyError:
-            raise Ikev2ParsingError(
+            raise InvalidSyntax(
                 'Unrecognized payload with code '
                 '{}'.format(Payload.Type.safe_name(payload_type)))
 
@@ -358,7 +391,10 @@ class Message:
 
     @classmethod
     def parse_header(cls, data):
-        header = unpack_from('>2Q4B2L', data)
+        try:
+            header = unpack_from('>2Q4B2L', data)
+        except struct_error as ex:
+            raise InvalidSyntax(ex)
         return Message(
             spi_i=header[0], spi_r=header[1], next_payload_type=header[2],
             major=header[3] >> 4, minor=header[3] & 0x0F, exchange_type=header[4],
@@ -418,7 +454,7 @@ class Message:
                 next_payload_type = self.payloads[index + 1].type
             else:
                 next_payload_type = Payload.Type.NONE
-            
+
             data += pack('>BBH', next_payload_type, 0, len(payload_data) + 4)
             data += payload_data
 
