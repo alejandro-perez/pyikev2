@@ -41,26 +41,25 @@ class IkeSa:
         self.msg_id_r = 0
 
         # create response message
-        response = Message(
-            self.spi_i, self.spi_r, 0, 2, 0, Message.Exchange.IKE_SA_INIT,
-            True, False, self.is_initiator, self.msg_id_r
-        )
 
         # add the response payload SA. So far, we just copy theirs
         payload_sa = request.get_payload_by_type(Payload.Type.SA)
-        response.payloads.append(payload_sa)
 
         # add the response payload KE. So far, we just copy theirs
         payload_ke = request.get_payload_by_type(Payload.Type.KE)
-        response.payloads.append(payload_ke)
 
         # add the response payload NONCE.
         payload_nonce = PayloadNonce()
-        response.payloads.append(payload_nonce)
 
         # add the response payload VENDOR.
         payload_vendor = PayloadVendor(b'pyikev2-0.1')
-        response.payloads.append(payload_vendor)
+
+        response = Message(
+            self.spi_i, self.spi_r, 0, 2, 0, Message.Exchange.IKE_SA_INIT,
+            True, False, self.is_initiator, self.msg_id_r,
+            [payload_sa, payload_ke, payload_nonce, payload_vendor]
+        )
+
 
 
         # increase msg_id and transition
@@ -77,7 +76,7 @@ class IkeSaController:
         header = Message.parse_header(data)
 
         # if IKE_SA_INIT request, then a new IkeSa must be created to handle it
-        if (header.exchange_type == Message.Exchange.IKE_SA_INIT and 
+        if (header.exchange_type == Message.Exchange.IKE_SA_INIT and
                 header.is_request):
             request = Message.parse(data)
             logging.debug(
@@ -88,7 +87,7 @@ class IkeSaController:
             logging.debug('Sending IKE_SA_INIT response: {}'.format(response))
             return response.to_bytes()
 
-        elif (header.exchange_type == Message.Exchange.IKE_AUTH and 
+        elif (header.exchange_type == Message.Exchange.IKE_AUTH and
                 header.is_request):
             request = Message.parse(data)
             logging.debug(
