@@ -137,10 +137,10 @@ class Transform:
                 raise InvalidSyntax('Error parsing Transform attribute.')
             is_tv = attribute[0] >> 15
             attr_type = attribute[0] & 0x7FFF
-            # omit any Transform attribute other than KeyLen
-            if attribute[0] != (14 | 0x8000):
-                continue
-            keylen = attribute[1]
+            # if we find a KeyLen attribute, we can abort to save some cycles
+            if attribute[0] == (14 | 0x8000):
+                keylen = attribute[1]
+                break
             offset += 4
         return Transform((transform_type, transform_id), keylen)
 
