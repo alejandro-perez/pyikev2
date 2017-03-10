@@ -199,11 +199,3 @@ class DiffieHellman:
         shared_secret_int = pow(peer_public_key_int, self._private_key_int, self._module)
         self.shared_secret = shared_secret_int.to_bytes(self._n_bytes, 'big')
 
-
-# dh1 = DiffieHellman(5)
-# dh2 = DiffieHellman(5, dh1.public_key)
-# dh1.compute_secret(dh2.public_key)
-# print(dh1.public_key)
-# print(dh2.public_key)
-# print(dh1.shared_secret)
-# print(dh2.shared_secret)
