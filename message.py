@@ -372,12 +372,11 @@ class Message:
         CREATE_CHILD_SA = 36
         INFORMATIONAL = 37
 
-    def __init__(self, spi_i, spi_r, next_payload_type, major, minor,
+    def __init__(self, spi_i, spi_r, major, minor,
                  exchange_type, is_response, can_use_higher_version,
-                 is_initiator, message_id, payloads=None):
+                 is_initiator, message_id, payloads):
         self.spi_i = spi_i
         self.spi_r = spi_r
-        self.next_payload_type = next_payload_type
         self.major = major
         self.minor = minor
         self.exchange_type = exchange_type
@@ -385,7 +384,7 @@ class Message:
         self.can_use_higher_version = can_use_higher_version
         self.is_initiator = is_initiator
         self.message_id = message_id
-        self.payloads = payloads if payloads is not None else []
+        self.payloads = payloads
 
     @classmethod
     def parse_header(cls, data):
@@ -465,7 +464,6 @@ class Message:
         return OrderedDict([
             ('spi_i', hexstring(pack('>Q', self.spi_i))),
             ('spi_r', hexstring(pack('>Q', self.spi_r))),
-            ('next_payload_type', Payload.Type.safe_name(self.next_payload_type)),
             ('major', self.major),
             ('minor', self.minor),
             ('exchange_type', Message.Exchange.safe_name(self.exchange_type)),
