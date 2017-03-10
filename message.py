@@ -211,6 +211,9 @@ class Proposal:
             '>BBBB', self.num, self.protocol_id, len(self.spi), len(self.transforms)
         ))
 
+        if len(self.spi):
+            data += self.spi
+
         for index in range(0, len(self.transforms)):
             transform = self.transforms[index]
             transform_data = transform.to_bytes()
