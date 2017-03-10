@@ -387,61 +387,80 @@ class Message:
         self.payloads = payloads
 
     @classmethod
-    def parse_header(cls, data):
+    def parse(cls, data, only_header=False):
         try:
             header = unpack_from('>2Q4B2L', data)
         except struct_error as ex:
             raise InvalidSyntax(ex)
+
+        payloads = []
+        if not only_header:
+            # unpack payloads
+            offset = 28
+            next_payload_type = header[2]
+            payload_type = Payload.Type.NONE
+
+            # Two stop conditions, either next payload is NONE
+            while (next_payload_type != Payload.Type.NONE):
+                payload_type = next_payload_type
+                try:
+                    next_payload_type, critical, length = unpack_from('>BBH', data, offset)
+                except struct_error as ex:
+                    raise InvalidSyntax(ex)
+
+                if length < 4:
+                    raise InvalidSyntax('Payloads with length < 4 are  not allowed: {}'.format(length))
+
+                critical = critical >> 7
+                start = offset + 4
+                end = offset + length
+
+                # We try to parse the payload. If not known and critical, propagate
+                # exception
+                try:
+                    payload = PayloadFactory.parse(
+                        payload_type, data[start:end], critical
+                    )
+                except InvalidSyntax as ex:
+                    logging.warning(ex)
+                    if critical:
+                        raise UnsupportedCriticalPayload
+                else:
+                    payloads.append(payload)
+
+                # offset is increased in any case
+                offset += length
+
+                # abort if this was a SK payload
+                if payload_type == Payload.Type.SK:
+                    break
+
+        # check we read all the data
+        if offset != len(data):
+            raise InvalidSyntax('Amount of actual payload data {} differs from '
+                ' message length {}'.format(offset, len(data)))
+
         return Message(
-            spi_i=header[0], spi_r=header[1], next_payload_type=header[2],
-            major=header[3] >> 4, minor=header[3] & 0x0F, exchange_type=header[4],
+            spi_i=header[0],
+            spi_r=header[1],
+            major=header[3] >> 4,
+            minor=header[3] & 0x0F,
+            exchange_type=header[4],
             is_response=(header[5] & 0x20) != 0,
             can_use_higher_version=(header[5] & 0x10) != 0,
-            is_initiator=(header[5] & 0x08) != 0, message_id=header[6],
+            is_initiator=(header[5] & 0x08) != 0,
+            message_id=header[6],
+            payloads=payloads
         )
-
-    @classmethod
-    def parse(cls, data):
-        message = Message.parse_header(data)
-
-        # unpack payloads
-        offset = 28
-        next_payload_type = message.next_payload_type
-        while next_payload_type != 0:
-            current_payload_type = next_payload_type
-            next_payload_type, critical, length = unpack_from('>BBH', data, offset)
-            critical = critical >> 7
-            start = offset + 4
-            end = offset + length
-            
-            # We try to parse the payload. If not known and critical, propagate
-            # exception
-            try:
-                payload = PayloadFactory.parse(
-                    current_payload_type, data[start:end], critical)
-                message.payloads.append(payload)
-            except Ikev2ParsingError as ex:
-                logging.warn(ex)
-                if critical:
-                    raise            
-            
-            # offset is increased in any case
-            offset += length
-
-            # if Payload SK, trick next_payload_type
-            if current_payload_type == Payload.Type.SK:
-                next_payload_type = Payload.Type.NONE
-
-        return message
 
     def to_bytes(self):
         first_payload_type = self.payloads[0].type if self.payloads else Payload.Type.NONE
         data = bytearray(28)
         pack_into(
-            '>2Q4B2L', data, 0, self.spi_i, self.spi_r, first_payload_type, 
-            (self.major << 4 | self.minor & 0x0F), self.exchange_type, 
-            (self.is_response << 5 | self.can_use_higher_version << 4 | 
-                self.is_initiator << 3), 
+            '>2Q4B2L', data, 0, self.spi_i, self.spi_r, first_payload_type,
+            (self.major << 4 | self.minor & 0x0F), self.exchange_type,
+            (self.is_response << 5 | self.can_use_higher_version << 4 |
+                self.is_initiator << 3),
             self.message_id, 28
         )
         for index in range(0, len(self.payloads)):
