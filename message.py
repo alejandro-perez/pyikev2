@@ -166,12 +166,11 @@ class Proposal:
         AH = 2
         ESP = 3
 
-    def __init__(self, num, protocol_id, num_transforms, spi):
+    def __init__(self, num, protocol_id, spi, transforms):
         self.num = num
         self.protocol_id = protocol_id
-        self.num_transforms = num_transforms
         self.spi = spi
-        self.transforms = []
+        self.transforms = transforms
         if len(self.transforms) == 0:
             raise InvalidSyntax('A proposal without transforms is not allowed')
 
@@ -185,10 +184,10 @@ class Proposal:
 
         if spi_size > 0:
             spi = data[4:4 + spi_size]
-        proposal = Proposal(num, protocol_id, num_transforms, spi)
 
         # iterate over the transforms (if any)
         offset = 4 + spi_size
+        transforms = []
         while offset < len(data):
             try:
                 more, _, length = unpack_from('>BBH', data, offset)
@@ -197,19 +196,19 @@ class Proposal:
             start = offset + 4
             end = offset + length
             transform = Transform.parse(data[start:end])
-            proposal.transforms.append(transform)
+            transforms.append(transform)
             offset += length
 
-        return proposal
         if num_transforms != len(transforms):
             raise InvalidSyntax(
                 'Indicated # of transforms ({}) differs from the actual # of '
                 ' transforms ({})'.format(num_transforms, len(transforms)))
 
+        return Proposal(num, protocol_id, spi, transforms)
+
     def to_bytes(self):
         data = bytearray(pack(
-            '>BBBB', self.num, self.protocol_id, len(self.spi), 
-            len(self.transforms)
+            '>BBBB', self.num, self.protocol_id, len(self.spi), len(self.transforms)
         ))
 
         for index in range(0, len(self.transforms)):
@@ -227,7 +226,6 @@ class Proposal:
         return OrderedDict([
             ('num', self.num),
             ('protocol_id', Proposal.Protocol.safe_name(self.protocol_id)),
-            ('num_transforms', self.num_transforms),
             ('spi', hexstring(self.spi)),
             ('transforms', [x.to_dict() for x in self.transforms]),
         ])
