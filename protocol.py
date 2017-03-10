@@ -5,18 +5,29 @@
 """
 import logging
 import os
-from message import (Message, Payload, PayloadNonce, PayloadVendor, PayloadKE)
+from message import (Message, Payload, PayloadNonce, PayloadVendor, PayloadKE,
+    Proposal, Transform)
 from helpers import SafeEnum, SafeIntEnum, hexstring
 from random import SystemRandom
 from dh import DiffieHellman
+from prf import Prf
+from integ import Integrity
+from encr import Cipher
+from struct import pack, unpack
+from collections import namedtuple
 
 class Ikev2ProtocolError(Exception):
     pass
+
+Keyring = namedtuple('Keyring',
+    ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er', 'sk_pi', 'sk_pr']
+)
 
 class IkeSa:
     class State(SafeIntEnum):
         INITIAL = 0
         HALF_OPEN = 1
+
 
     """ This class controls the state machine of a IKE SA
         It is triggered with received Messages and/or IPsec events
@@ -26,6 +37,35 @@ class IkeSa:
         self.msg_id_i = 0
         self.msg_id_r = 0
 
+    def generate_ike_sa_key_material(self, proposal, nonce_i, nonce_r, shared_secret):
+        """ Generates IKE_SA key material based on the proposal and DH
+        """
+        prf = Prf(proposal.get_transform(Transform.Type.PRF).id)
+        integ = Integrity(proposal.get_transform(Transform.Type.INTEG).id)
+        cipher = Cipher(
+            proposal.get_transform(Transform.Type.ENCR).id,
+            proposal.get_transform(Transform.Type.ENCR).keylen
+        )
+
+        SKEYSEED = prf.prf(nonce_i + nonce_r, shared_secret)
+        logging.debug('Generated SKEYSEED: {}'.format(hexstring(SKEYSEED)))
+
+        keymat = prf.prfplus(
+            SKEYSEED,
+            nonce_i + nonce_r + self.spi_i.to_bytes(8, 'big') + self.spi_r.to_bytes(8, 'big'),
+            prf.key_size * 3 + integ.key_size * 2 + cipher.key_size * 2
+        )
+
+        self.ike_sa_keyring = Keyring._make(
+            unpack(
+                ('>' + '{}s' * 7).format(prf.key_size, integ.key_size, integ.key_size,
+                    cipher.key_size, cipher.key_size, prf.key_size, prf.key_size),
+                keymat
+            )
+        )
+
+        logging.debug('Generated Keyring: {}'.format(self.ike_sa_keyring))
+
     def process_ike_sa_init_request(self, request):
         """ Processes a IKE_SA_INIT message and returns a IKE_SA_INIT response
         """
@@ -34,32 +74,39 @@ class IkeSa:
             raise Ikev2ProtocolError(
                 'IKE SA state cannot proccess IKE_SA_INIT message')
 
-        # initialize peer's information
+        # initialize IKE SA state
         self.spi_i = request.spi_i
         self.spi_r = SystemRandom().randint(0, 0xFFFFFFFFFFFFFFFF)
         self.is_initiator = False
         self.msg_id_i = request.message_id
         self.msg_id_r = 0
+        self.nonce_i = request.get_payload(Payload.Type.NONCE)
+        self.nonce_r = PayloadNonce()
 
         # generate DH shared secret
-        peer_payload_ke = request.get_payload_by_type(Payload.Type.KE)
+        peer_payload_ke = request.get_payload(Payload.Type.KE)
         dh = DiffieHellman(peer_payload_ke.dh_group, peer_payload_ke.ke_data)
         logging.debug('Generated DH shared secret: {}'.format(hexstring(dh.shared_secret)))
 
-        # create response message
+        peer_nonce = request.get_payload(Payload.Type.NONCE).nonce
+        payload_nonce = PayloadNonce()
+        self.generate_ike_sa_key_material(
+            proposal=request.get_payload(Payload.Type.SA).proposals[0],
+            nonce_i=request.get_payload(Payload.Type.NONCE).nonce,
+            nonce_r=payload_nonce.nonce,
+            shared_secret=dh.shared_secret
+        )
 
-        # add the response payload SA. So far, we just copy theirs
-        payload_sa = request.get_payload_by_type(Payload.Type.SA)
+        # generate the response payload SA. So far, we just copy theirs
+        payload_sa = request.get_payload(Payload.Type.SA)
 
-        # add the response payload KE
+        # generate the response payload KE
         payload_ke = PayloadKE(dh.group, dh.public_key)
 
-        # add the response payload NONCE.
-        payload_nonce = PayloadNonce()
-
-        # add the response payload VENDOR.
+        # generate the response payload VENDOR.
         payload_vendor = PayloadVendor(b'pyikev2-0.1')
 
+        # generate the message
         response = Message(
             spi_i=self.spi_i,
             spi_r=self.spi_r,
