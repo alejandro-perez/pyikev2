@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-""" This module defines the classes for the protocol messages.
+""" This module defines test for protocol messages.
 """
 __author__ = 'Alejandro Perez <alex@um.es>'
 
@@ -10,7 +10,6 @@ from message import (
     PayloadNonce, PayloadKE, PayloadVendor, PayloadSK, InvalidSyntax, Transform,
     Proposal, PayloadSA, Message, UnsupportedCriticalPayload
 )
-import json
 from prf import Prf
 from encr import Cipher
 from integ import Integrity
