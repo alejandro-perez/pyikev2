@@ -435,10 +435,10 @@ class Message:
                 if payload_type == Payload.Type.SK:
                     break
 
-        # check we read all the data
-        if offset != len(data):
-            raise InvalidSyntax('Amount of actual payload data {} differs from '
-                ' message length {}'.format(offset, len(data)))
+            # check we read all the data
+            if offset != len(data):
+                raise InvalidSyntax('Amount of actual payload data {} differs from '
+                    ' message length {}'.format(offset, len(data)))
 
         return Message(
             spi_i=header[0],
