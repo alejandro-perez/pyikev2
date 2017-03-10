@@ -387,14 +387,14 @@ class Message:
         self.payloads = payloads
 
     @classmethod
-    def parse(cls, data, only_header=False):
+    def parse(cls, data, header_only=False):
         try:
             header = unpack_from('>2Q4B2L', data)
         except struct_error as ex:
             raise InvalidSyntax(ex)
 
         payloads = []
-        if not only_header:
+        if not header_only:
             # unpack payloads
             offset = 28
             next_payload_type = header[2]
