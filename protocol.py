@@ -55,12 +55,17 @@ class IkeSa:
         payload_vendor = PayloadVendor(b'pyikev2-0.1')
 
         response = Message(
-            self.spi_i, self.spi_r, 0, 2, 0, Message.Exchange.IKE_SA_INIT,
-            True, False, self.is_initiator, self.msg_id_r,
-            [payload_sa, payload_ke, payload_nonce, payload_vendor]
+            spi_i=self.spi_i,
+            spi_r=self.spi_r,
+            major=2,
+            minor=0,
+            exchange_type=Message.Exchange.IKE_SA_INIT,
+            is_response=True,
+            can_use_higher_version=False,
+            is_initiator=False,
+            message_id=self.msg_id_r,
+            payloads=[payload_sa, payload_ke, payload_nonce, payload_vendor]
         )
-
-
 
         # increase msg_id and transition
         self.msg_id_r = self.msg_id_r + 1
@@ -73,7 +78,7 @@ class IkeSaController:
         self.ike_sas = {}
 
     def dispatch_message(self, data):
-        header = Message.parse_header(data)
+        header = Message.parse(data, header_only=True)
 
         # if IKE_SA_INIT request, then a new IkeSa must be created to handle it
         if (header.exchange_type == Message.Exchange.IKE_SA_INIT and
