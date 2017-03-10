@@ -234,15 +234,15 @@ class Proposal:
         ])
 
 class PayloadSA(Payload):
-    def __init__(self, critical=False):
+    def __init__(self, proposals, critical=False):
         super(PayloadSA, self).__init__(Payload.Type.SA, critical)
-        self.proposals = []
+        self.proposals = proposals
         if len(self.proposals) == 0:
             raise InvalidSyntax('Emtpy Payload SA is not allowed')
 
     @classmethod
     def parse(cls, data, critical=False):
-        payload_sa = PayloadSA()
+        proposals = []
         # iterate over the proposals (if any)
         if len(data):
             offset = 0
@@ -251,13 +251,10 @@ class PayloadSA(Payload):
                 start = offset + 4
                 end = offset + length
                 proposal = Proposal.parse(data[start:end])
-                payload_sa.add_proposal(proposal)
+                proposals.append(proposal)
                 offset += length
 
-        return payload_sa
-
-    def add_proposal(self, proposal):
-        self.proposals.append(proposal)
+        return PayloadSA(proposals)
 
     def to_bytes(self):
         data = bytearray()
