@@ -12,6 +12,11 @@ import json
 from struct import pack, unpack, pack_into, unpack_from, error as struct_error
 from collections import OrderedDict
 from helpers import hexstring, SafeTupleEnum, SafeIntEnum
+from prf import Prf
+from encr import Cipher
+from integ import Integrity
+from dh import DiffieHellman
+from esn import ESN
 
 class InvalidSyntax(Exception):
     pass
@@ -83,49 +88,30 @@ class PayloadKE(Payload):
         return result
 
 class Transform:
-    class Algorithm(SafeTupleEnum):
-        ENCR_DES_IV64 = (1, 1)
-        ENCR_DES = (1, 2)
-        ENCR_3DES = (1, 3)
-        ENCR_RC5 = (1, 4)
-        ENCR_IDEA = (1, 5)
-        ENCR_CAST = (1, 6)
-        ENCR_BLOWFISH = (1, 7)
-        ENCR_3IDEA = (1, 8)
-        ENCR_DES_IV32 = (1, 9)
-        ENCR_NULL = (1, 11)
-        ENCR_AES_CBC = (1, 12)
-        ENCR_AES_CTR = (1, 13)
-        PRF_HMAC_MD5 = (2, 1)
-        PRF_HMAC_SHA1 = (2, 2)
-        PRF_HMAC_TIGER = (2, 3)
-        INTEG_NONE = (3, 0)
-        AUTH_HMAC_MD5_96 = (3, 1)
-        AUTH_HMAC_SHA1_96 = (3, 2)
-        AUTH_DES_MAC = (3, 3)
-        AUTH_KPDK_MD5 = (3, 4)
-        AUTH_AES_XCBC_96 = (3, 5)
-        DH_NONE = (4, 0)
-        DH_1 = (4, 1)
-        DH_2 = (4, 2)
-        DH_5 = (4, 5)
-        DH_14 = (4, 14)
-        DH_15 = (4, 15)
-        DH_16 = (4, 16)
-        DH_17 = (4, 17)
-        DH_18 = (4, 18)
-        NO_ESN = (5, 0)
-        ESN = (5, 1)
+    class Type(SafeIntEnum):
+        ENCR = 1
+        PRF = 2
+        INTEG = 3
+        DH = 4
+        ESN = 5
 
-    def __init__(self, algorithm, keylen = None):
-        self.type = algorithm[0]
-        self.transform_id = algorithm[1]
+    _transform_id_enums = {
+        Type.ENCR: Cipher.Id,
+        Type.PRF: Prf.Id,
+        Type.INTEG: Integrity.Id,
+        Type.DH: DiffieHellman.Id,
+        Type.ESN: ESN.Id,
+    }
+
+    def __init__(self, type, id, keylen = None):
+        self.type = type
+        self.id = id
         self.keylen = keylen
 
     @classmethod
     def parse(cls, data):
         try:
-            transform_type, _, transform_id = unpack_from('>BBH', data)
+            type, _, id = unpack_from('>BBH', data)
         except struct_error:
             raise InvalidSyntax('Error parsing Tranform.')
         offset = 4
@@ -142,18 +128,18 @@ class Transform:
                 keylen = attribute[1]
                 break
             offset += 4
-        return Transform((transform_type, transform_id), keylen)
+        return Transform(type, id, keylen)
 
     def to_bytes(self):
-        data = bytearray(pack('>BBH', self.type, 0, self.transform_id))
+        data = bytearray(pack('>BBH', self.type, 0, self.id))
         if self.keylen:
             data += pack('>HH', (14 | 0x8000), self.keylen)
         return data
 
     def to_dict(self):
         result = OrderedDict([
-            ('transform_id', Transform.Algorithm.safe_name(
-                (self.type, self.transform_id))),
+            ('type', Transform.Type.safe_name(self.type)),
+            ('id', Transform._transform_id_enums[self.type].safe_name(self.id)),
         ])
         if self.keylen:
             result['keylen'] = self.keylen

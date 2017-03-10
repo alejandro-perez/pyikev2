@@ -11,6 +11,11 @@ from message import (
     Proposal, PayloadSA, Message, UnsupportedCriticalPayload
 )
 import json
+from prf import Prf
+from encr import Cipher
+from integ import Integrity
+from dh import DiffieHellman
+from esn import ESN
 
 class TestPayloadMixin(object):
     def setUp(self):
@@ -76,18 +81,18 @@ class TestPayloadSK(TestPayloadMixin, unittest.TestCase):
 class TestTransformWithKeylen(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
         super(TestTransformWithKeylen, self).setUp()
-        self.object = Transform(Transform.Algorithm.AUTH_HMAC_SHA1_96, 128)
+        self.object = Transform(Transform.Type.INTEG, Integrity.Id.AUTH_HMAC_SHA1_96, 128)
 
 class TestTransformWOKeylen(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
         super(TestTransformWOKeylen, self).setUp()
-        self.object = Transform(Transform.Algorithm.PRF_HMAC_SHA1)
+        self.object = Transform(Transform.Type.PRF, Prf.Id.PRF_HMAC_SHA1)
 
 class TestProposal(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
         super(TestProposal, self).setUp()
-        transform1 = Transform(Transform.Algorithm.AUTH_HMAC_SHA1_96, 128)
-        transform2 = Transform(Transform.Algorithm.PRF_HMAC_SHA1)
+        transform1 = Transform(Transform.Type.INTEG, Integrity.Id.AUTH_HMAC_SHA1_96, 128)
+        transform2 = Transform(Transform.Type.PRF, Prf.Id.PRF_HMAC_SHA1)
         self.object = Proposal(
             20, Proposal.Protocol.IKE, b'aspiwhatever',
             [transform1, transform2]
@@ -104,9 +109,9 @@ class TestProposal(TestPayloadMixin, unittest.TestCase):
 class TestPayloadSA(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
         super(TestPayloadSA, self).setUp()
-        transform1 = Transform(Transform.Algorithm.AUTH_HMAC_SHA1_96, 128)
-        transform2 = Transform(Transform.Algorithm.PRF_HMAC_SHA1)
-        transform3 = Transform(Transform.Algorithm.PRF_HMAC_SHA1, 64)
+        transform1 = Transform(Transform.Type.INTEG, Integrity.Id.AUTH_HMAC_SHA1_96, 128)
+        transform2 = Transform(Transform.Type.PRF, Prf.Id.PRF_HMAC_SHA1)
+        transform3 = Transform(Transform.Type.PRF, Prf.Id.PRF_HMAC_SHA1, 64)
         proposal1 = Proposal(
             20, Proposal.Protocol.IKE, b'aspiwhatever', [transform1, transform2]
         )
@@ -126,9 +131,9 @@ class TestPayloadSA(TestPayloadMixin, unittest.TestCase):
 class TestMessage(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
         super(TestMessage, self).setUp()
-        transform1 = Transform(Transform.Algorithm.AUTH_HMAC_SHA1_96, 128)
-        transform2 = Transform(Transform.Algorithm.PRF_HMAC_SHA1)
-        transform3 = Transform(Transform.Algorithm.PRF_HMAC_SHA1, 64)
+        transform1 = Transform(Transform.Type.INTEG, Integrity.Id.AUTH_HMAC_SHA1_96, 128)
+        transform2 = Transform(Transform.Type.PRF, Prf.Id.PRF_HMAC_SHA1)
+        transform3 = Transform(Transform.Type.PRF, Prf.Id.PRF_HMAC_SHA1, 64)
         proposal1 = Proposal(
             20, Proposal.Protocol.IKE, b'aspiwhatever', [transform1, transform2]
         )
