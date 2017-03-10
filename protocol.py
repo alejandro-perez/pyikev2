@@ -5,9 +5,10 @@
 """
 import logging
 import os
-from message import Message, Payload, PayloadNonce, PayloadVendor
+from message import (Message, Payload, PayloadNonce, PayloadVendor, PayloadKE)
 from helpers import SafeEnum, SafeIntEnum, hexstring
 from random import SystemRandom
+from dh import DiffieHellman
 
 class Ikev2ProtocolError(Exception):
     pass
@@ -40,13 +41,18 @@ class IkeSa:
         self.msg_id_i = request.message_id
         self.msg_id_r = 0
 
+        # generate DH shared secret
+        peer_payload_ke = request.get_payload_by_type(Payload.Type.KE)
+        dh = DiffieHellman(peer_payload_ke.dh_group, peer_payload_ke.ke_data)
+        logging.debug('Generated DH shared secret: {}'.format(hexstring(dh.shared_secret)))
+
         # create response message
 
         # add the response payload SA. So far, we just copy theirs
         payload_sa = request.get_payload_by_type(Payload.Type.SA)
 
-        # add the response payload KE. So far, we just copy theirs
-        payload_ke = request.get_payload_by_type(Payload.Type.KE)
+        # add the response payload KE
+        payload_ke = PayloadKE(dh.group, dh.public_key)
 
         # add the response payload NONCE.
         payload_nonce = PayloadNonce()
