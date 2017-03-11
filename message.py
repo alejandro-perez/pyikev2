@@ -12,11 +12,7 @@ import json
 from struct import pack, unpack, pack_into, unpack_from, error as struct_error
 from collections import OrderedDict
 from helpers import hexstring, SafeTupleEnum, SafeIntEnum
-from prf import Prf
-from encr import Cipher
-from integ import Integrity
-from dh import DiffieHellman
-from esn import ESN
+from crypto import Prf, Cipher, Integrity, DiffieHellman, ESN
 
 class InvalidSyntax(Exception):
     pass

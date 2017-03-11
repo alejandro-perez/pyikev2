@@ -9,10 +9,7 @@ from message import (Message, Payload, PayloadNonce, PayloadVendor, PayloadKE,
     Proposal, Transform, NoProposalChosen, PayloadSA, InvalidKePayload)
 from helpers import SafeEnum, SafeIntEnum, hexstring
 from random import SystemRandom
-from dh import DiffieHellman
-from prf import Prf
-from integ import Integrity
-from encr import Cipher
+from crypto import DiffieHellman, Prf, Integrity, Cipher
 from struct import pack, unpack
 from collections import namedtuple
 import copy

@@ -1,13 +1,108 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-#
+
+""" This module defines cryptographic classes
+"""
+
 __author__ = 'Alejandro Perez <alex@um.es>'
 
+import os
+from hmac import HMAC
+import hashlib
 from helpers import SafeIntEnum
-
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import dh
 import cryptography.hazmat.backends.openssl.backend
+from cryptography.hazmat.primitives.ciphers import Cipher as cypher, algorithms, modes
+
+class EncrError(Exception):
+    pass
+
+class Prf(object):
+    class Id(SafeIntEnum):
+        PRF_HMAC_MD5 = 1
+        PRF_HMAC_SHA1 = 2
+        PRF_HMAC_TIGER = 3
+
+    _digestmod_dict = {
+        Id.PRF_HMAC_MD5: hashlib.md5,
+        Id.PRF_HMAC_SHA1: hashlib.sha1
+    }
+
+    def __init__(self, transform_id):
+        self.hasher = self._digestmod_dict[transform_id]
+
+    @property
+    def key_size(self):
+        return self.hash_size
+
+    @property
+    def hash_size(self):
+        return self.hasher().digest_size
+
+    def prf(self, key, data):
+        m = HMAC(key, data, digestmod=self.hasher)
+        return m.digest()
+
+    def prfplus(self, key, seed, size):
+        result = bytes()
+        temp = bytes()
+        i = 1
+        while len(result) < size:
+            temp = self.prf(key, temp + seed + i.to_bytes(1, 'big'))
+            result += temp
+            i += 1
+        return result[:size]
+
+class Cipher:
+    class Id(SafeIntEnum):
+        ENCR_DES_IV64 = 1
+        ENCR_DES = 2
+        ENCR_3DES = 3
+        ENCR_RC5 = 4
+        ENCR_IDEA = 5
+        ENCR_CAST = 6
+        ENCR_BLOWFISH = 7
+        ENCR_3IDEA = 8
+        ENCR_DES_IV32 = 9
+        ENCR_NULL = 11
+        ENCR_AES_CBC = 12
+        ENCR_AES_CTR = 13
+
+    _algorithm_dict = {
+        Id.ENCR_AES_CBC: algorithms.AES,
+    }
+
+    _backend = cryptography.hazmat.backends.openssl.backend
+
+    def __init__(self, transform_id, negotiated_keylen):
+        self._algorithm = self._algorithm_dict[transform_id]
+        self.negotiated_keylen = negotiated_keylen
+
+    @property
+    def block_size(self):
+        return self._algorithm.block_size // 8
+
+    @property
+    def key_size(self):
+        return self.negotiated_keylen // 8
+
+    def encrypt(self, key, iv, data):
+        if len(key) != self.key_size:
+            raise EncrError('Key must be of the indicated size {}'.format(self.key_size))
+        cyph = cypher(self._algorithm(key), modes.CBC(iv), backend=self._backend)
+        encryptor = cyph.encryptor()
+        return encryptor.update(data) + encryptor.finalize()
+
+    def decrypt(self, key, iv, data):
+        if len(key) != self.key_size:
+            raise EncrError('Key must be of the indicated size {}'.format(self.key_size))
+        cyph = cypher(self._algorithm(key), modes.CBC(iv), backend=self._backend)
+        decryptor = cyph.decryptor()
+        return decryptor.update(data) + decryptor.finalize()
+
+    def generate_iv(self):
+        return os.urandom(self.block_size)
 
 class DiffieHellman:
     class Id(SafeIntEnum):
@@ -205,4 +300,39 @@ class DiffieHellman:
         peer_public_key = peer_public_numbers.public_key(self.backend)
         self.shared_secret = self._private_key.exchange(peer_public_key)
 
+class Integrity:
+    class Id(SafeIntEnum):
+        INTEG_NONE = 0
+        AUTH_HMAC_MD5_96 = 1
+        AUTH_HMAC_SHA1_96 = 2
+        AUTH_DES_MAC = 3
+        AUTH_KPDK_MD5 = 4
+        AUTH_AES_XCBC_96 = 5
 
+    _digestmod_dict = {
+        Id.AUTH_HMAC_MD5_96: hashlib.md5,
+        Id.AUTH_HMAC_SHA1_96: hashlib.sha1
+    }
+
+    def __init__(self, transform_id):
+        self.hasher = self._digestmod_dict[transform_id]
+
+    @property
+    def key_size(self):
+        return self.hasher().digest_size
+
+    @property
+    def hash_size(self):
+        # return self.hasher().digest_size
+        # Hardcoded as we only support _96 algorithms
+        return 96 // 8
+
+    def compute(self, key, data):
+        m = HMAC(key, data, digestmod=self.hasher)
+        # Hardcoded as we only support _96 algorithms
+        return m.digest()[:12]
+
+class ESN:
+    class Id(SafeIntEnum):
+        NO_ESN = 0
+        ESN = 1

@@ -6,11 +6,7 @@
 __author__ = 'Alejandro Perez <alex@um.es>'
 
 import unittest
-from prf import Prf
-from encr import Cipher
-from integ import Integrity
-from dh import DiffieHellman
-from helpers import hexstring
+from crypto import Prf, Cipher, Integrity, DiffieHellman
 
 class TestCrypto(unittest.TestCase):
     def test_dh(self):
