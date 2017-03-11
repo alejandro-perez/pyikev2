@@ -222,6 +222,9 @@ class Proposal:
     def get_transform(self, type):
         return next(x for x in self.transforms if x.type == type)
 
+    def get_transforms(self, type):
+        return [x for x in self.transforms if x.type == type]
+
 class PayloadSA(Payload):
     type = Payload.Type.SA
 
