@@ -15,8 +15,9 @@ from helpers import hexstring
 class TestCrypto(unittest.TestCase):
     def test_dh(self):
         dh1 = DiffieHellman(5)
-        dh2 = DiffieHellman(5, dh1.public_key)
+        dh2 = DiffieHellman(5)
         dh1.compute_secret(dh2.public_key)
+        dh2.compute_secret(dh1.public_key)
         self.assertEqual(dh1.shared_secret, dh2.shared_secret)
 
     def test_encr(self):
