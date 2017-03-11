@@ -36,6 +36,8 @@ class IkeSa:
         self.my_msg_id = 0
         self.peer_msg_id = 0
         self.is_initiator = is_initiator
+        self.ike_sa_keyring = None
+        self.chosen_proposal = None
 
     @property
     def spi_i(self):
@@ -143,8 +145,9 @@ class IkeSa:
             (Message.Exchange.IKE_SA_INIT, True): self.process_ike_sa_init_request,
         }
 
-        # parse the whole message
-        message = Message.parse(data)
+        # parse the whole message (passes the keyring to decrypt SK payload if any)
+        message = Message.parse(
+            data, header_only=False, keyring=self.ike_sa_keyring, proposal=self.chosen_proposal)
         self.log_message(message, addr, data, send=False)
 
         # get the appropriate handler fnc
@@ -184,10 +187,10 @@ class IkeSa:
         request_payload_nonce = request.get_payload(Payload.Type.NONCE)
 
         # generate the response payload SA with the chose proposal
-        best_proposal = self.select_best_ike_sa_proposal(request_payload_sa)
+        self.chosen_proposal = self.select_best_ike_sa_proposal(request_payload_sa)
 
         # check that DH groups match
-        my_dh_group = best_proposal.get_transform(Transform.Type.DH).id
+        my_dh_group = self.chosen_proposal.get_transform(Transform.Type.DH).id
         if my_dh_group != request_payload_ke.dh_group:
             raise InvalidKePayload(my_dh_group)
 
@@ -202,7 +205,7 @@ class IkeSa:
 
         # generate IKE SA key material
         self.generate_ike_sa_key_material(
-            proposal=best_proposal,
+            proposal=self.chosen_proposal,
             nonce_i=request_payload_nonce.nonce,
             nonce_r=response_payload_nonce.nonce,
             spi_i=self.peer_spi,
@@ -214,7 +217,7 @@ class IkeSa:
         response_payload_vendor = PayloadVendor(b'pyikev2-0.1')
 
         # generate the response Payload SA
-        response_payload_sa = PayloadSA([best_proposal])
+        response_payload_sa = PayloadSA([self.chosen_proposal])
 
         # generate the message
         response = Message(

@@ -357,7 +357,7 @@ class PayloadFactory:
             return cls.payload_classes[payload_type].parse(data, critical)
         except KeyError:
             raise InvalidSyntax(
-                'Unrecognized payload with code '
+                'Unrecognized payload with type '
                 '{}'.format(Payload.Type.safe_name(payload_type)))
 
 class Message:
@@ -382,58 +382,98 @@ class Message:
         self.payloads = payloads
 
     @classmethod
-    def parse(cls, data, header_only=False):
+    def _parse_payloads(cls, data, first_payload_type):
+        payloads = []
+        offset = 0
+        next_payload_type = first_payload_type
+        payload_type = Payload.Type.NONE
+
+        # Two stop conditions, either next payload is NONE
+        while (next_payload_type != Payload.Type.NONE):
+            payload_type = next_payload_type
+            try:
+                next_payload_type, critical, length = unpack_from('>BBH', data, offset)
+            except struct_error as ex:
+                raise InvalidSyntax(ex)
+
+            critical = critical >> 7
+            start = offset + 4
+            end = offset + length
+
+            # We try to parse the payload. If not known and critical, propagate
+            # exception
+            try:
+                payload = PayloadFactory.parse(
+                    payload_type, data[start:end], critical
+                )
+            except InvalidSyntax as ex:
+                logging.warning(ex)
+                if critical:
+                    raise UnsupportedCriticalPayload
+            else:
+                payloads.append(payload)
+
+            # offset is increased in any case
+            offset += length
+
+            # payload SK must be always the last one, so we force exit the loop
+            if payload_type == Payload.Type.SK:
+                payload.next_payload_type = next_payload_type
+                break
+
+        # check we read all the data
+        if offset != len(data):
+            raise InvalidSyntax('Amount of actual payload data {} differs from '
+                ' message length {}'.format(offset, len(data)))
+
+        return payloads
+
+    @classmethod
+    def parse(cls, data, header_only=False, keyring=None, proposal=None):
         try:
             header = unpack_from('>2Q4B2L', data)
         except struct_error as ex:
             raise InvalidSyntax(ex)
 
-        payloads = []
-        if not header_only:
-            # unpack payloads
-            offset = 28
-            next_payload_type = header[2]
-            payload_type = Payload.Type.NONE
+        is_initiator = (header[5] & 0x08) != 0
 
-            # Two stop conditions, either next payload is NONE
-            while (next_payload_type != Payload.Type.NONE):
-                payload_type = next_payload_type
-                try:
-                    next_payload_type, critical, length = unpack_from('>BBH', data, offset)
-                except struct_error as ex:
-                    raise InvalidSyntax(ex)
+        if header_only:
+            payloads = []
+        else:
+            # parse decrypted payloads
+            payloads = cls._parse_payloads(data[28:], header[2])
 
-                if length < 4:
-                    raise InvalidSyntax('Payloads with length < 4 are  not allowed: {}'.format(length))
+            # if there is a SK payload, decrypt and append payloads
+            if payloads and payloads[-1].type == Payload.Type.SK:
+                payload_sk = payloads[-1]
 
-                critical = critical >> 7
-                start = offset + 4
-                end = offset + length
+                # if there is no keyring, error as we don't know how to parse it
+                if keyring is None or proposal is None:
+                    raise InvalidSyntax(
+                        "I don't have key material to decrypt SK payload.")
 
-                # We try to parse the payload. If not known and critical, propagate
-                # exception
-                try:
-                    payload = PayloadFactory.parse(
-                        payload_type, data[start:end], critical
-                    )
-                except InvalidSyntax as ex:
-                    logging.warning(ex)
-                    if critical:
-                        raise UnsupportedCriticalPayload
-                else:
-                    payloads.append(payload)
+                # check integrity
+                integrity = Integrity(proposal.get_transform(Transform.Type.INTEG).id)
+                digest = integrity.compute(
+                    keyring.sk_ai if is_initiator else keyring.sk_ar,
+                    data[:-integrity.hash_size])
+                if digest != data[-integrity.hash_size:]:
+                    raise InvalidSyntax('Failed integrity verification')
 
-                # offset is increased in any case
-                offset += length
-
-                # abort if this was a SK payload
-                if payload_type == Payload.Type.SK:
-                    break
-
-            # check we read all the data
-            if offset != len(data):
-                raise InvalidSyntax('Amount of actual payload data {} differs from '
-                    ' message length {}'.format(offset, len(data)))
+                # decrypt message
+                cipher = Cipher(
+                        proposal.get_transform(Transform.Type.ENCR).id,
+                        proposal.get_transform(Transform.Type.ENCR).keylen)
+                iv = payload_sk.payload_data[:cipher.block_size]
+                ciphertext = payload_sk.payload_data[cipher.block_size:-integrity.hash_size]
+                decrypted = cipher.decrypt(
+                    keyring.sk_ei if is_initiator else keyring.sk_er,
+                    iv,
+                    ciphertext
+                )
+                padlen = decrypted[-1]
+                # parse the paylaods and append them to the list
+                payloads += cls._parse_payloads(decrypted[:-1-padlen], payload_sk.next_payload_type)
 
         return Message(
             spi_i=header[0],
@@ -443,7 +483,7 @@ class Message:
             exchange_type=header[4],
             is_response=(header[5] & 0x20) != 0,
             can_use_higher_version=(header[5] & 0x10) != 0,
-            is_initiator=(header[5] & 0x08) != 0,
+            is_initiator=is_initiator,
             message_id=header[6],
             payloads=payloads
         )
