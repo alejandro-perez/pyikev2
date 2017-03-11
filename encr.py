@@ -8,7 +8,7 @@ from helpers import SafeIntEnum
 
 import os
 from cryptography.hazmat.primitives.ciphers import Cipher as cypher, algorithms, modes
-from cryptography.hazmat.backends import default_backend
+import cryptography.hazmat.backends.openssl.backend
 
 class EncrError(Exception):
     pass
@@ -33,9 +33,10 @@ class Cipher:
         Id.ENCR_3DES: algorithms.TripleDES,
     }
 
+    _backend = cryptography.hazmat.backends.openssl.backend
+
     def __init__(self, transform_id, negotiated_keylen):
         self._algorithm = self._algorithm_dict[transform_id]
-        self._backend = default_backend()
         self.negotiated_keylen = negotiated_keylen
 
     @property
