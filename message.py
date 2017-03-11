@@ -24,6 +24,12 @@ class InvalidSyntax(Exception):
 class UnsupportedCriticalPayload(Exception):
     pass
 
+class NoProposalChosen(Exception):
+    pass
+
+class InvalidKePayload(Exception):
+    pass
+
 class Payload:
     class Type(SafeIntEnum):
         NONE = 0
