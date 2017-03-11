@@ -26,6 +26,6 @@ ike_sa_contorller = IkeSaController()
 # do server
 while True:
     data, addr = sock.recvfrom(4096)
-    data = ike_sa_contorller.dispatch_message(data)
+    data = ike_sa_contorller.dispatch_message(data, addr)
     if data:
         sock.sendto(data, addr)
