@@ -16,7 +16,7 @@ from encr import Cipher
 from struct import pack, unpack
 from collections import namedtuple
 
-class Ikev2ProtocolError(Exception):
+class IkeSaError(Exception):
     pass
 
 Keyring = namedtuple('Keyring',
