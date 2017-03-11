@@ -64,7 +64,13 @@ class IkeSa:
             )
         )
 
-        logging.debug('Generated Keyring: {}'.format(self.ike_sa_keyring))
+        logging.debug('Generated sk_d: {}'.format(hexstring(self.ike_sa_keyring.sk_d)))
+        logging.debug('Generated sk_ai: {}'.format(hexstring(self.ike_sa_keyring.sk_ai)))
+        logging.debug('Generated sk_ar: {}'.format(hexstring(self.ike_sa_keyring.sk_ar)))
+        logging.debug('Generated sk_ei: {}'.format(hexstring(self.ike_sa_keyring.sk_ei)))
+        logging.debug('Generated sk_er: {}'.format(hexstring(self.ike_sa_keyring.sk_er)))
+        logging.debug('Generated sk_pi: {}'.format(hexstring(self.ike_sa_keyring.sk_pi)))
+        logging.debug('Generated sk_pr: {}'.format(hexstring(self.ike_sa_keyring.sk_pr)))
 
     def process_ike_sa_init_request(self, request):
         """ Processes a IKE_SA_INIT message and returns a IKE_SA_INIT response
@@ -130,7 +136,17 @@ class IkeSaController:
     def __init__(self):
         self.ike_sas = {}
 
-    def dispatch_message(self, data):
+    def log_message(self, message, addr, data, send=True):
+        logging.info('{} {} {} ({} bytes) {} {}'.format(
+            'Sent' if send else 'Received',
+            Message.Exchange.safe_name(message.exchange_type),
+            'response' if message.is_response else 'request',
+            len(data),
+            'to' if send else 'from',
+            addr))
+        logging.debug(message)
+
+    def dispatch_message(self, data, addr):
         header = Message.parse(data, header_only=True)
 
         # if IKE_SA_INIT request, then a new IkeSa must be created to handle it

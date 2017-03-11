@@ -10,7 +10,10 @@ from protocol import IkeSaController
 import logging
 
 # set logger
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO,
+    format='[%(asctime)s.%(msecs)03d] [%(levelname)-6s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S')
+
 logging.info('Start daemon')
 
 # create socket
@@ -23,8 +26,6 @@ ike_sa_contorller = IkeSaController()
 # do server
 while True:
     data, addr = sock.recvfrom(4096)
-    logging.info('Received {} bytes from {}'.format(len(data), addr))
     data = ike_sa_contorller.dispatch_message(data)
     if data:
         sock.sendto(data, addr)
-        logging.info('Sent {} bytes to {}'.format(len(data), addr))
