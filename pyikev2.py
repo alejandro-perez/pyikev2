@@ -4,13 +4,18 @@
 __author__ = 'Alejandro Perez <alex@um.es>'
 
 import socket
+import argparse
+import logging
 from message import Message
 from protocol import IkeSaController
 
-import logging
+# parses the arguments
+parser = argparse.ArgumentParser(description='Opensource IKEv2 daemon written in Python')
+parser.add_argument('--verbose', '-v', action='store_true')
+args = parser.parse_args()
 
 # set logger
-logging.basicConfig(level=logging.INFO,
+logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
     format='[%(asctime)s.%(msecs)03d] [%(levelname)-6s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S')
 
