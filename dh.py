@@ -5,6 +5,10 @@
 import os
 from helpers import SafeIntEnum
 
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import dh
+import cryptography.hazmat.backends.openssl.backend
+
 class DiffieHellman:
     class Id(SafeIntEnum):
         DH_NONE = 0
@@ -180,22 +184,25 @@ class DiffieHellman:
             '60C980DD98EDD3DFFFFFFFFFFFFFFFFF'
     };
 
-    def __init__(self, group, peer_public_key=None):
+    backend = cryptography.hazmat.backends.openssl.backend
+
+    def __init__(self, group):
         self.group = group
         self._n_bytes = len(self._group_dict[group]) // 2
         self._module = int(self._group_dict[self.group], 16)
+        self._pn = dh.DHParameterNumbers(self._module, 2)
+        self._parameters = self._pn.parameters(self.backend)
         self._generate_keys()
-        if peer_public_key is not None:
-            self.compute_secret(peer_public_key)
 
     def _generate_keys(self):
-        self.private_key = os.urandom(self._n_bytes)
-        self._private_key_int = int.from_bytes(self.private_key, 'big')
-        public_key_int = pow(2, self._private_key_int, self._module)
+        self._private_key = self._parameters.generate_private_key()
+        public_key_int = self._private_key.public_key().public_numbers().y
         self.public_key = public_key_int.to_bytes(self._n_bytes, 'big')
 
     def compute_secret(self, peer_public_key):
         peer_public_key_int = int.from_bytes(peer_public_key, 'big')
-        shared_secret_int = pow(peer_public_key_int, self._private_key_int, self._module)
-        self.shared_secret = shared_secret_int.to_bytes(self._n_bytes, 'big')
+        peer_public_numbers = dh.DHPublicNumbers(peer_public_key_int, self._pn)
+        peer_public_key = peer_public_numbers.public_key(self.backend)
+        self.shared_secret = self._private_key.exchange(peer_public_key)
+
 
