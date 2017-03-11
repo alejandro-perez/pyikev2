@@ -123,13 +123,48 @@ class IkeSa:
                 pass
         raise NoProposalChosen
 
-    def process_message(self, message):
-        # (Exchange type, is_request): method
+    def log_message(self, message, addr, data, send=True):
+        logging.info('{} {} {} ({} bytes) {} {}'.format(
+            'Sent' if send else 'Received',
+            Message.Exchange.safe_name(message.exchange_type),
+            'response' if message.is_response else 'request',
+            len(data),
+            'to' if send else 'from',
+            addr))
+        logging.debug(message)
+
+    def process_message(self, data, addr):
+        """ This function performs the common tasks for IKE message handling,
+            including logging for the message and the reply (if any), check of
+            message IDs and control of retransmissions
+        """
+        # dict with the form of tuple(Exchange type, is_request): method
         _handler_dict = {
             (Message.Exchange.IKE_SA_INIT, True): self.process_ike_sa_init_request,
         }
 
-        return _handler_dict[(message.exchange_type, message.is_request)](message)
+        # parse the whole message
+        message = Message.parse(data)
+        self.log_message(message, addr, data, send=False)
+
+        # get the appropriate handler fnc
+        try:
+            handler = _handler_dict[(message.exchange_type, message.is_request)]
+        except KeyError:
+            logging.error('I don\'t know how to handle this message. '
+                'Please, implement a handler!')
+            return None
+
+        # generate a reply
+        reply = _handler_dict[(message.exchange_type, message.is_request)](message)
+
+        # if there is a reply, return its bytes
+        if reply:
+            data = reply.to_bytes()
+            self.log_message(reply, addr, data, send=True)
+            return data
+
+        return None
 
     def process_ike_sa_init_request(self, request):
         """ Processes a IKE_SA_INIT message and returns a IKE_SA_INIT response
@@ -207,16 +242,6 @@ class IkeSaController:
     def __init__(self):
         self.ike_sas = {}
 
-    def log_message(self, message, addr, data, send=True):
-        logging.info('{} {} {} ({} bytes) {} {}'.format(
-            'Sent' if send else 'Received',
-            Message.Exchange.safe_name(message.exchange_type),
-            'response' if message.is_response else 'request',
-            len(data),
-            'to' if send else 'from',
-            addr))
-        logging.debug(message)
-
     def dispatch_message(self, data, addr):
         header = Message.parse(data, header_only=True)
 
@@ -226,27 +251,16 @@ class IkeSaController:
             ike_sa = IkeSa(is_initiator=False)
             self.ike_sas[ike_sa.my_spi] = ike_sa
 
-        # else, take the IkeSa from the dict
+        # else, look for the IkeSa in the dict
         else:
             my_spi = header.spi_r if header.is_initiator else header.spi_i
-            ike_sa = self.ike_sas[my_spi]
+            try:
+                ike_sa = self.ike_sas[my_spi]
+            except KeyError:
+                logging.warning('Received message for unknown SPI. Omitting.')
+                logging.debug(header)
+                return None
 
-        # parse the message
-        message = Message.parse(data)
-        self.log_message(message, addr, data, send=False)
-        try:
-            reply = ike_sa.process_message(message)
-            if reply:
-                self.log_message(reply, addr, data, send=True)
-                return reply.to_bytes()
-        except KeyError:
-            logging.error('I don\'t know how to handle this message. '
-                'Please, implement a handler!')
-            pass
-
-        return None
-
-
-
-
-
+        # return the reply (if any)
+        reply = ike_sa.process_message(data, addr)
+        return reply
