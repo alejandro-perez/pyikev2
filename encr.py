@@ -30,7 +30,6 @@ class Cipher:
 
     _algorithm_dict = {
         Id.ENCR_AES_CBC: algorithms.AES,
-        Id.ENCR_3DES: algorithms.TripleDES,
     }
 
     _backend = cryptography.hazmat.backends.openssl.backend
@@ -45,7 +44,7 @@ class Cipher:
 
     @property
     def key_size(self):
-        return (self.negotiated_keylen or self._algorithm.key_sizes[0]) // 8
+        return self.negotiated_keylen // 8
 
     def encrypt(self, key, iv, data):
         if len(key) != self.key_size:
