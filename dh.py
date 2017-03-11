@@ -1,8 +1,8 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
-# Copyright © 2013 Kimmo Parviainen-Jalanko.
-#
-import os
+__author__ = 'Alejandro Perez <alex@um.es>'
+
 from helpers import SafeIntEnum
 
 from cryptography.hazmat.backends import default_backend
