@@ -461,6 +461,41 @@ class PayloadIDi(PayloadID, Payload):
 
 class PayloadIDr(PayloadID):
     type = Payload.Type.IDr
+
+class PayloadAuth(Payload):
+    type = Payload.Type.AUTH
+
+    class Method(SafeIntEnum):
+        RSA = 1
+        PSK = 2
+        DSS = 3
+
+    def __init__(self, method, auth_data, critical=False):
+        super(PayloadAuth, self).__init__(critical)
+        self.method = method
+        self.auth_data = auth_data
+
+    @classmethod
+    def parse(cls, data, critical=False):
+        try:
+            method, _ = unpack_from('>B3s', data)
+        except struct_error:
+            raise InvalidSyntax('Error parsing Payload AUTH.')
+        auth_data = data[4:]
+        return PayloadAuth(method, auth_data)
+
+    def to_bytes(self):
+        data = bytearray(pack('>BBH', self.method, 0, 0))
+        data += self.auth_data
+        return data
+
+    def to_dict(self):
+        result = super(PayloadAuth, self).to_dict()
+        result.update(OrderedDict([
+            ('method', PayloadAuth.Method.safe_name(self.method)),
+            ('auth_data', hexstring(self.auth_data)),
+        ]))
+        return result
 class PayloadFactory:
     payload_classes = {x.type: x for x in Payload.__subclasses__()}
 
