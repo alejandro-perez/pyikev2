@@ -161,6 +161,17 @@ class TestPayloadTS(TestPayloadMixin, unittest.TestCase):
         with self.assertRaises(InvalidSyntax):
             super(TestPayloadTS, self).test_parse_random()
 
+class TestPayloadAUTH(TestPayloadMixin, unittest.TestCase):
+    def setUp(self):
+        super(TestPayloadAUTH, self).setUp()
+        self.object = PayloadAUTH(PayloadAUTH.Method.PSK, b'hello')
+
+class TestPayloadNOTIFY(TestPayloadMixin, unittest.TestCase):
+    def setUp(self):
+        super(TestPayloadNOTIFY, self).setUp()
+        self.object = PayloadNOTIFY(Proposal.Protocol.AH,
+            PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN, b'spi', b'data')
+
 class TestMessage(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
         super(TestMessage, self).setUp()
