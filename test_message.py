@@ -8,13 +8,9 @@ __author__ = 'Alejandro Perez <alex@um.es>'
 import unittest
 from message import (
     PayloadNonce, PayloadKE, PayloadVendor, PayloadSK, InvalidSyntax, Transform,
-    Proposal, PayloadSA, Message, UnsupportedCriticalPayload
+    Proposal, PayloadSA, Message, UnsupportedCriticalPayload, PayloadNotify
 )
-from prf import Prf
-from encr import Cipher
-from integ import Integrity
-from dh import DiffieHellman
-from esn import ESN
+from crypto import Prf, Cipher, Integrity, DiffieHellman, ESN
 
 class TestPayloadMixin(object):
     def setUp(self):
@@ -126,6 +122,13 @@ class TestPayloadSA(TestPayloadMixin, unittest.TestCase):
     def test_no_proposals(self):
         with self.assertRaises(InvalidSyntax):
             PayloadSA([])
+
+class TestPayloadNotify(TestPayloadMixin, unittest.TestCase):
+    def setUp(self):
+        super(TestPayloadNotify, self).setUp()
+        self.object = PayloadNotify(
+            Proposal.Protocol.IKE, PayloadNotify.Type.NO_ADDITIONAL_SAS,
+            b'12345678', b'Lo que hay que ver')
 
 class TestMessage(TestPayloadMixin, unittest.TestCase):
     def setUp(self):

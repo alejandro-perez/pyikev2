@@ -150,6 +150,7 @@ class Transform:
 
 class Proposal:
     class Protocol(SafeIntEnum):
+        NONE = 0
         IKE = 1
         AH = 2
         ESP = 3
@@ -164,7 +165,6 @@ class Proposal:
 
     @classmethod
     def parse(cls, data):
-        spi = b''
         try:
             num, protocol_id, spi_size, num_transforms = unpack_from('>BBBB', data)
         except struct_error:
@@ -172,6 +172,8 @@ class Proposal:
 
         if spi_size > 0:
             spi = data[4:4 + spi_size]
+        else:
+            spi = b''
 
         # iterate over the transforms (if any)
         offset = 4 + spi_size
@@ -341,6 +343,77 @@ class PayloadSK(Payload):
         result = super(PayloadSK, self).to_dict()
         result.update(OrderedDict([
             ('payload_data', hexstring(self.payload_data)),
+        ]))
+        return result
+
+class PayloadNotify(Payload):
+    type = Payload.Type.NOTIFY
+
+    class Type(SafeIntEnum):
+        UNSUPPORTED_CRITICAL_PAYLOAD = 1
+        INVALID_IKE_SPI = 4
+        INVALID_MAJOR_VERSION = 5
+        INVALID_SYNTAX = 7
+        INVALID_MESSAGE_ID = 9
+        INVALID_SPI = 11
+        NO_PROPOSAL_CHOSEN = 14
+        INVALID_KE_PAYLOAD = 17
+        AUTHENTICATION_FAILED = 24
+        SINGLE_PAIR_REQUIRED = 34
+        NO_ADDITIONAL_SAS = 35
+        INTERNAL_ADDRESS_FAILURE = 36
+        FAILED_CP_REQUIRED = 37
+        TS_UNACCEPTABLE = 38
+        INVALID_SELECTORS = 39
+        TEMPORARY_FAILURE = 43
+        CHILD_SA_NOT_FOUND = 44
+        INITIAL_CONTACT = 16384
+        SET_WINDOW_SIZE = 16385
+        ADDITIONAL_TS_POSSIBLE = 16386
+        IPCOMP_SUPPORTED = 16387
+        NAT_DETECTION_SOURCE_IP = 16388
+        NAT_DETECTION_DESTINATION_IP = 16389
+        COOKIE = 16390
+        USE_TRANSPORT_MODE = 16391
+        HTTP_CERT_LOOKUP_SUPPORTED = 16392
+        REKEY_SA = 16393
+        ESP_TFC_PADDING_NOT_SUPPORTED = 16394
+        NON_FIRST_FRAGMENTS_ALSO = 16395
+
+    def __init__(self, protocol_id, type, spi, notification_data, critical=False):
+        super(PayloadNotify, self).__init__(critical)
+        self.protocol_id = protocol_id
+        self.type = type
+        self.spi = spi
+        self.notification_data = notification_data
+
+    @classmethod
+    def parse(cls, data, critical=False):
+        try:
+            protocol_id, spi_size, type = unpack_from('>BBH', data)
+        except struct_error:
+            raise InvalidSyntax('Error parsing Payload KE.')
+        if spi_size > 0:
+            spi = data[4:4 + spi_size]
+        else:
+            spi = b''
+        notification_data = data[4 + spi_size:]
+        return PayloadNotify(protocol_id, type, spi, notification_data)
+
+    def to_bytes(self):
+        data = bytearray(pack('>BBH', self.protocol_id, len(self.spi), self.type))
+        if len(self.spi) > 0:
+            data += self.spi
+        data += self.notification_data
+        return data
+
+    def to_dict(self):
+        result = super(PayloadNotify, self).to_dict()
+        result.update(OrderedDict([
+            ('protocol_id', Proposal.Protocol.safe_name(self.protocol_id)),
+            ('spi', hexstring(self.spi)),
+            ('type', PayloadNotify.Type.safe_name(self.type)),
+            ('notification_data', hexstring(self.notification_data)),
         ]))
         return result
 
