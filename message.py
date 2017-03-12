@@ -417,6 +417,50 @@ class PayloadNotify(Payload):
         ]))
         return result
 
+class PayloadID(Payload):
+    type = None
+
+    class Type(SafeIntEnum):
+        ID_IPV4_ADDR = 1
+        ID_FQDN = 2
+        ID_RFC822_ADDR = 3
+        ID_IPV6_ADDR = 5
+        ID_DER_ASN1_DN = 9
+        ID_DER_ASN1_GN =  10
+        ID_KEY_ID = 11
+
+    def __init__(self, id_type, id_data, critical=False):
+        super(PayloadID, self).__init__(critical)
+        self.id_type = id_type
+        self.id_data = id_data
+
+    @classmethod
+    def parse(cls, data, critical=False):
+        try:
+            id_type, _ = unpack_from('>B3s', data)
+        except struct_error:
+            raise InvalidSyntax('Error parsing Payload ID.')
+        id_data = data[4:]
+        return PayloadID(id_type, id_data)
+
+    def to_bytes(self):
+        data = bytearray(pack('>BBH', self.id_type, 0, 0))
+        data += self.id_data
+        return data
+
+    def to_dict(self):
+        result = super(PayloadID, self).to_dict()
+        result.update(OrderedDict([
+            ('type', PayloadID.Type.safe_name(self.id_type)),
+            ('id_data', hexstring(self.id_data)),
+        ]))
+        return result
+
+class PayloadIDi(PayloadID, Payload):
+    type = Payload.Type.IDi
+
+class PayloadIDr(PayloadID):
+    type = Payload.Type.IDr
 class PayloadFactory:
     payload_classes = {x.type: x for x in Payload.__subclasses__()}
 
