@@ -148,7 +148,6 @@ class Transform:
             result['keylen'] = self.keylen
         return result
 
-
 class Proposal:
     class Protocol(SafeIntEnum):
         NONE = 0
@@ -442,7 +441,8 @@ class PayloadID(Payload):
         except struct_error:
             raise InvalidSyntax('Error parsing Payload ID.')
         id_data = data[4:]
-        return PayloadID(id_type, id_data)
+        # we need to use cls as it might be PayloadIDi or PayloadIDr
+        return cls(id_type, id_data)
 
     def to_bytes(self):
         data = bytearray(pack('>BBH', self.id_type, 0, 0))
@@ -452,12 +452,12 @@ class PayloadID(Payload):
     def to_dict(self):
         result = super(PayloadID, self).to_dict()
         result.update(OrderedDict([
-            ('type', PayloadID.Type.safe_name(self.id_type)),
+            ('id_type', PayloadID.Type.safe_name(self.id_type)),
             ('id_data', hexstring(self.id_data)),
         ]))
         return result
 
-class PayloadIDi(PayloadID, Payload):
+class PayloadIDi(PayloadID):
     type = Payload.Type.IDi
 
 class PayloadIDr(PayloadID):
@@ -573,7 +573,8 @@ class PayloadTS(Payload):
         if n_ts != len(traffic_selectors):
             raise InvalidSyntax('Payload TS has invalid number of selectors.'
                 'Expected {} got {}'.format(n_ts, len(traffic_selectors)))
-        return PayloadTS(traffic_selectors)
+        # we need to use cls as it might be PayloadTSi or PayloadTSr
+        return cls(traffic_selectors)
 
     def to_bytes(self):
         data = bytearray(pack('>BBH', len(self.traffic_selectors), 0, 0))
