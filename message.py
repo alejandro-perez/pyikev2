@@ -13,6 +13,7 @@ from struct import pack, unpack, pack_into, unpack_from, error as struct_error
 from collections import OrderedDict
 from helpers import hexstring, SafeTupleEnum, SafeIntEnum
 from crypto import Prf, Cipher, Integrity, DiffieHellman, ESN
+from ipaddress import ip_address
 
 class InvalidSyntax(Exception):
     pass
@@ -496,6 +497,103 @@ class PayloadAuth(Payload):
             ('auth_data', hexstring(self.auth_data)),
         ]))
         return result
+
+class TrafficSelector(object):
+    class Type(SafeIntEnum):
+        TS_IPV4_ADDR_RANGE = 7
+        TS_IPV6_ADDR_RANGE = 8
+
+    class IpProtocol(SafeIntEnum):
+        ANY = 0
+        ICMP = 1
+        TCP = 6
+        UDP = 17
+        ICMPv6 = 58
+        MH = 135
+
+    def __init__(self, ts_type, ip_proto, start_port, end_port,
+            start_addr, end_addr):
+        self.ts_type = ts_type
+        self.ip_proto = ip_proto
+        self.start_port = start_port
+        self.end_port = end_port
+        self.start_addr = start_addr
+        self.end_addr = end_addr
+
+    @classmethod
+    def parse(cls, data, critical=False):
+        try:
+            (ts_type, ip_proto, _, start_port, end_port) = unpack_from('>BBHHH', data)
+            addr_len = 4 if ts_type == TrafficSelector.Type.TS_IPV4_ADDR_RANGE else 16
+            start_addr, end_addr = unpack_from('>{0}s{0}s'.format(addr_len), data, 8)
+        except struct_error:
+            raise InvalidSyntax('Error parsing Traffic selector.')
+        return TrafficSelector(ts_type, ip_proto, start_port, end_port,
+            ip_address(start_addr), ip_address(end_addr))
+
+    def to_bytes(self):
+        addr_len = 4 if self.ts_type == TrafficSelector.Type.TS_IPV4_ADDR_RANGE else 16
+        return pack('>BBHHH{0}s{0}s'.format(addr_len),
+            self.ts_type, self.ip_proto, 8 + addr_len * 2, self.start_port,
+            self.end_port, self.start_addr.packed, self.end_addr.packed)
+
+    def to_dict(self):
+        return OrderedDict([
+            ('ts_type', TrafficSelector.Type.safe_name(self.ts_type)),
+            ('ip_proto', TrafficSelector.IpProtocol.safe_name(self.ip_proto)),
+            ('port-range', '{}-{}'.format(self.start_port, self.end_port)),
+            ('addr-range', '{}-{}'.format(self.start_addr, self.end_addr)),
+        ])
+        return result
+
+class PayloadTS(Payload):
+    type = None
+
+    def __init__(self, traffic_selectors, critical=False):
+        super(PayloadTS, self).__init__(critical)
+        self.traffic_selectors = traffic_selectors
+
+    @classmethod
+    def parse(cls, data, critical=False):
+        try:
+            n_ts, _ = unpack_from('>B3s', data)
+        except struct_error:
+            raise InvalidSyntax('Error parsing Payload TS.')
+        traffic_selectors = []
+        offset = 4
+        while offset < len(data):
+            # parse TSs
+            try:
+                _, length = unpack_from('>HH', data, offset)
+            except struct_error:
+                raise InvalidSyntax('Error parsing Traffic selector.')
+            ts = TrafficSelector.parse(data[offset:offset + length])
+            traffic_selectors.append(ts)
+            offset += length
+        if n_ts != len(traffic_selectors):
+            raise InvalidSyntax('Payload TS has invalid number of selectors.'
+                'Expected {} got {}'.format(n_ts, len(traffic_selectors)))
+        return PayloadTS(traffic_selectors)
+
+    def to_bytes(self):
+        data = bytearray(pack('>BBH', len(self.traffic_selectors), 0, 0))
+        for ts in self.traffic_selectors:
+            data += ts.to_bytes()
+        return data
+
+    def to_dict(self):
+        result = super(PayloadTS, self).to_dict()
+        result.update(OrderedDict([
+            ('traffic_selectors', [x.to_dict() for x in self.traffic_selectors]),
+        ]))
+        return result
+
+class PayloadTSi(PayloadTS):
+    type = Payload.Type.TSi
+
+class PayloadTSr(PayloadTS):
+    type = Payload.Type.TSr
+
 class PayloadFactory:
     payload_classes = {x.type: x for x in Payload.__subclasses__()}
 
@@ -511,6 +609,8 @@ class PayloadFactory:
             raise InvalidSyntax(
                 'Unrecognized payload with type '
                 '{}'.format(Payload.Type.safe_name(payload_type)))
+
+
 
 class Message:
     class Exchange(SafeIntEnum):
