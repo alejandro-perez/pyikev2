@@ -380,17 +380,17 @@ class PayloadNotify(Payload):
         ESP_TFC_PADDING_NOT_SUPPORTED = 16394
         NON_FIRST_FRAGMENTS_ALSO = 16395
 
-    def __init__(self, protocol_id, type, spi, notification_data, critical=False):
+    def __init__(self, protocol_id, notification_type, spi, notification_data, critical=False):
         super(PayloadNotify, self).__init__(critical)
         self.protocol_id = protocol_id
-        self.type = type
+        self.notification_type = notification_type
         self.spi = spi
         self.notification_data = notification_data
 
     @classmethod
     def parse(cls, data, critical=False):
         try:
-            protocol_id, spi_size, type = unpack_from('>BBH', data)
+            protocol_id, spi_size, notification_type = unpack_from('>BBH', data)
         except struct_error:
             raise InvalidSyntax('Error parsing Payload KE.')
         if spi_size > 0:
@@ -398,10 +398,10 @@ class PayloadNotify(Payload):
         else:
             spi = b''
         notification_data = data[4 + spi_size:]
-        return PayloadNotify(protocol_id, type, spi, notification_data)
+        return PayloadNotify(protocol_id, notification_type, spi, notification_data)
 
     def to_bytes(self):
-        data = bytearray(pack('>BBH', self.protocol_id, len(self.spi), self.type))
+        data = bytearray(pack('>BBH', self.protocol_id, len(self.spi), self.notification_type))
         if len(self.spi) > 0:
             data += self.spi
         data += self.notification_data
@@ -412,7 +412,7 @@ class PayloadNotify(Payload):
         result.update(OrderedDict([
             ('protocol_id', Proposal.Protocol.safe_name(self.protocol_id)),
             ('spi', hexstring(self.spi)),
-            ('type', PayloadNotify.Type.safe_name(self.type)),
+            ('notification_type', PayloadNotify.Type.safe_name(self.notification_type)),
             ('notification_data', hexstring(self.notification_data)),
         ]))
         return result
