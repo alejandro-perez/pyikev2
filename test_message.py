@@ -23,7 +23,7 @@ I\xae\x81\x922/\xe6\xdf^Zh\x87\xe9\x8e\xf6F\xf7\xb62\xb5\xf4\xa2\x84\xb5\x8f
     def test_to_dict(self):
         self.object.to_dict()
 
-    def test_parse_twice(self):
+    def test_dump_parse_dump(self):
         payload_class = type(self.object)
         data1 = self.object.to_bytes()
         new_payload = self.object.parse(data1)
