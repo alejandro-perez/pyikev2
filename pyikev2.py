@@ -12,6 +12,8 @@ from protocol import IkeSaController
 # parses the arguments
 parser = argparse.ArgumentParser(description='Opensource IKEv2 daemon written in Python')
 parser.add_argument('--verbose', '-v', action='store_true')
+parser.add_argument('--listen', '-l', default='0.0.0.0',
+    help='IP address where the daemon will listen from. Defaults to 0.0.0.0')
 args = parser.parse_args()
 
 # set logger
@@ -23,7 +25,8 @@ logging.info('Start daemon')
 
 # create socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.bind(('0.0.0.0', 500))
+sock.bind((args.listen, 500))
+logging.info('Listening from {}'.format(sock.getsockname()))
 
 # create IkeSaController
 ike_sa_contorller = IkeSaController()
