@@ -596,13 +596,19 @@ class PayloadTSr(PayloadTS):
     type = Payload.Type.TSr
 
 class PayloadFactory:
-    payload_classes = {x.type: x for x in Payload.__subclasses__()}
-    payload_classes.update({
+    payload_classes = {
+        Payload.Type.SA: PayloadSA,
+        Payload.Type.KE: PayloadKE,
         Payload.Type.IDi: PayloadIDi,
         Payload.Type.IDr: PayloadIDr,
+        Payload.Type.AUTH: PayloadAUTH,
+        Payload.Type.NONCE: PayloadNONCE,
+        Payload.Type.VENDOR: PayloadVENDOR,
+        Payload.Type.NOTIFY: PayloadNOTIFY,
         Payload.Type.TSi: PayloadTSi,
         Payload.Type.TSr: PayloadTSr,
-    })
+        Payload.Type.SK: PayloadSK,
+    }
 
     @classmethod
     def parse(cls, payload_type, data, critical=False):
