@@ -541,8 +541,8 @@ class TrafficSelector(object):
         return OrderedDict([
             ('ts_type', TrafficSelector.Type.safe_name(self.ts_type)),
             ('ip_proto', TrafficSelector.IpProtocol.safe_name(self.ip_proto)),
-            ('port-range', '{}-{}'.format(self.start_port, self.end_port)),
-            ('addr-range', '{}-{}'.format(self.start_addr, self.end_addr)),
+            ('port-range', '{} - {}'.format(self.start_port, self.end_port)),
+            ('addr-range', '{} - {}'.format(self.start_addr, self.end_addr)),
         ])
         return result
 
