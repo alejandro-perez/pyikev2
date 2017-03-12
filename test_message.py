@@ -78,9 +78,9 @@ class TestTransformWithKeylen(TestPayloadMixin, unittest.TestCase):
         super(TestTransformWithKeylen, self).setUp()
         self.object = Transform(Transform.Type.INTEG, Integrity.Id.AUTH_HMAC_SHA1_96, 128)
 
-class TestTransformWOKeylen(TestPayloadMixin, unittest.TestCase):
+class TestTransformWithoutKeylen(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
-        super(TestTransformWOKeylen, self).setUp()
+        super(TestTransformWithoutKeylen, self).setUp()
         self.object = Transform(Transform.Type.PRF, Prf.Id.PRF_HMAC_SHA1)
 
 class TestProposal(TestPayloadMixin, unittest.TestCase):
@@ -160,7 +160,6 @@ class TestMessage(TestPayloadMixin, unittest.TestCase):
             message_id=0,
             payloads=[payload_sa, payload_ke, payload_nonce, payload_vendor]
         )
-
 
     def test_parse_random(self):
         with self.assertRaises(UnsupportedCriticalPayload):
