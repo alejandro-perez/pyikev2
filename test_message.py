@@ -8,9 +8,11 @@ __author__ = 'Alejandro Perez <alex@um.es>'
 import unittest
 from message import (
     PayloadNonce, PayloadKE, PayloadVendor, PayloadSK, InvalidSyntax, Transform,
-    Proposal, PayloadSA, Message, UnsupportedCriticalPayload, PayloadNotify
+    Proposal, PayloadSA, Message, UnsupportedCriticalPayload, PayloadNotify,
+    PayloadID, TrafficSelector, PayloadTS,
 )
 from crypto import Prf, Cipher, Integrity, DiffieHellman, ESN
+from ipaddress import ip_address
 
 class TestPayloadMixin(object):
     def setUp(self):
@@ -128,7 +130,36 @@ class TestPayloadNotify(TestPayloadMixin, unittest.TestCase):
         super(TestPayloadNotify, self).setUp()
         self.object = PayloadNotify(
             Proposal.Protocol.IKE, PayloadNotify.Type.NO_ADDITIONAL_SAS,
-            b'12345678', b'Lo que hay que ver')
+            b'12345678', b'this is notification data')
+
+class TestPayloadID(TestPayloadMixin, unittest.TestCase):
+    def setUp(self):
+        super(TestPayloadID, self).setUp()
+        self.object = PayloadID(
+            PayloadID.Type.ID_IPV4_ADDR, b'12345678')
+
+class TestTrafficSelector(TestPayloadMixin, unittest.TestCase):
+    def setUp(self):
+        super(TestTrafficSelector, self).setUp()
+        self.object = TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
+            TrafficSelector.IpProtocol.UDP, 0, 10, ip_address('192.168.1.1'),
+            ip_address('192.168.10.10'))
+
+class TestPayloadTS(TestPayloadMixin, unittest.TestCase):
+    def setUp(self):
+        super(TestPayloadTS, self).setUp()
+        ts1 = TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
+            TrafficSelector.IpProtocol.UDP, 0, 10, ip_address('192.168.1.1'),
+            ip_address('192.168.10.10'))
+        ts2 = TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
+            TrafficSelector.IpProtocol.ICMP, 100, 200, ip_address('192.168.1.1'),
+            ip_address('192.168.10.10'))
+
+        self.object = PayloadTS([ts1, ts2])
+
+    def test_parse_random(self):
+        with self.assertRaises(InvalidSyntax):
+            super(TestPayloadTS, self).test_parse_random()
 
 class TestMessage(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
