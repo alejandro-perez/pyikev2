@@ -5,7 +5,7 @@
 """
 import logging
 import os
-from message import (Message, Payload, PayloadNonce, PayloadVendor, PayloadKE,
+from message import (Message, Payload, PayloadNONCE, PayloadVENDOR, PayloadKE,
     Proposal, Transform, NoProposalChosen, PayloadSA, InvalidKePayload)
 from helpers import SafeEnum, SafeIntEnum, hexstring
 from random import SystemRandom
@@ -201,7 +201,7 @@ class IkeSa:
         response_payload_ke = PayloadKE(dh.group, dh.public_key)
 
         # generate payload NONCE
-        response_payload_nonce = PayloadNonce()
+        response_payload_nonce = PayloadNONCE()
 
         # generate IKE SA key material
         self.generate_ike_sa_key_material(
@@ -214,7 +214,7 @@ class IkeSa:
         )
 
         # generate the response payload VENDOR.
-        response_payload_vendor = PayloadVendor(b'pyikev2-0.1')
+        response_payload_vendor = PayloadVENDOR(b'pyikev2-0.1')
 
         # generate the response Payload SA
         response_payload_sa = PayloadSA([self.chosen_proposal])

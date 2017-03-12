@@ -273,33 +273,33 @@ class PayloadSA(Payload):
         ]))
         return result
 
-class PayloadVendor(Payload):
+class PayloadVENDOR(Payload):
     type = Payload.Type.VENDOR
     def __init__(self, vendor_id, critical=False):
-        super(PayloadVendor, self).__init__(critical)
+        super(PayloadVENDOR, self).__init__(critical)
         if len(vendor_id) == 0:
             raise InvalidSyntax('Vendor ID should have some data.')
         self.vendor_id = vendor_id
 
     @classmethod
     def parse(cls, data, critical=False):
-        return PayloadVendor(data, critical)
+        return PayloadVENDOR(data, critical)
 
     def to_bytes(self):
         return self.vendor_id
 
     def to_dict(self):
-        result = super(PayloadVendor, self).to_dict()
+        result = super(PayloadVENDOR, self).to_dict()
         result.update(OrderedDict([
             ('vendor_id', self.vendor_id.decode()),
         ]))
         return result
 
-class PayloadNonce(Payload):
+class PayloadNONCE(Payload):
     type = Payload.Type.NONCE
 
     def __init__(self, nonce=None, critical=False):
-        super(PayloadNonce, self).__init__(critical)
+        super(PayloadNONCE, self).__init__(critical)
         if nonce is not None:
             if len(nonce) < 16 or len(nonce) > 256:
                 raise InvalidSyntax('Invalid Payload NONCE length: {}'.format(len(nonce)))
@@ -311,13 +311,13 @@ class PayloadNonce(Payload):
 
     @classmethod
     def parse(cls, data, critical=False):
-        return PayloadNonce(data, critical)
+        return PayloadNONCE(data, critical)
 
     def to_bytes(self):
         return self.nonce
 
     def to_dict(self):
-        result = super(PayloadNonce, self).to_dict()
+        result = super(PayloadNONCE, self).to_dict()
         result.update(OrderedDict([
             ('nonce', hexstring(self.nonce)),
         ]))
@@ -347,7 +347,7 @@ class PayloadSK(Payload):
         ]))
         return result
 
-class PayloadNotify(Payload):
+class PayloadNOTIFY(Payload):
     type = Payload.Type.NOTIFY
 
     class Type(SafeIntEnum):
@@ -382,7 +382,7 @@ class PayloadNotify(Payload):
         NON_FIRST_FRAGMENTS_ALSO = 16395
 
     def __init__(self, protocol_id, notification_type, spi, notification_data, critical=False):
-        super(PayloadNotify, self).__init__(critical)
+        super(PayloadNOTIFY, self).__init__(critical)
         self.protocol_id = protocol_id
         self.notification_type = notification_type
         self.spi = spi
@@ -399,7 +399,7 @@ class PayloadNotify(Payload):
         else:
             spi = b''
         notification_data = data[4 + spi_size:]
-        return PayloadNotify(protocol_id, notification_type, spi, notification_data)
+        return PayloadNOTIFY(protocol_id, notification_type, spi, notification_data)
 
     def to_bytes(self):
         data = bytearray(pack('>BBH', self.protocol_id, len(self.spi), self.notification_type))
@@ -409,11 +409,11 @@ class PayloadNotify(Payload):
         return data
 
     def to_dict(self):
-        result = super(PayloadNotify, self).to_dict()
+        result = super(PayloadNOTIFY, self).to_dict()
         result.update(OrderedDict([
             ('protocol_id', Proposal.Protocol.safe_name(self.protocol_id)),
             ('spi', hexstring(self.spi)),
-            ('notification_type', PayloadNotify.Type.safe_name(self.notification_type)),
+            ('notification_type', PayloadNOTIFY.Type.safe_name(self.notification_type)),
             ('notification_data', hexstring(self.notification_data)),
         ]))
         return result
@@ -463,7 +463,7 @@ class PayloadIDi(PayloadID, Payload):
 class PayloadIDr(PayloadID):
     type = Payload.Type.IDr
 
-class PayloadAuth(Payload):
+class PayloadAUTH(Payload):
     type = Payload.Type.AUTH
 
     class Method(SafeIntEnum):
@@ -472,7 +472,7 @@ class PayloadAuth(Payload):
         DSS = 3
 
     def __init__(self, method, auth_data, critical=False):
-        super(PayloadAuth, self).__init__(critical)
+        super(PayloadAUTH, self).__init__(critical)
         self.method = method
         self.auth_data = auth_data
 
@@ -483,7 +483,7 @@ class PayloadAuth(Payload):
         except struct_error:
             raise InvalidSyntax('Error parsing Payload AUTH.')
         auth_data = data[4:]
-        return PayloadAuth(method, auth_data)
+        return PayloadAUTH(method, auth_data)
 
     def to_bytes(self):
         data = bytearray(pack('>BBH', self.method, 0, 0))
@@ -491,9 +491,9 @@ class PayloadAuth(Payload):
         return data
 
     def to_dict(self):
-        result = super(PayloadAuth, self).to_dict()
+        result = super(PayloadAUTH, self).to_dict()
         result.update(OrderedDict([
-            ('method', PayloadAuth.Method.safe_name(self.method)),
+            ('method', PayloadAUTH.Method.safe_name(self.method)),
             ('auth_data', hexstring(self.auth_data)),
         ]))
         return result

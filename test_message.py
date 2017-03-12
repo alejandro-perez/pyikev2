@@ -7,9 +7,9 @@ __author__ = 'Alejandro Perez <alex@um.es>'
 
 import unittest
 from message import (
-    PayloadNonce, PayloadKE, PayloadVendor, PayloadSK, InvalidSyntax, Transform,
-    Proposal, PayloadSA, Message, UnsupportedCriticalPayload, PayloadNotify,
-    PayloadID, TrafficSelector, PayloadTS,
+    PayloadNONCE, PayloadKE, PayloadVENDOR, PayloadSK, InvalidSyntax, Transform,
+    Proposal, PayloadSA, Message, UnsupportedCriticalPayload, PayloadNOTIFY,
+    PayloadID, TrafficSelector, PayloadTS, PayloadAUTH, PayloadNOTIFY
 )
 from crypto import Prf, Cipher, Integrity, DiffieHellman, ESN
 from ipaddress import ip_address
@@ -42,14 +42,14 @@ I\xae\x81\x922/\xe6\xdf^Zh\x87\xe9\x8e\xf6F\xf7\xb62\xb5\xf4\xa2\x84\xb5\x8f
         payload = payload_class.parse(self.random_data)
 
 
-class TestPayloadNonce(TestPayloadMixin, unittest.TestCase):
+class TestPayloadNONCE(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
-        super(TestPayloadNonce, self).setUp()
-        self.object = PayloadNonce()
+        super(TestPayloadNONCE, self).setUp()
+        self.object = PayloadNONCE()
 
     def test_parse_large(self):
         with self.assertRaises(InvalidSyntax):
-            PayloadNonce.parse(b'1234567890' * 100)
+            PayloadNONCE.parse(b'1234567890' * 100)
 
 class TestPayloadKE(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
@@ -59,13 +59,13 @@ class TestPayloadKE(TestPayloadMixin, unittest.TestCase):
     def test_parse_large(self):
         PayloadKE.parse(b'1234567890' * 100)
 
-class TestPayloadVendor(TestPayloadMixin, unittest.TestCase):
+class TestPayloadVENDOR(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
-        super(TestPayloadVendor, self).setUp()
-        self.object = PayloadVendor(b'pyikev2-test-0.1')
+        super(TestPayloadVENDOR, self).setUp()
+        self.object = PayloadVENDOR(b'pyikev2-test-0.1')
 
     def test_parse_large(self):
-        PayloadVendor.parse(b'1234567890' * 100)
+        PayloadVENDOR.parse(b'1234567890' * 100)
 
 class TestPayloadSK(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
@@ -125,11 +125,11 @@ class TestPayloadSA(TestPayloadMixin, unittest.TestCase):
         with self.assertRaises(InvalidSyntax):
             PayloadSA([])
 
-class TestPayloadNotify(TestPayloadMixin, unittest.TestCase):
+class TestPayloadNOTIFY(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
-        super(TestPayloadNotify, self).setUp()
-        self.object = PayloadNotify(
-            Proposal.Protocol.IKE, PayloadNotify.Type.NO_ADDITIONAL_SAS,
+        super(TestPayloadNOTIFY, self).setUp()
+        self.object = PayloadNOTIFY(
+            Proposal.Protocol.IKE, PayloadNOTIFY.Type.NO_ADDITIONAL_SAS,
             b'12345678', b'this is notification data')
 
 class TestPayloadID(TestPayloadMixin, unittest.TestCase):
@@ -174,9 +174,9 @@ class TestMessage(TestPayloadMixin, unittest.TestCase):
             20, Proposal.Protocol.IKE, b'anotherone', [transform3]
         )
         payload_sa = PayloadSA([proposal1, proposal2])
-        payload_nonce = PayloadNonce()
+        payload_nonce = PayloadNONCE()
         payload_ke = PayloadKE(5, b'1234567890'*10)
-        payload_vendor = PayloadVendor(b'pyikev2-test-0.1')
+        payload_vendor = PayloadVENDOR(b'pyikev2-test-0.1')
         payload_sk = PayloadSK(b'pyikev2-test-0.1')
 
         self.object = Message(
