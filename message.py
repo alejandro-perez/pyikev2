@@ -392,7 +392,7 @@ class PayloadNotify(Payload):
         try:
             protocol_id, spi_size, notification_type = unpack_from('>BBH', data)
         except struct_error:
-            raise InvalidSyntax('Error parsing Payload KE.')
+            raise InvalidSyntax('Error parsing Payload Notify.')
         if spi_size > 0:
             spi = data[4:4 + spi_size]
         else:
