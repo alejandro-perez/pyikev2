@@ -19,6 +19,3 @@ class SafeEnum(Enum):
 
 class SafeIntEnum(int, SafeEnum):
     pass
-
-class SafeTupleEnum(tuple, SafeEnum):
-    pass

@@ -11,7 +11,7 @@ from random import SystemRandom
 import json
 from struct import pack, unpack, pack_into, unpack_from, error as struct_error
 from collections import OrderedDict
-from helpers import hexstring, SafeTupleEnum, SafeIntEnum
+from helpers import hexstring, SafeIntEnum
 from crypto import Prf, Cipher, Integrity, DiffieHellman, ESN
 from ipaddress import ip_address
 
