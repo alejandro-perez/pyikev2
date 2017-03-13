@@ -11,8 +11,10 @@ from message import (
     Proposal, PayloadSA, Message, UnsupportedCriticalPayload, PayloadNOTIFY,
     PayloadID, TrafficSelector, PayloadTS, PayloadAUTH, PayloadNOTIFY
 )
+from protocol import Keyring
 from crypto import Prf, Cipher, Integrity, DiffieHellman, ESN
 from ipaddress import ip_address
+from helpers import hexstring
 
 class TestPayloadMixin(object):
     def setUp(self):
@@ -74,6 +76,14 @@ class TestPayloadSK(TestPayloadMixin, unittest.TestCase):
 
     def test_parse_large(self):
         PayloadSK.parse(b'1234567890' * 100)
+
+    def test_encrypt_decrypt(self):
+        integrity = Integrity(Integrity.Id.AUTH_HMAC_SHA1_96)
+        cipher = Cipher(Cipher.Id.ENCR_AES_CBC, 256)
+        encryption_key = b'Mypassword121111'*2
+        payload_sk = PayloadSK.generate(
+                b'Hello there!', integrity, cipher, encryption_key)
+        clear = payload_sk.decrypt(integrity, cipher, encryption_key)
 
 class TestTransformWithKeylen(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
@@ -177,9 +187,9 @@ class TestMessage(TestPayloadMixin, unittest.TestCase):
         super(TestMessage, self).setUp()
         transform1 = Transform(Transform.Type.INTEG, Integrity.Id.AUTH_HMAC_SHA1_96, 128)
         transform2 = Transform(Transform.Type.PRF, Prf.Id.PRF_HMAC_SHA1)
-        transform3 = Transform(Transform.Type.PRF, Prf.Id.PRF_HMAC_SHA1, 64)
+        transform3 = Transform(Transform.Type.ENCR, Cipher.Id.ENCR_AES_CBC, 256)
         proposal1 = Proposal(
-            20, Proposal.Protocol.IKE, b'aspiwhatever', [transform1, transform2]
+            20, Proposal.Protocol.IKE, b'aspiwhatever', [transform1, transform2, transform3]
         )
         proposal2 = Proposal(
             20, Proposal.Protocol.IKE, b'anotherone', [transform3]
@@ -200,7 +210,8 @@ class TestMessage(TestPayloadMixin, unittest.TestCase):
             can_use_higher_version=False,
             is_initiator=False,
             message_id=0,
-            payloads=[payload_sa, payload_ke, payload_nonce, payload_vendor]
+            payloads=[payload_sa, payload_ke, payload_nonce, payload_vendor],
+            encrypted_payloads = []
         )
 
     def test_parse_random(self):
@@ -210,6 +221,45 @@ class TestMessage(TestPayloadMixin, unittest.TestCase):
     def test_no_proposals(self):
         with self.assertRaises(InvalidSyntax):
             PayloadSA([])
+
+    def test_encrypted(self):
+        transform1 = Transform(Transform.Type.INTEG, Integrity.Id.AUTH_HMAC_SHA1_96, 128)
+        transform2 = Transform(Transform.Type.ENCR, Cipher.Id.ENCR_AES_CBC, 256)
+        proposal1 = Proposal(
+            1, Proposal.Protocol.IKE, b'aspiwhatever', [transform1, transform2])
+
+        payload_sa = PayloadSA([proposal1])
+        payload_nonce = PayloadNONCE()
+
+        message = Message(
+            spi_i=0,
+            spi_r=0,
+            major=2,
+            minor=0,
+            exchange_type=Message.Exchange.IKE_SA_INIT,
+            is_response=False,
+            can_use_higher_version=False,
+            is_initiator=False,
+            message_id=0,
+            payloads=[],
+            encrypted_payloads = [payload_sa, payload_nonce]
+        )
+
+        encryption_key = b'a' * 32
+        authentication_key = b'a' * 16
+        keyring = Keyring(
+            encryption_key, authentication_key, authentication_key,
+            encryption_key, encryption_key, authentication_key,
+            authentication_key)
+
+        a = str(message.to_dict())
+        data = message.to_bytes(keyring, proposal1)
+        new_message = self.object.parse(data, header_only=False,
+            keyring=keyring, proposal=proposal1)
+        b = str(new_message.to_dict())
+        self.assertEqual(a, b)
+
+
 
 if __name__ == '__main__':
     unittest.main()

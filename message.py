@@ -327,30 +327,6 @@ class PayloadNONCE(Payload):
         ]))
         return result
 
-
-class PayloadSK(Payload):
-    type = Payload.Type.SK
-
-    def __init__(self, payload_data, critical=False):
-        super(PayloadSK, self).__init__(critical)
-        if len(payload_data) == 0:
-            raise InvalidSyntax('PayloadSK cannot have 0 length payload data')
-        self.payload_data = payload_data
-
-    @classmethod
-    def parse(cls, data, critical=False):
-        return PayloadSK(data, critical)
-
-    def to_bytes(self):
-        return self.payload_data
-
-    def to_dict(self):
-        result = super(PayloadSK, self).to_dict()
-        result.update(OrderedDict([
-            ('payload_data', hexstring(self.payload_data)),
-        ]))
-        return result
-
 class PayloadNOTIFY(Payload):
     type = Payload.Type.NOTIFY
 
@@ -600,6 +576,43 @@ class PayloadTSi(PayloadTS):
 class PayloadTSr(PayloadTS):
     type = Payload.Type.TSr
 
+class PayloadSK(Payload):
+    type = Payload.Type.SK
+
+    def __init__(self, ciphertext, critical=False):
+        super(PayloadSK, self).__init__(critical)
+        self.ciphertext = ciphertext
+
+    @classmethod
+    def parse(cls, data, critical=False):
+        return PayloadSK(data, critical)
+
+    def to_bytes(self):
+        return self.ciphertext
+
+    def decrypt(self, integrity, cipher, encryption_key):
+        iv = self.ciphertext[:cipher.block_size]
+        ciphertext = self.ciphertext[cipher.block_size:-integrity.hash_size]
+        decrypted = cipher.decrypt(encryption_key, bytes(iv), bytes(ciphertext))
+        padlen = decrypted[-1]
+        return decrypted[:-1-padlen]
+
+    @classmethod
+    def generate(cls, cleartext, integrity, cipher, encryption_key):
+        iv = cipher.generate_iv()
+        padlen = cipher.block_size - (len(cleartext) % cipher.block_size) - 1
+        cleartext += b'\x00' * padlen + padlen.to_bytes(1, 'big')
+        encrypted = cipher.encrypt(encryption_key, bytes(iv), bytes(cleartext))
+        return PayloadSK(iv + encrypted + b'\x00' * integrity.hash_size)
+
+    def to_dict(self):
+        result = super(PayloadSK, self).to_dict()
+        result.update(OrderedDict([
+            ('ciphertext', hexstring(self.ciphertext)),
+        ]))
+        return result
+
+
 class PayloadFactory:
     payload_classes = {
         Payload.Type.SA: PayloadSA,
@@ -612,7 +625,7 @@ class PayloadFactory:
         Payload.Type.NOTIFY: PayloadNOTIFY,
         Payload.Type.TSi: PayloadTSi,
         Payload.Type.TSr: PayloadTSr,
-        Payload.Type.SK: PayloadSK,
+        Payload.Type.SK: PayloadSK
     }
 
     @classmethod
@@ -628,8 +641,6 @@ class PayloadFactory:
                 'Unrecognized payload with type '
                 '{}'.format(Payload.Type.safe_name(payload_type)))
 
-
-
 class Message:
     class Exchange(SafeIntEnum):
         IKE_SA_INIT = 34
@@ -639,7 +650,7 @@ class Message:
 
     def __init__(self, spi_i, spi_r, major, minor,
                  exchange_type, is_response, can_use_higher_version,
-                 is_initiator, message_id, payloads):
+                 is_initiator, message_id, payloads, encrypted_payloads):
         self.spi_i = spi_i
         self.spi_r = spi_r
         self.major = major
@@ -650,19 +661,18 @@ class Message:
         self.is_initiator = is_initiator
         self.message_id = message_id
         self.payloads = payloads
+        self.encrypted_payloads = encrypted_payloads
 
     @classmethod
     def _parse_payloads(cls, data, first_payload_type):
         payloads = []
         offset = 0
-        next_payload_type = first_payload_type
-        payload_type = Payload.Type.NONE
+        payload_type = first_payload_type
 
-        # Two stop conditions, either next payload is NONE
-        while (next_payload_type != Payload.Type.NONE):
-            payload_type = next_payload_type
+        while (payload_type != Payload.Type.NONE):
+            # Read payload common header
             try:
-                next_payload_type, critical, length = unpack_from('>BBH', data, offset)
+                (next_payload_type,critical, length) = unpack_from('>BBH', data, offset)
             except struct_error as ex:
                 raise InvalidSyntax(ex)
 
@@ -670,26 +680,24 @@ class Message:
             start = offset + 4
             end = offset + length
 
-            # We try to parse the payload. If not known and critical, propagate
-            # exception
+            # Parse the payload. If not known and critical, raise exception
             try:
                 payload = PayloadFactory.parse(
-                    payload_type, data[start:end], critical
-                )
+                    payload_type, data[start:end], critical)
             except InvalidSyntax as ex:
                 logging.warning(ex)
                 if critical:
                     raise UnsupportedCriticalPayload
-            else:
-                payloads.append(payload)
 
-            # offset is increased in any case
-            offset += length
-
-            # payload SK must be always the last one, so we force exit the loop
+            # If payload SK, annotate next_payload_type and set it to NONE
             if payload_type == Payload.Type.SK:
                 payload.next_payload_type = next_payload_type
-                break
+                next_payload_type = Payload.Type.NONE
+
+            # offset is increased in any case
+            payloads.append(payload)
+            offset += length
+            payload_type = next_payload_type
 
         # check we read all the data
         if offset != len(data):
@@ -705,47 +713,7 @@ class Message:
         except struct_error as ex:
             raise InvalidSyntax(ex)
 
-        is_initiator = (header[5] & 0x08) != 0
-
-        if header_only:
-            payloads = []
-        else:
-            # parse decrypted payloads
-            payloads = cls._parse_payloads(data[28:], header[2])
-
-            # if there is a SK payload, decrypt and append payloads
-            if payloads and payloads[-1].type == Payload.Type.SK:
-                payload_sk = payloads[-1]
-
-                # if there is no keyring, error as we don't know how to parse it
-                if keyring is None or proposal is None:
-                    raise InvalidSyntax(
-                        "I don't have key material to decrypt SK payload.")
-
-                # check integrity
-                integrity = Integrity(proposal.get_transform(Transform.Type.INTEG).id)
-                digest = integrity.compute(
-                    keyring.sk_ai if is_initiator else keyring.sk_ar,
-                    data[:-integrity.hash_size])
-                if digest != data[-integrity.hash_size:]:
-                    raise InvalidSyntax('Failed integrity verification')
-
-                # decrypt message
-                cipher = Cipher(
-                        proposal.get_transform(Transform.Type.ENCR).id,
-                        proposal.get_transform(Transform.Type.ENCR).keylen)
-                iv = payload_sk.payload_data[:cipher.block_size]
-                ciphertext = payload_sk.payload_data[cipher.block_size:-integrity.hash_size]
-                decrypted = cipher.decrypt(
-                    keyring.sk_ei if is_initiator else keyring.sk_er,
-                    iv,
-                    ciphertext
-                )
-                padlen = decrypted[-1]
-                # parse the paylaods and append them to the list
-                payloads += cls._parse_payloads(decrypted[:-1-padlen], payload_sk.next_payload_type)
-
-        return Message(
+        message = Message(
             spi_i=header[0],
             spi_r=header[1],
             major=header[3] >> 4,
@@ -753,34 +721,93 @@ class Message:
             exchange_type=header[4],
             is_response=(header[5] & 0x20) != 0,
             can_use_higher_version=(header[5] & 0x10) != 0,
-            is_initiator=is_initiator,
+            is_initiator= (header[5] & 0x08) != 0,
             message_id=header[6],
-            payloads=payloads
+            payloads=[],
+            encrypted_payloads=[]
         )
 
-    def to_bytes(self):
+        if not header_only:
+            message.payloads = cls._parse_payloads(data[28:], header[2])
+            if message.payloads and message.payloads[-1].type == Payload.Type.SK:
+                payload_sk = message.payloads[-1]
+                integrity = Integrity(proposal.get_transform(Transform.Type.INTEG).id)
+                cipher = Cipher(proposal.get_transform(Transform.Type.ENCR).id,
+                    proposal.get_transform(Transform.Type.ENCR).keylen)
+                encryption_key = keyring.sk_ei if message.is_initiator else keyring.sk_er
+                authentication_key = keyring.sk_ai if message.is_initiator else keyring.sk_ar
+
+                # check integrity
+                checksum = integrity.compute(authentication_key, data[:-integrity.hash_size])
+                if checksum != data[-integrity.hash_size:]:
+                    raise InvalidSyntax('CHECKSUM ERROR')
+
+                # parse decrypted payloads
+                decrypted_data = payload_sk.decrypt(integrity, cipher, encryption_key)
+                message.encrypted_payloads += cls._parse_payloads(
+                    decrypted_data, payload_sk.next_payload_type)
+
+                message.payloads.remove(payload_sk)
+
+        return message
+
+    def _payloads_to_bytes(self, payloads):
+        # generate payloads
+        payloads_data = bytearray()
+        for index in range(0, len(payloads)):
+            payload = payloads[index]
+            payload_data = payload.to_bytes()
+            if index < len(payloads) - 1:
+                next_payload_type = payloads[index + 1].type
+            elif payload.type == Payload.Type.SK:
+                next_payload_type = payload.next_payload_type
+            else:
+                next_payload_type = Payload.Type.NONE
+
+            payloads_data += pack('>BBH', next_payload_type, 0, len(payload_data) + 4)
+            payloads_data += payload_data
+        return payloads_data
+
+
+    def to_bytes(self, keyring=None, proposal=None):
+        # if keyring is provided, encrypt everything into a SK payload
+        if self.encrypted_payloads:
+            integrity = Integrity(proposal.get_transform(Transform.Type.INTEG).id)
+            cipher = Cipher(proposal.get_transform(Transform.Type.ENCR).id,
+                proposal.get_transform(Transform.Type.ENCR).keylen)
+            encryption_key = keyring.sk_ei if self.is_initiator else keyring.sk_er
+            authentication_key = keyring.sk_ai if self.is_initiator else keyring.sk_ar
+
+            cleartext = self._payloads_to_bytes(self.encrypted_payloads)
+            payload_sk = PayloadSK.generate(
+                cleartext, integrity, cipher, encryption_key)
+            payload_sk.next_payload_type = self.encrypted_payloads[0].type
+            self.payloads.append(payload_sk)
+
+        # generate header
         first_payload_type = self.payloads[0].type if self.payloads else Payload.Type.NONE
-        data = bytearray(28)
-        pack_into(
-            '>2Q4B2L', data, 0, self.spi_i, self.spi_r, first_payload_type,
+        header_data = bytearray(pack(
+            '>2Q4B2L', self.spi_i, self.spi_r, first_payload_type,
             (self.major << 4 | self.minor & 0x0F), self.exchange_type,
             (self.is_response << 5 | self.can_use_higher_version << 4 |
                 self.is_initiator << 3),
             self.message_id, 28
-        )
-        for index in range(0, len(self.payloads)):
-            payload = self.payloads[index]
-            payload_data = payload.to_bytes()
-            if index < len(self.payloads) - 1:
-                next_payload_type = self.payloads[index + 1].type
-            else:
-                next_payload_type = Payload.Type.NONE
+        ))
 
-            data += pack('>BBH', next_payload_type, 0, len(payload_data) + 4)
-            data += payload_data
+        # generate payloads
+        payloads_data = self._payloads_to_bytes(self.payloads)
+
+        # generate final data
+        data = header_data + payloads_data
 
         # update length once we know it
         pack_into('>L', data, 24, len(data))
+
+        # calculate checksum
+        if self.encrypted_payloads:
+            # check integrity
+            checksum = integrity.compute(authentication_key, data[:-integrity.hash_size])
+            pack_into('>{}s'.format(len(checksum)), data, len(data) - len(checksum), checksum)
 
         return data
 
@@ -798,6 +825,7 @@ class Message:
             ('is_responder', self.is_responder),
             ('message_id', self.message_id),
             ('payloads', [x.to_dict() for x in self.payloads]),
+            ('encrypted_payloads', [x.to_dict() for x in self.encrypted_payloads]),
         ])
 
     @property
@@ -813,6 +841,12 @@ class Message:
 
     def get_payloads(self, payload_type):
         return [x for x in self.payloads if x.type == payload_type]
+
+    def get_encr_payload(self, payload_type):
+        return next(x for x in self.encrypted_payloads if x.type == payload_type)
+
+    def get_encr_payloads(self, payload_type):
+        return [x for x in self.encrypted_payloads if x.type == payload_type]
 
     def __str__(self):
         return json.dumps(self.to_dict(), indent=2)

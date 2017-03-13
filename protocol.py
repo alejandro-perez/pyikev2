@@ -6,7 +6,8 @@
 import logging
 import os
 from message import (Message, Payload, PayloadNONCE, PayloadVENDOR, PayloadKE,
-    Proposal, Transform, NoProposalChosen, PayloadSA, InvalidKePayload)
+    Proposal, Transform, NoProposalChosen, PayloadSA, InvalidKePayload,
+    InvalidSyntax)
 from helpers import SafeEnum, SafeIntEnum, hexstring
 from random import SystemRandom
 from crypto import DiffieHellman, Prf, Integrity, Cipher
@@ -24,7 +25,8 @@ Keyring = namedtuple('Keyring',
 class IkeSa:
     class State(SafeIntEnum):
         INITIAL = 0
-        HALF_OPEN = 1
+        INIT_RES_SENT = 1
+        ESTABLISHED = 2
 
     """ This class controls the state machine of a IKE SA
         It is triggered with received Messages and/or IPsec events
@@ -151,7 +153,8 @@ class IkeSa:
 
         # parse the whole message (passes the keyring to decrypt SK payload if any)
         message = Message.parse(
-            data, header_only=False, keyring=self.ike_sa_keyring, proposal=self.chosen_proposal)
+            data, header_only=False, keyring=self.ike_sa_keyring,
+            proposal=self.chosen_proposal)
         self.log_message(message, addr, data, send=False)
 
         # get the appropriate handler fnc
@@ -167,7 +170,7 @@ class IkeSa:
 
         # if there is a reply, return its bytes
         if reply:
-            data = reply.to_bytes()
+            data = reply.to_bytes(keyring=self.ike_sa_keyring, proposal=self.chosen_proposal)
             self.log_message(reply, addr, data, send=True)
             return data
 
@@ -235,13 +238,16 @@ class IkeSa:
             is_initiator=False,
             message_id=self.my_msg_id,
             payloads=[response_payload_sa, response_payload_ke,
-                response_payload_nonce, response_payload_vendor]
+                response_payload_nonce, response_payload_vendor],
+            encrypted_payloads=[],
         )
 
         # increase msg_id and transition
         self.my_msg_id = self.my_msg_id + 1
         self.peer_msg_id = self.peer_msg_id + 1
-        self.state = IkeSa.State.HALF_OPEN
+        self.state = IkeSa.State.INIT_RES_SENT
+
+        return response
 
         return response
 
