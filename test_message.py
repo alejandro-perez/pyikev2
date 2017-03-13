@@ -12,7 +12,7 @@ from message import (
     PayloadID, TrafficSelector, PayloadTS, PayloadAUTH, PayloadNOTIFY
 )
 from protocol import Keyring
-from crypto import Prf, Cipher, Integrity, DiffieHellman, ESN
+from crypto import Prf, Cipher, Integrity, DiffieHellman, ESN, Crypto
 from ipaddress import ip_address
 from helpers import hexstring
 
@@ -77,13 +77,20 @@ class TestPayloadSK(TestPayloadMixin, unittest.TestCase):
     def test_parse_large(self):
         PayloadSK.parse(b'1234567890' * 100)
 
+    def test_parse_no_data(self):
+        payload_class = type(self.object)
+        payload_class.parse(b'')
+
     def test_encrypt_decrypt(self):
         integrity = Integrity(Integrity.Id.AUTH_HMAC_SHA1_96)
         cipher = Cipher(Cipher.Id.ENCR_AES_CBC, 256)
         encryption_key = b'Mypassword121111'*2
-        payload_sk = PayloadSK.generate(
-                b'Hello there!', integrity, cipher, encryption_key)
-        clear = payload_sk.decrypt(integrity, cipher, encryption_key)
+
+        crypto = Crypto(cipher, encryption_key, integrity, b'')
+
+        payload_sk = PayloadSK.generate(b'Hello there!', crypto)
+        clear = payload_sk.decrypt(crypto)
+        self.assertEqual(clear, b'Hello there!')
 
 class TestTransformWithKeylen(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
@@ -245,17 +252,12 @@ class TestMessage(TestPayloadMixin, unittest.TestCase):
             encrypted_payloads = [payload_sa, payload_nonce]
         )
 
-        encryption_key = b'a' * 32
-        authentication_key = b'a' * 16
-        keyring = Keyring(
-            encryption_key, authentication_key, authentication_key,
-            encryption_key, encryption_key, authentication_key,
-            authentication_key)
+        crypto = Crypto(Cipher(Cipher.Id.ENCR_AES_CBC, 256), b'a' * 32,
+            Integrity(Integrity.Id.AUTH_HMAC_SHA1_96), b'a' * 16)
 
         a = str(message.to_dict())
-        data = message.to_bytes(keyring, proposal1)
-        new_message = self.object.parse(data, header_only=False,
-            keyring=keyring, proposal=proposal1)
+        data = message.to_bytes(crypto)
+        new_message = self.object.parse(data, header_only=False, crypto=crypto)
         b = str(new_message.to_dict())
         self.assertEqual(a, b)
 

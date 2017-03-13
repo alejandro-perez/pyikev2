@@ -10,7 +10,7 @@ from message import (Message, Payload, PayloadNONCE, PayloadVENDOR, PayloadKE,
     InvalidSyntax)
 from helpers import SafeEnum, SafeIntEnum, hexstring
 from random import SystemRandom
-from crypto import DiffieHellman, Prf, Integrity, Cipher
+from crypto import DiffieHellman, Prf, Integrity, Cipher, Crypto
 from struct import pack, unpack
 from collections import namedtuple
 import copy
@@ -40,6 +40,8 @@ class IkeSa:
         self.is_initiator = is_initiator
         self.ike_sa_keyring = None
         self.chosen_proposal = None
+        self.my_crypto = None
+        self.peer_crypto = None
 
     @property
     def spi_i(self):
@@ -76,6 +78,14 @@ class IkeSa:
                 keymat
             )
         )
+
+        crypto_i = Crypto._make([
+            cipher, self.ike_sa_keyring.sk_ei, integ, self.ike_sa_keyring.sk_ai])
+        crypto_r = Crypto._make([
+            cipher, self.ike_sa_keyring.sk_er, integ, self.ike_sa_keyring.sk_ar])
+
+        self.my_crypto = crypto_i if self.is_initiator else crypto_r
+        self.peer_crypto = crypto_r if self.is_initiator else crypto_i
 
         logging.debug('Generated sk_d: {}'.format(hexstring(self.ike_sa_keyring.sk_d)))
         logging.debug('Generated sk_ai: {}'.format(hexstring(self.ike_sa_keyring.sk_ai)))
@@ -149,12 +159,11 @@ class IkeSa:
         # dict with the form of tuple(Exchange type, is_request): method
         _handler_dict = {
             (Message.Exchange.IKE_SA_INIT, True): self.process_ike_sa_init_request,
+            (Message.Exchange.IKE_AUTH, True): self.process_ike_auth_request,
         }
 
-        # parse the whole message (passes the keyring to decrypt SK payload if any)
-        message = Message.parse(
-            data, header_only=False, keyring=self.ike_sa_keyring,
-            proposal=self.chosen_proposal)
+        # parse the whole message (including encrypted data)
+        message = Message.parse(data, header_only=False, crypto=self.peer_crypto)
         self.log_message(message, addr, data, send=False)
 
         # get the appropriate handler fnc
@@ -170,7 +179,7 @@ class IkeSa:
 
         # if there is a reply, return its bytes
         if reply:
-            data = reply.to_bytes(keyring=self.ike_sa_keyring, proposal=self.chosen_proposal)
+            data = reply.to_bytes(crypto=self.my_crypto)
             self.log_message(reply, addr, data, send=True)
             return data
 
@@ -248,6 +257,47 @@ class IkeSa:
         self.state = IkeSa.State.INIT_RES_SENT
 
         return response
+
+    def process_ike_auth_request(self, request):
+        """ Processes a IKE_AUTH request message and returns a
+            IKE_AUTH response
+        """
+        # check state
+        if self.state != IkeSa.State.INIT_RES_SENT:
+            raise InvalidSyntax(
+                'IKE SA state cannot proccess IKE_SA_INIT message')
+
+        # get some relevant payloads from the message
+        request_payload_sa = request.get_encr_payload(Payload.Type.SA)
+
+        # generate the response payload SA with the chose proposal
+        chosen_child_proposal = self.select_best_child_sa_proposal(request_payload_sa)
+
+        # TODO: Take this SPI from an actual acquire to avoid (unlikely) collisions
+        chosen_child_proposal.spi = os.urandom(4)
+
+        # generate the response Payload SA
+        response_payload_sa = PayloadSA([chosen_child_proposal])
+
+        # generate the message
+        response = Message(
+            spi_i=self.peer_spi,
+            spi_r=self.my_spi,
+            major=2,
+            minor=0,
+            exchange_type=Message.Exchange.IKE_AUTH,
+            is_response=True,
+            can_use_higher_version=False,
+            is_initiator=False,
+            message_id=self.my_msg_id,
+            payloads=[],
+            encrypted_payloads=[response_payload_sa],
+        )
+
+        # increase msg_id and transition
+        self.my_msg_id = self.my_msg_id + 1
+        self.peer_msg_id = self.peer_msg_id + 1
+        self.state = IkeSa.State.ESTABLISHED
 
         return response
 

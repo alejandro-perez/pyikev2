@@ -590,20 +590,21 @@ class PayloadSK(Payload):
     def to_bytes(self):
         return self.ciphertext
 
-    def decrypt(self, integrity, cipher, encryption_key):
-        iv = self.ciphertext[:cipher.block_size]
-        ciphertext = self.ciphertext[cipher.block_size:-integrity.hash_size]
-        decrypted = cipher.decrypt(encryption_key, bytes(iv), bytes(ciphertext))
+    def decrypt(self, crypto):
+        iv = self.ciphertext[:crypto.cipher.block_size]
+        ciphertext = self.ciphertext[
+            crypto.cipher.block_size:-crypto.integrity.hash_size]
+        decrypted = crypto.cipher.decrypt(crypto.sk_e, bytes(iv), bytes(ciphertext))
         padlen = decrypted[-1]
         return decrypted[:-1-padlen]
 
     @classmethod
-    def generate(cls, cleartext, integrity, cipher, encryption_key):
-        iv = cipher.generate_iv()
-        padlen = cipher.block_size - (len(cleartext) % cipher.block_size) - 1
+    def generate(cls, cleartext, crypto):
+        iv = crypto.cipher.generate_iv()
+        padlen = crypto.cipher.block_size - (len(cleartext) % crypto.cipher.block_size) - 1
         cleartext += b'\x00' * padlen + padlen.to_bytes(1, 'big')
-        encrypted = cipher.encrypt(encryption_key, bytes(iv), bytes(cleartext))
-        return PayloadSK(iv + encrypted + b'\x00' * integrity.hash_size)
+        encrypted = crypto.cipher.encrypt(crypto.sk_e, bytes(iv), bytes(cleartext))
+        return PayloadSK(iv + encrypted + b'\x00' * crypto.integrity.hash_size)
 
     def to_dict(self):
         result = super(PayloadSK, self).to_dict()
@@ -614,6 +615,7 @@ class PayloadSK(Payload):
 
 
 class PayloadFactory:
+    # Payload SK is intentionally left out, as it needs keyring and proposal
     payload_classes = {
         Payload.Type.SA: PayloadSA,
         Payload.Type.KE: PayloadKE,
@@ -707,7 +709,7 @@ class Message:
         return payloads
 
     @classmethod
-    def parse(cls, data, header_only=False, keyring=None, proposal=None):
+    def parse(cls, data, header_only=False, crypto=None):
         try:
             header = unpack_from('>2Q4B2L', data)
         except struct_error as ex:
@@ -728,22 +730,21 @@ class Message:
         )
 
         if not header_only:
+            # parse unencrypted payloads
             message.payloads = cls._parse_payloads(data[28:], header[2])
+
+            # if there is a Payload SK
             if message.payloads and message.payloads[-1].type == Payload.Type.SK:
                 payload_sk = message.payloads[-1]
-                integrity = Integrity(proposal.get_transform(Transform.Type.INTEG).id)
-                cipher = Cipher(proposal.get_transform(Transform.Type.ENCR).id,
-                    proposal.get_transform(Transform.Type.ENCR).keylen)
-                encryption_key = keyring.sk_ei if message.is_initiator else keyring.sk_er
-                authentication_key = keyring.sk_ai if message.is_initiator else keyring.sk_ar
 
                 # check integrity
-                checksum = integrity.compute(authentication_key, data[:-integrity.hash_size])
-                if checksum != data[-integrity.hash_size:]:
+                checksum = crypto.integrity.compute(
+                    crypto.sk_a, data[:-crypto.integrity.hash_size])
+                if checksum != data[-crypto.integrity.hash_size:]:
                     raise InvalidSyntax('CHECKSUM ERROR')
 
                 # parse decrypted payloads
-                decrypted_data = payload_sk.decrypt(integrity, cipher, encryption_key)
+                decrypted_data = payload_sk.decrypt(crypto)
                 message.encrypted_payloads += cls._parse_payloads(
                     decrypted_data, payload_sk.next_payload_type)
 
@@ -769,18 +770,11 @@ class Message:
         return payloads_data
 
 
-    def to_bytes(self, keyring=None, proposal=None):
+    def to_bytes(self, crypto=None):
         # if keyring is provided, encrypt everything into a SK payload
         if self.encrypted_payloads:
-            integrity = Integrity(proposal.get_transform(Transform.Type.INTEG).id)
-            cipher = Cipher(proposal.get_transform(Transform.Type.ENCR).id,
-                proposal.get_transform(Transform.Type.ENCR).keylen)
-            encryption_key = keyring.sk_ei if self.is_initiator else keyring.sk_er
-            authentication_key = keyring.sk_ai if self.is_initiator else keyring.sk_ar
-
             cleartext = self._payloads_to_bytes(self.encrypted_payloads)
-            payload_sk = PayloadSK.generate(
-                cleartext, integrity, cipher, encryption_key)
+            payload_sk = PayloadSK.generate(cleartext, crypto)
             payload_sk.next_payload_type = self.encrypted_payloads[0].type
             self.payloads.append(payload_sk)
 
@@ -806,8 +800,10 @@ class Message:
         # calculate checksum
         if self.encrypted_payloads:
             # check integrity
-            checksum = integrity.compute(authentication_key, data[:-integrity.hash_size])
-            pack_into('>{}s'.format(len(checksum)), data, len(data) - len(checksum), checksum)
+            checksum = crypto.integrity.compute(
+                crypto.sk_a, data[:-crypto.integrity.hash_size])
+            pack_into('>{}s'.format(len(checksum)),
+                data, len(data) - len(checksum), checksum)
 
         return data
 

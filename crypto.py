@@ -9,11 +9,14 @@ __author__ = 'Alejandro Perez <alex@um.es>'
 import os
 from hmac import HMAC
 import hashlib
+from collections import namedtuple
 from helpers import SafeIntEnum
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import dh
 import cryptography.hazmat.backends.openssl.backend
 from cryptography.hazmat.primitives.ciphers import Cipher as cypher, algorithms, modes
+
+Crypto = namedtuple('Crypto', ['cipher', 'sk_e', 'integrity', 'sk_a'])
 
 class EncrError(Exception):
     pass
