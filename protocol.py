@@ -83,47 +83,51 @@ class IkeSa:
         logging.debug('Generated sk_pi: {}'.format(hexstring(self.ike_sa_keyring.sk_pi)))
         logging.debug('Generated sk_pr: {}'.format(hexstring(self.ike_sa_keyring.sk_pr)))
 
-    def select_best_ike_sa_proposal(self, payload_sa):
+    def select_best_sa_proposal(self, my_proposal, peer_payload_sa):
         """ Selects a received Payload SA wit our own suite
         """
-        proposal = Proposal(
-            1,
-            Proposal.Protocol.IKE,
-            b'',
+        for peer_proposal in peer_payload_sa.proposals:
+            if peer_proposal.protocol_id == my_proposal.protocol_id:
+                selected_transforms = {}
+                for my_transform in my_proposal.transforms:
+                    for peer_transform in peer_proposal.transforms:
+                        if my_transform == peer_transform:
+                            if my_transform.type not in selected_transforms:
+                                selected_transforms[my_transform.type] = my_transform
+                # If we have a transform of each type => success
+                if (set(selected_transforms) ==
+                        set(x.type for x in my_proposal.transforms)):
+                    return Proposal(1, my_proposal.protocol_id, b'',
+                        list(selected_transforms.values()))
+        raise NoProposalChosen
+
+    def select_best_ike_sa_proposal(self, peer_payload_sa):
+        my_proposal = Proposal(
+            1, Proposal.Protocol.IKE, b'',
             [
-                Transform(Transform.Type.ENCR, Cipher.Id.ENCR_AES_CBC, 128),
                 Transform(Transform.Type.ENCR, Cipher.Id.ENCR_AES_CBC, 256),
-                Transform(Transform.Type.INTEG, Integrity.Id.AUTH_HMAC_MD5_96),
+                Transform(Transform.Type.ENCR, Cipher.Id.ENCR_AES_CBC, 128),
                 Transform(Transform.Type.INTEG, Integrity.Id.AUTH_HMAC_SHA1_96),
-                Transform(Transform.Type.PRF, Prf.Id.PRF_HMAC_MD5),
+                Transform(Transform.Type.INTEG, Integrity.Id.AUTH_HMAC_MD5_96),
                 Transform(Transform.Type.PRF, Prf.Id.PRF_HMAC_SHA1),
+                Transform(Transform.Type.PRF, Prf.Id.PRF_HMAC_MD5),
                 Transform(Transform.Type.DH, DiffieHellman.Id.DH_5),
                 Transform(Transform.Type.DH, DiffieHellman.Id.DH_2),
             ]
         )
+        return self.select_best_sa_proposal(my_proposal, peer_payload_sa)
 
-        for peer_proposal in payload_sa.proposals:
-            my_proposal = copy.deepcopy(proposal)
-            for type in [Transform.Type.ENCR, Transform.Type.INTEG,
-                         Transform.Type.PRF, Transform.Type.DH]:
-                for my_transform in my_proposal.get_transforms(type):
-                    if my_transform.id not in [x.id for x in peer_proposal.get_transforms(type)]:
-                        my_proposal.transforms.remove(my_transform)
-            try:
-                return Proposal(
-                    1,
-                    Proposal.Protocol.IKE,
-                    b'',
-                    [
-                        my_proposal.get_transform(Transform.Type.ENCR),
-                        my_proposal.get_transform(Transform.Type.INTEG),
-                        my_proposal.get_transform(Transform.Type.DH),
-                        my_proposal.get_transform(Transform.Type.PRF),
-                    ]
-                )
-            except StopIteration:
-                pass
-        raise NoProposalChosen
+    def select_best_child_sa_proposal(self, peer_payload_sa):
+        my_proposal = Proposal(
+            1, Proposal.Protocol.ESP, b'',
+            [
+                Transform(Transform.Type.ENCR, Cipher.Id.ENCR_AES_CBC, 256),
+                Transform(Transform.Type.ENCR, Cipher.Id.ENCR_AES_CBC, 128),
+                Transform(Transform.Type.INTEG, Integrity.Id.AUTH_HMAC_SHA1_96),
+                Transform(Transform.Type.INTEG, Integrity.Id.AUTH_HMAC_MD5_96),
+            ]
+        )
+        return self.select_best_sa_proposal(my_proposal, peer_payload_sa)
 
     def log_message(self, message, addr, data, send=True):
         logging.info('{} {} {} ({} bytes) {} {}'.format(

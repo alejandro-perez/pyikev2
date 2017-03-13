@@ -148,6 +148,11 @@ class Transform:
             result['keylen'] = self.keylen
         return result
 
+    def __eq__(self, other):
+        return ((self.type, self.id, self.keylen) ==
+            (other.type, other.id, other.keylen))
+
+
 class Proposal:
     class Protocol(SafeIntEnum):
         NONE = 0
