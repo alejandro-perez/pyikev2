@@ -15,15 +15,15 @@ parser = argparse.ArgumentParser(description='Opensource IKEv2 daemon written in
 parser.add_argument('--verbose', '-v', action='store_true',
     help='Enable (much) more verbosity. WARNING: This will make your key '
     'material to be shown in the log output!')
-parser.add_argument('--listen', '-l', default='0.0.0.0',
-    help='IP address where the daemon will listen from. Defaults to 0.0.0.0')
+parser.add_argument('--listen', '-l', default='0.0.0.0', metavar='IP',
+    help='IP address where the daemon will listen from. Defaults to 0.0.0.0.')
 parser.add_argument('--email-id', '-e', default='pyikev2@github.com',
     help='An email address to be used as our identity. '
-    'Defaults to "pyikev2@github.com"'),
+    'Defaults to "pyikev2@github.com"', metavar='EMAIL')
 parser.add_argument('--use-ip-id', '-ip', action='store_true',
-    help='Whether to use the current IP address as our identity. '
-    'It has precedence over --email.')
-parser.add_argument('--pre-shared-key', '-psk', required=True,
+    help='Whether to use the current IP address as our identity.'
+    ' It has precedence over --email.')
+parser.add_argument('--pre-shared-key', '-psk', required=True, metavar='KEY',
     help='The PSK to be used for authentication.'),
 parser.add_argument('--indent-json', '-i', type=int, default=None, metavar='N',
     help='Indent JSON log output with the provided number of spaces.'),
