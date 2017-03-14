@@ -138,7 +138,7 @@ class IkeSa:
                         set(x.type for x in my_proposal.transforms)):
                     return Proposal(1, my_proposal.protocol_id, b'',
                         list(selected_transforms.values()))
-        raise NoProposalChosen
+        raise NoProposalChosen('Could not find a suitable matching Proposal')
 
     def select_best_ike_sa_proposal(self, peer_payload_sa):
         my_proposal = Proposal(
