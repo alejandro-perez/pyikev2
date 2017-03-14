@@ -11,7 +11,7 @@ from protocol import IkeSaController
 from ipaddress import ip_address
 
 # parses the arguments
-parser = argparse.ArgumentParser(description='Opensource IKEv2 daemon written in Python')
+parser = argparse.ArgumentParser(description='Opensource IKEv2 daemon written in Python.')
 parser.add_argument('--verbose', '-v', action='store_true',
     help='Enable (much) more verbosity. WARNING: This will make your key '
     'material to be shown in the log output!')
