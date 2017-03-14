@@ -8,12 +8,13 @@ import os
 from message import (Message, Payload, PayloadNONCE, PayloadVENDOR, PayloadKE,
     Proposal, Transform, NoProposalChosen, PayloadSA, InvalidKePayload,
     InvalidSyntax, PayloadAUTH, AuthenticationFailed, PayloadIDi, PayloadIDr,
-    IkeSaError)
+    IkeSaError, PayloadTSi, PayloadTSr)
 from helpers import SafeEnum, SafeIntEnum, hexstring
 from random import SystemRandom
 from crypto import DiffieHellman, Prf, Integrity, Cipher, Crypto
 from struct import pack, unpack
 from collections import namedtuple
+import json
 
 Keyring = namedtuple('Keyring',
     ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er', 'sk_pi', 'sk_pr']
@@ -150,7 +151,7 @@ class IkeSa:
             len(data),
             'to' if send else 'from',
             addr))
-        logging.debug(message)
+        logging.debug(json.dumps(message.to_dict(), indent=logging.indent_json))
 
     def process_message(self, data, addr):
         """ Performs the common tasks for IKE message handling,
@@ -387,7 +388,8 @@ class IkeSaController:
                 logging.warning(
                     'Received message for unknown SPI={}. Omitting.'.format(
                         hexstring(pack('>Q', my_spi))))
-                logging.debug(header)
+                logging.debug(json.dumps(header.to_dict(),
+                    indent=logging.indent_json))
                 return None
 
         # generate the reply (if any)

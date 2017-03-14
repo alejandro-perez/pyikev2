@@ -8,7 +8,6 @@ __author__ = 'Alejandro Perez <alex@um.es>'
 import logging
 import os
 from random import SystemRandom
-import json
 from struct import pack, unpack, pack_into, unpack_from, error as struct_error
 from collections import OrderedDict
 from helpers import hexstring, SafeIntEnum
@@ -862,7 +861,3 @@ class Message:
 
     def get_encr_payloads(self, payload_type):
         return [x for x in self.encrypted_payloads if x.type == payload_type]
-
-    def __str__(self):
-        return json.dumps(self.to_dict(), indent=2)
-

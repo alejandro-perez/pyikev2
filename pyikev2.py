@@ -25,14 +25,16 @@ parser.add_argument('--use-ip-id', '-ip', action='store_true',
     'It has precedence over --email.')
 parser.add_argument('--pre-shared-key', '-psk', required=True,
     help='The PSK to be used for authentication.'),
+parser.add_argument('--indent-json', '-i', type=int, default=None, metavar='N',
+    help='Indent JSON log output with the provided number of spaces.'),
 args = parser.parse_args()
 
 # set logger
 logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
     format='[%(asctime)s.%(msecs)03d] [%(levelname)-6s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S')
+logging.indent_json = args.indent_json
 
-logging.info('Start daemon')
 
 # create socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
