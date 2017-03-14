@@ -367,9 +367,9 @@ class IkeSa:
         # generate the response Payload SA
         response_payload_sa = PayloadSA([chosen_child_proposal])
 
-        # TODO: Make actual TS matching
-        response_payload_tsi = request_payload_tsi
-        response_payload_tsr = request_payload_tsr
+        # TODO: Make actual TS matching. So far just accepting the first one (bad practice!)
+        response_payload_tsi = PayloadTSi([request_payload_tsi.traffic_selectors[0]])
+        response_payload_tsr = PayloadTSr([request_payload_tsr.traffic_selectors[0]])
 
         # send my IDr
         response_payload_idr = PayloadIDr(self.my_id.id_type, self.my_id.id_data)
@@ -391,7 +391,8 @@ class IkeSa:
             message_id=self.my_msg_id,
             payloads=[],
             encrypted_payloads=[response_payload_sa, response_payload_tsi,
-                response_payload_tsr, response_payload_idr, response_payload_auth],
+                response_payload_tsr, response_payload_idr,
+                response_payload_auth],
         )
 
         # increase msg_id and transition
