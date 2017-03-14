@@ -188,6 +188,7 @@ class IkeSa:
         _handler_dict = {
             (Message.Exchange.IKE_SA_INIT, True): self.process_ike_sa_init_request,
             (Message.Exchange.IKE_AUTH, True): self.process_ike_auth_request,
+            (Message.Exchange.INFORMATIONAL, True): self.process_informational_request,
         }
 
         # parse the whole message (including encrypted data)
@@ -398,6 +399,33 @@ class IkeSa:
 
         return response
 
+    def process_informational_request(self, request):
+        """ Processes an INFORMATIONAL message and returns a INFORMATIONAL response
+        """
+        # check state
+        if self.state != IkeSa.State.ESTABLISHED:
+            raise IkeSaError(
+                'IKE SA state cannot proccess INFORMATIONAL message')
+
+        # don't do anything yet, just reply with empty informational
+        response = Message(
+            spi_i=request.spi_i,
+            spi_r=request.spi_r,
+            major=2,
+            minor=0,
+            exchange_type=Message.Exchange.INFORMATIONAL,
+            is_response=True,
+            can_use_higher_version=False,
+            is_initiator=self.is_initiator,
+            message_id=self.my_msg_id,
+            payloads=[],
+            encrypted_payloads=[],
+        )
+
+        # transition NOT NEEDED
+
+        # return response
+        return response
 class IkeSaController:
     def __init__(self, psk, my_id):
         self.ike_sas = {}
