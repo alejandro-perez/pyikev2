@@ -206,7 +206,7 @@ class IkeSa:
                 ''.format(self.peer_msg_id))
             return True, None
 
-        # get the appropriate handler fnc
+        # get the handler fnc
         try:
             handler = _handler_dict[(message.exchange_type, message.is_request)]
         except KeyError:
@@ -222,11 +222,12 @@ class IkeSa:
             logging.error(ex)
             return False, None
 
+        # if the message was processed succesfully, we record it for future reference
         self.last_received_message_data = data
         self.last_received_message = message
         self.peer_msg_id = self.peer_msg_id + 1
 
-        reply_data = None
+        # If there is a reply
         if reply:
             crypto = (self.my_crypto
                 if reply.exchange_type != Message.Exchange.IKE_SA_INIT else None)
@@ -235,8 +236,9 @@ class IkeSa:
             self.last_sent_message_data = reply_data
             self.last_sent_message = reply
             self.my_msg_id = self.my_msg_id + 1
+            return True, reply_data
 
-        return True, reply_data
+        return True, None
 
     def process_ike_sa_init_request(self, request):
         """ Processes a IKE_SA_INIT message and returns a IKE_SA_INIT response
@@ -274,7 +276,7 @@ class IkeSa:
 
         # generate IKE SA key material
         self.generate_ike_sa_key_material(
-            proposal=self.chosen_proposal,
+            ike_proposal=self.chosen_proposal,
             nonce_i=request_payload_nonce.nonce,
             nonce_r=response_payload_nonce.nonce,
             spi_i=self.peer_spi,
@@ -357,8 +359,8 @@ class IkeSa:
 
         # generate CHILD key material
         self.generate_child_sa_key_material(
-            self.chosen_proposal,
-            chosen_child_proposal,
+            ike_proposal=self.chosen_proposal,
+            child_proposal=chosen_child_proposal,
             nonce_i=self.last_received_message.get_payload(Payload.Type.NONCE).nonce,
             nonce_r=self.last_sent_message.get_payload(Payload.Type.NONCE).nonce,
             sk_d=self.ike_sa_keyring.sk_d
@@ -442,7 +444,7 @@ class IkeSaController:
                 header.is_request):
             ike_sa = IkeSa(is_initiator=False, psk=self.psk, my_id=self.my_id)
             self.ike_sas[ike_sa.my_spi] = ike_sa
-            logging.info('Created new IKE_SA with SPI={}. Count={}'.format(
+            logging.info('Starting the creation of IKE SA with SPI={}. Count={}'.format(
                 hexstring(pack('>Q', ike_sa.my_spi)), len(self.ike_sas)))
 
         # else, look for the IkeSa in the dict
