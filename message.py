@@ -15,19 +15,22 @@ from helpers import hexstring, SafeIntEnum
 from crypto import Prf, Cipher, Integrity, DiffieHellman, ESN
 from ipaddress import ip_address
 
-class InvalidSyntax(Exception):
+class IkeSaError(Exception):
     pass
 
-class UnsupportedCriticalPayload(Exception):
+class InvalidSyntax(IkeSaError):
     pass
 
-class NoProposalChosen(Exception):
+class UnsupportedCriticalPayload(IkeSaError):
     pass
 
-class InvalidKePayload(Exception):
+class NoProposalChosen(IkeSaError):
     pass
 
-class AuthenticationFailed(Exception):
+class InvalidKePayload(IkeSaError):
+    pass
+
+class AuthenticationFailed(IkeSaError):
     pass
 
 class Payload:

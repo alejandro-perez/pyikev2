@@ -7,15 +7,13 @@ import logging
 import os
 from message import (Message, Payload, PayloadNONCE, PayloadVENDOR, PayloadKE,
     Proposal, Transform, NoProposalChosen, PayloadSA, InvalidKePayload,
-    InvalidSyntax, PayloadAUTH, AuthenticationFailed, PayloadIDi, PayloadIDr)
+    InvalidSyntax, PayloadAUTH, AuthenticationFailed, PayloadIDi, PayloadIDr,
+    IkeSaError)
 from helpers import SafeEnum, SafeIntEnum, hexstring
 from random import SystemRandom
 from crypto import DiffieHellman, Prf, Integrity, Cipher, Crypto
 from struct import pack, unpack
 from collections import namedtuple
-
-class IkeSaError(Exception):
-    pass
 
 Keyring = namedtuple('Keyring',
     ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er', 'sk_pi', 'sk_pr']
