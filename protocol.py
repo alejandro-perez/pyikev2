@@ -165,6 +165,15 @@ class IkeSa:
         message = Message.parse(data, header_only=False, crypto=self.peer_crypto)
         self.log_message(message, addr, data, send=False)
 
+        # check message_id
+        if (message.message_id == self.peer_msg_id - 1 and
+                data == self.last_received_message_data):
+            logging.warning('Retransmission detected. Sending last sent message')
+            return self.last_sent_message_data
+        elif message.message_id != self.peer_msg_id:
+            logging.error('Message with invalid ID. Omitting.')
+            return None
+
         # get the appropriate handler fnc
         try:
             handler = _handler_dict[(message.exchange_type, message.is_request)]
@@ -177,13 +186,15 @@ class IkeSa:
         reply = handler(message)
         self.last_received_message_data = data
         self.last_received_message = message
+        self.peer_msg_id = self.peer_msg_id + 1
 
+        reply_data = None
         if reply:
-            data = reply.to_bytes(crypto=self.my_crypto)
-            self.log_message(reply, addr, data, send=True)
-            self.last_sent_message_data = data
+            reply_data = reply.to_bytes(crypto=self.my_crypto)
+            self.log_message(reply, addr, reply_data, send=True)
+            self.last_sent_message_data = reply_data
             self.last_sent_message = reply
-            return data
+            self.my_msg_id = self.my_msg_id + 1
 
         return None
 
@@ -253,9 +264,7 @@ class IkeSa:
             encrypted_payloads=[],
         )
 
-        # increase msg_id and transition
-        self.my_msg_id = self.my_msg_id + 1
-        self.peer_msg_id = self.peer_msg_id + 1
+        # transition
         self.state = IkeSa.State.INIT_RES_SENT
 
         # return response
