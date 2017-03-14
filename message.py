@@ -27,6 +27,9 @@ class NoProposalChosen(Exception):
 class InvalidKePayload(Exception):
     pass
 
+class AuthenticationFailed(Exception):
+    pass
+
 class Payload:
     class Type(SafeIntEnum):
         NONE = 0

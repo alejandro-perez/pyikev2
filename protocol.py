@@ -7,13 +7,12 @@ import logging
 import os
 from message import (Message, Payload, PayloadNONCE, PayloadVENDOR, PayloadKE,
     Proposal, Transform, NoProposalChosen, PayloadSA, InvalidKePayload,
-    InvalidSyntax)
+    InvalidSyntax, PayloadAUTH, AuthenticationFailed, PayloadIDi, PayloadIDr)
 from helpers import SafeEnum, SafeIntEnum, hexstring
 from random import SystemRandom
 from crypto import DiffieHellman, Prf, Integrity, Cipher, Crypto
 from struct import pack, unpack
 from collections import namedtuple
-import copy
 
 class IkeSaError(Exception):
     pass
@@ -153,7 +152,7 @@ class IkeSa:
         logging.debug(message)
 
     def process_message(self, data, addr):
-        """ This function performs the common tasks for IKE message handling,
+        """ Performs the common tasks for IKE message handling,
             including logging for the message and the reply (if any), check of
             message IDs and control of retransmissions
         """
@@ -176,12 +175,15 @@ class IkeSa:
             return None
 
         # generate a reply
-        reply = _handler_dict[(message.exchange_type, message.is_request)](message)
+        reply = handler(message)
+        self.last_received_message_data = data
+        self.last_received_message = message
 
-        # if there is a reply, return its bytes
         if reply:
             data = reply.to_bytes(crypto=self.my_crypto)
             self.log_message(reply, addr, data, send=True)
+            self.last_sent_message_data = data
+            self.last_sent_message = reply
             return data
 
         return None
@@ -257,7 +259,25 @@ class IkeSa:
         self.peer_msg_id = self.peer_msg_id + 1
         self.state = IkeSa.State.INIT_RES_SENT
 
+        # return response
         return response
+
+    def _generate_psk_auth_payload(self, message_data, nonce, payload_id, sk_p):
+        prf = self.peer_crypto.prf.prf
+        data_to_be_signed = (message_data + nonce + prf(sk_p, payload_id.to_bytes()))
+        keypad = prf(b'this file can be whatever kind of file: TXT, JPG, GZIP, ...',
+            b'Key Pad for IKEv2')
+        return prf(keypad, data_to_be_signed)
+
+    def _generate_peer_psk_auth_payload(self, payload_id):
+        return self._generate_psk_auth_payload(self.last_received_message_data,
+            self.last_sent_message.get_payload(Payload.Type.NONCE).nonce,
+            payload_id, self.peer_crypto.sk_p)
+
+    def _generate_my_psk_auth_payload(self, payload_id):
+        return self._generate_psk_auth_payload(self.last_sent_message_data,
+            self.last_received_message.get_payload(Payload.Type.NONCE).nonce,
+            payload_id, self.my_crypto.sk_p)
 
     def process_ike_auth_request(self, request):
         """ Processes a IKE_AUTH request message and returns a
@@ -270,6 +290,17 @@ class IkeSa:
 
         # get some relevant payloads from the message
         request_payload_sa = request.get_encr_payload(Payload.Type.SA)
+        request_payload_tsi = request.get_encr_payload(Payload.Type.TSi)
+        request_payload_tsr = request.get_encr_payload(Payload.Type.TSr)
+        request_payload_idi = request.get_encr_payload(Payload.Type.IDi)
+        request_payload_auth = request.get_encr_payload(Payload.Type.AUTH)
+
+        # verify AUTH payload
+        if request_payload_auth.method != PayloadAUTH.Method.PSK:
+            raise AuthenticationFailed('AUTH method not supported')
+        auth_data = self._generate_peer_psk_auth_payload(request_payload_idi)
+        if auth_data != request_payload_auth.auth_data:
+            raise AuthenticationFailed('Invalid AUTH data received')
 
         # generate the response payload SA with the chose proposal
         chosen_child_proposal = self.select_best_child_sa_proposal(request_payload_sa)
@@ -279,6 +310,17 @@ class IkeSa:
 
         # generate the response Payload SA
         response_payload_sa = PayloadSA([chosen_child_proposal])
+
+        # TODO: Make actual TS matching
+        response_payload_tsi = request_payload_tsi
+        response_payload_tsr = request_payload_tsr
+
+        # send my IDr
+        response_payload_idr = PayloadIDr(PayloadIDr.Type.ID_RFC822_ADDR, b'bob@openikev2')
+
+        # generate AUTH payload
+        auth_data = self._generate_my_psk_auth_payload(response_payload_idr)
+        response_payload_auth = PayloadAUTH(PayloadAUTH.Method.PSK, auth_data)
 
         # generate the message
         response = Message(
@@ -292,7 +334,8 @@ class IkeSa:
             is_initiator=False,
             message_id=self.my_msg_id,
             payloads=[],
-            encrypted_payloads=[response_payload_sa],
+            encrypted_payloads=[response_payload_sa, response_payload_tsi,
+                response_payload_tsr, response_payload_idr, response_payload_auth],
         )
 
         # increase msg_id and transition
