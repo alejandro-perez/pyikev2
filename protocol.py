@@ -28,7 +28,7 @@ class IkeSa:
     """ This class controls the state machine of a IKE SA
         It is triggered with received Messages and/or IPsec events
     """
-    def __init__(self, is_initiator):
+    def __init__(self, is_initiator, psk, my_id):
         self.state = IkeSa.State.INITIAL
         self.my_spi = SystemRandom().randint(0, 0xFFFFFFFFFFFFFFFF)
         self.peer_spi = 0
@@ -39,6 +39,8 @@ class IkeSa:
         self.chosen_proposal = None
         self.my_crypto = None
         self.peer_crypto = None
+        self.psk = psk
+        self.my_id = my_id
 
     @property
     def spi_i(self):
@@ -273,8 +275,7 @@ class IkeSa:
     def _generate_psk_auth_payload(self, message_data, nonce, payload_id, sk_p):
         prf = self.peer_crypto.prf.prf
         data_to_be_signed = (message_data + nonce + prf(sk_p, payload_id.to_bytes()))
-        keypad = prf(b'this file can be whatever kind of file: TXT, JPG, GZIP, ...',
-            b'Key Pad for IKEv2')
+        keypad = prf(self.psk, b'Key Pad for IKEv2')
         return prf(keypad, data_to_be_signed)
 
     def _generate_peer_psk_auth_payload(self, payload_id):
@@ -324,7 +325,7 @@ class IkeSa:
         response_payload_tsr = request_payload_tsr
 
         # send my IDr
-        response_payload_idr = PayloadIDr(PayloadIDr.Type.ID_RFC822_ADDR, b'bob@openikev2')
+        response_payload_idr = PayloadIDr(self.my_id.id_type, self.my_id.id_data)
 
         # generate AUTH payload
         auth_data = self._generate_my_psk_auth_payload(response_payload_idr)
@@ -354,8 +355,11 @@ class IkeSa:
         return response
 
 class IkeSaController:
-    def __init__(self):
+    def __init__(self, psk, my_id):
         self.ike_sas = {}
+        self.psk = psk
+        self.my_id = my_id
+
 
     def dispatch_message(self, data, addr):
         header = Message.parse(data, header_only=True)
@@ -363,7 +367,7 @@ class IkeSaController:
         # if IKE_SA_INIT request, then a new IkeSa must be created
         if (header.exchange_type == Message.Exchange.IKE_SA_INIT and
                 header.is_request):
-            ike_sa = IkeSa(is_initiator=False)
+            ike_sa = IkeSa(is_initiator=False, psk=self.psk, my_id=self.my_id)
             self.ike_sas[ike_sa.my_spi] = ike_sa
             logging.info('Created new IKE_SA with SPI={}. Count={}'.format(
                 hexstring(pack('>Q', ike_sa.my_spi)), len(self.ike_sas)))
