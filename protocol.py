@@ -173,8 +173,10 @@ class IkeSa:
             logging.warning('Retransmission detected. Sending last sent message')
             return self.last_sent_message_data
         elif message.message_id != self.peer_msg_id:
-            logging.error('Message with invalid ID. Omitting.')
-            return None
+            logging.error(
+                'Message with invalid ID. Expecting {}. Omitting.'
+                ''.format(self.peer_msg_id))
+            return True, None
 
         # get the appropriate handler fnc
         try:
@@ -354,8 +356,6 @@ class IkeSa:
         )
 
         # increase msg_id and transition
-        self.my_msg_id = self.my_msg_id + 1
-        self.peer_msg_id = self.peer_msg_id + 1
         self.state = IkeSa.State.ESTABLISHED
 
         return response
