@@ -142,7 +142,8 @@ class IkeSa:
         return self.select_best_sa_proposal(my_proposal, peer_payload_sa)
 
     def log_message(self, message, addr, data, send=True):
-        logging.info('{} {} {} ({} bytes) {} {}'.format(
+        logging.info('IKE_SA: {}. {} {} {} ({} bytes) {} {}'.format(
+            hexstring(pack('>Q', self.my_spi)),
             'Sent' if send else 'Received',
             Message.Exchange.safe_name(message.exchange_type),
             'response' if message.is_response else 'request',
@@ -357,6 +358,8 @@ class IkeSaController:
                 header.is_request):
             ike_sa = IkeSa(is_initiator=False)
             self.ike_sas[ike_sa.my_spi] = ike_sa
+            logging.info('Created new IKE_SA with SPI={}. Count={}'.format(
+                hexstring(pack('>Q', ike_sa.my_spi)), len(self.ike_sas)))
 
         # else, look for the IkeSa in the dict
         else:
