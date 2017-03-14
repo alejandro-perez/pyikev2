@@ -703,20 +703,20 @@ class Message:
 
             # Parse the payload. If not known and critical, raise exception
             try:
-                payload = PayloadFactory.parse(
-                    payload_type, data[start:end], critical)
+                payload = PayloadFactory.parse(payload_type, data[start:end], critical)
+
+                # If payload SK, annotate next_payload_type and set it to NONE
+                if payload_type == Payload.Type.SK:
+                    payload.next_payload_type = next_payload_type
+                    next_payload_type = Payload.Type.NONE
+
+                # offset is increased in any case
+                payloads.append(payload)
             except InvalidSyntax as ex:
                 logging.warning(ex)
                 if critical:
                     raise UnsupportedCriticalPayload
 
-            # If payload SK, annotate next_payload_type and set it to NONE
-            if payload_type == Payload.Type.SK:
-                payload.next_payload_type = next_payload_type
-                next_payload_type = Payload.Type.NONE
-
-            # offset is increased in any case
-            payloads.append(payload)
             offset += length
             payload_type = next_payload_type
 
