@@ -436,11 +436,24 @@ class PayloadID(Payload):
         data += self.id_data
         return data
 
+    def _id_data_str(self):
+        if self.id_type in (
+                PayloadID.Type.ID_RFC822_ADDR,
+                PayloadID.Type.ID_FQDN):
+            return self.id_data.decode()
+        elif self.id_type in (
+                PayloadID.Type.ID_IPV4_ADDR,
+                PayloadID.Type.ID_IPV6_ADDR):
+            return str(ip_address(self.id_data)),
+        else:
+            return hexstring(self.id_data)
+
+
     def to_dict(self):
         result = super(PayloadID, self).to_dict()
         result.update(OrderedDict([
             ('id_type', PayloadID.Type.safe_name(self.id_type)),
-            ('id_data', hexstring(self.id_data)),
+            ('id_data', self._id_data_str()),
         ]))
         return result
 
