@@ -16,7 +16,7 @@ from cryptography.hazmat.primitives.asymmetric import dh
 import cryptography.hazmat.backends.openssl.backend
 from cryptography.hazmat.primitives.ciphers import Cipher as cypher, algorithms, modes
 
-Crypto = namedtuple('Crypto', ['cipher', 'sk_e', 'integrity', 'sk_a'])
+Crypto = namedtuple('Crypto', ['cipher', 'sk_e', 'integrity', 'sk_a', 'prf', 'sk_p'])
 
 class EncrError(Exception):
     pass

@@ -73,16 +73,17 @@ class IkeSa:
 
         self.ike_sa_keyring = Keyring._make(
             unpack(
-                ('>' + '{}s' * 7).format(prf.key_size, integ.key_size, integ.key_size,
-                    cipher.key_size, cipher.key_size, prf.key_size, prf.key_size),
-                keymat
-            )
-        )
+                ('>' + '{}s' * 7).format(prf.key_size, integ.key_size,
+                    integ.key_size, cipher.key_size, cipher.key_size,
+                    prf.key_size, prf.key_size),
+                keymat))
 
-        crypto_i = Crypto._make([
-            cipher, self.ike_sa_keyring.sk_ei, integ, self.ike_sa_keyring.sk_ai])
-        crypto_r = Crypto._make([
-            cipher, self.ike_sa_keyring.sk_er, integ, self.ike_sa_keyring.sk_ar])
+        crypto_i = Crypto(cipher, self.ike_sa_keyring.sk_ei,
+            integ, self.ike_sa_keyring.sk_ai,
+            prf, self.ike_sa_keyring.sk_pi)
+        crypto_r = Crypto(cipher, self.ike_sa_keyring.sk_er,
+            integ, self.ike_sa_keyring.sk_ar,
+            prf, self.ike_sa_keyring.sk_pr)
 
         self.my_crypto = crypto_i if self.is_initiator else crypto_r
         self.peer_crypto = crypto_r if self.is_initiator else crypto_i
