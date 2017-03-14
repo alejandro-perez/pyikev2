@@ -790,13 +790,14 @@ class Message:
 
     def to_bytes(self, crypto=None):
         # if keyring is provided, encrypt everything into a SK payload
-        if self.encrypted_payloads:
+        if crypto is not None:
             cleartext = self._payloads_to_bytes(self.encrypted_payloads)
             payload_sk = PayloadSK.generate(cleartext, crypto)
-            payload_sk.next_payload_type = self.encrypted_payloads[0].type
+            payload_sk.next_payload_type = (
+                self.encrypted_payloads[0].type  if self.encrypted_payloads else Payload.Type.NONE)
             self.payloads.append(payload_sk)
 
-        # generate header
+        # generate header_data
         first_payload_type = self.payloads[0].type if self.payloads else Payload.Type.NONE
         header_data = bytearray(pack(
             '>2Q4B2L', self.spi_i, self.spi_r, first_payload_type,
@@ -816,7 +817,7 @@ class Message:
         pack_into('>L', data, 24, len(data))
 
         # calculate checksum
-        if self.encrypted_payloads:
+        if crypto is not None:
             # check integrity
             checksum = crypto.integrity.compute(
                 crypto.sk_a, data[:-crypto.integrity.hash_size])

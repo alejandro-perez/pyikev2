@@ -201,7 +201,9 @@ class IkeSa:
 
         reply_data = None
         if reply:
-            reply_data = reply.to_bytes(crypto=self.my_crypto)
+            crypto = (self.my_crypto
+                if reply.exchange_type != Message.Exchange.IKE_SA_INIT else None)
+            reply_data = reply.to_bytes(crypto)
             self.log_message(reply, addr, reply_data, send=True)
             self.last_sent_message_data = reply_data
             self.last_sent_message = reply
