@@ -182,10 +182,16 @@ class IkeSa:
         except KeyError:
             logging.error('I don\'t know how to handle this message. '
                 'Please, implement a handler!')
-            return None
+            return False, None
 
-        # generate a reply
-        reply = handler(message)
+        # try to process the message and get a reply
+        try:
+            reply = handler(message)
+        except IkeSaError as ex:
+            # TODO: Some errors are non-aborting (and send NOTIFY or such)
+            logging.error(ex)
+            return False, None
+
         self.last_received_message_data = data
         self.last_received_message = message
         self.peer_msg_id = self.peer_msg_id + 1
@@ -198,7 +204,7 @@ class IkeSa:
             self.last_sent_message = reply
             self.my_msg_id = self.my_msg_id + 1
 
-        return None
+        return True, reply_data
 
     def process_ike_sa_init_request(self, request):
         """ Processes a IKE_SA_INIT message and returns a IKE_SA_INIT response
@@ -378,10 +384,18 @@ class IkeSaController:
             try:
                 ike_sa = self.ike_sas[my_spi]
             except KeyError:
-                logging.warning('Received message for unknown SPI. Omitting.')
+                logging.warning(
+                    'Received message for unknown SPI={}. Omitting.'.format(
+                        hexstring(pack('>Q', my_spi))))
                 logging.debug(header)
                 return None
 
-        # return the reply (if any)
-        reply = ike_sa.process_message(data, addr)
+        # generate the reply (if any)
+        status, reply = ike_sa.process_message(data, addr)
+
+        # if the IKE_SA needs to be closed
+        if not status:
+            del self.ike_sas[ike_sa.my_spi]
+            logging.info('Deleted IKE_SA with SPI={}. Count={}'.format(
+                hexstring(pack('>Q', ike_sa.my_spi)), len(self.ike_sas)))
         return reply
