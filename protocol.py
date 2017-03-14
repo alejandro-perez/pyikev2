@@ -51,15 +51,15 @@ class IkeSa:
     def spi_r(self):
         return self.my_spi if self.is_initiator else self.peer_spi
 
-    def generate_ike_sa_key_material(self, proposal, nonce_i, nonce_r,
+    def generate_ike_sa_key_material(self, ike_proposal, nonce_i, nonce_r,
                 spi_i, spi_r, shared_secret):
         """ Generates IKE_SA key material based on the proposal and DH
         """
-        prf = Prf(proposal.get_transform(Transform.Type.PRF).id)
-        integ = Integrity(proposal.get_transform(Transform.Type.INTEG).id)
+        prf = Prf(ike_proposal.get_transform(Transform.Type.PRF).id)
+        integ = Integrity(ike_proposal.get_transform(Transform.Type.INTEG).id)
         cipher = Cipher(
-            proposal.get_transform(Transform.Type.ENCR).id,
-            proposal.get_transform(Transform.Type.ENCR).keylen
+            ike_proposal.get_transform(Transform.Type.ENCR).id,
+            ike_proposal.get_transform(Transform.Type.ENCR).keylen
         )
 
         SKEYSEED = prf.prf(nonce_i + nonce_r, shared_secret)
@@ -67,15 +67,13 @@ class IkeSa:
 
         keymat = prf.prfplus(
             SKEYSEED,
-            nonce_i + nonce_r + spi_i.to_bytes(8, 'big') + spi_r.to_bytes(8, 'big'),
+            nonce_i + nonce_r + pack('>Q', spi_i) + pack('>Q', spi_r),
             prf.key_size * 3 + integ.key_size * 2 + cipher.key_size * 2
         )
 
         self.ike_sa_keyring = Keyring._make(
-            unpack(
-                ('>' + '{}s' * 7).format(prf.key_size, integ.key_size,
-                    integ.key_size, cipher.key_size, cipher.key_size,
-                    prf.key_size, prf.key_size),
+            unpack('>{0}s{1}s{1}s{2}s{2}s{0}s{0}s'.format(
+                    prf.key_size, integ.key_size, cipher.key_size),
                 keymat))
 
         crypto_i = Crypto(cipher, self.ike_sa_keyring.sk_ei,
@@ -95,6 +93,34 @@ class IkeSa:
         logging.debug('Generated sk_er: {}'.format(hexstring(self.ike_sa_keyring.sk_er)))
         logging.debug('Generated sk_pi: {}'.format(hexstring(self.ike_sa_keyring.sk_pi)))
         logging.debug('Generated sk_pr: {}'.format(hexstring(self.ike_sa_keyring.sk_pr)))
+
+    def generate_child_sa_key_material(self, ike_proposal, child_proposal,
+            nonce_i, nonce_r, sk_d):
+        """ Generates CHILD_SA key material
+        """
+        prf = Prf(ike_proposal.get_transform(Transform.Type.PRF).id)
+
+        # ESP and AH need integrity transform
+        integ = Integrity(child_proposal.get_transform(Transform.Type.INTEG).id)
+        integ_key_size = integ.key_size
+        encr_key_size = 0
+        if child_proposal.protocol_id == Proposal.Protocol.ESP:
+            cipher = Cipher(
+                child_proposal.get_transform(Transform.Type.ENCR).id,
+                child_proposal.get_transform(Transform.Type.ENCR).keylen)
+            encr_key_size = cipher.key_size
+
+        keymat = prf.prfplus(
+            sk_d, nonce_i + nonce_r, 2 * integ_key_size + 2 * encr_key_size)
+
+        sk_ei, sk_ai, sk_er, sk_ar = unpack(
+            '>{0}s{1}s{0}s{1}s'.format(encr_key_size, integ_key_size),
+            keymat)
+
+        logging.debug('Generated sk_ai: {}'.format(hexstring(sk_ai)))
+        logging.debug('Generated sk_ar: {}'.format(hexstring(sk_ar)))
+        logging.debug('Generated sk_ei: {}'.format(hexstring(sk_ei)))
+        logging.debug('Generated sk_er: {}'.format(hexstring(sk_er)))
 
     def select_best_sa_proposal(self, my_proposal, peer_payload_sa):
         """ Selects a received Payload SA wit our own suite
@@ -327,6 +353,15 @@ class IkeSa:
 
         # TODO: Take this SPI from an actual acquire to avoid (unlikely) collisions
         chosen_child_proposal.spi = os.urandom(4)
+
+        # generate CHILD key material
+        self.generate_child_sa_key_material(
+            self.chosen_proposal,
+            chosen_child_proposal,
+            nonce_i=self.last_received_message.get_payload(Payload.Type.NONCE).nonce,
+            nonce_r=self.last_sent_message.get_payload(Payload.Type.NONCE).nonce,
+            sk_d=self.ike_sa_keyring.sk_d
+        )
 
         # generate the response Payload SA
         response_payload_sa = PayloadSA([chosen_child_proposal])
