@@ -7,11 +7,10 @@ import unittest
 import ipsec
 from protocol import Policy
 from message import TrafficSelector, Proposal
-import subprocess
 
 class TestIpsec(unittest.TestCase):
     def setUp(self):
-        subprocess.call(['ip', 'xfrm', 'policy', 'flush'])
+        ipsec.flush_policies()
 
     def test_create_transport_policy(self):
         policy = Policy('192.168.1.0/24', 0, '10.0.0.0/8', 80,
@@ -43,7 +42,7 @@ class TestIpsec(unittest.TestCase):
             b'.54.1.2\n\t\tproto ah reqid 0 mode tunnel\n')
 
     def tearDown(self):
-        subprocess.call(['ip', 'xfrm', 'policy', 'flush'])
+        ipsec.flush_policies()
 
 if __name__ == '__main__':
     unittest.main()

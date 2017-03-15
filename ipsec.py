@@ -63,3 +63,6 @@ def create_policy(policy):
         _ip_proto_names[policy.ip_protocol], str(policy.dst_port),
         str(policy.src_port), 'in', _ipsec_proto_names[policy.ipsec_protocol],
         _mode_names[policy.mode], str(policy.tunnel_dst), str(policy.tunnel_src))
+
+def flush_policies():
+    subprocess.call(['ip', 'xfrm', 'policy', 'flush'])
