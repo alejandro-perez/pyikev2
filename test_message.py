@@ -87,7 +87,7 @@ class TestPayloadSK(TestPayloadMixin, unittest.TestCase):
         cipher = Cipher(Cipher.Id.ENCR_AES_CBC, 256)
         encryption_key = b'Mypassword121111'*2
 
-        crypto = Crypto(cipher, encryption_key, integrity, b'')
+        crypto = Crypto(cipher, encryption_key, integrity, b'', None, b'')
 
         payload_sk = PayloadSK.generate(b'Hello there!', crypto)
         clear = payload_sk.decrypt(crypto)
@@ -275,7 +275,8 @@ class TestMessage(TestPayloadMixin, unittest.TestCase):
         )
 
         crypto = Crypto(Cipher(Cipher.Id.ENCR_AES_CBC, 256), b'a' * 32,
-            Integrity(Integrity.Id.AUTH_HMAC_SHA1_96), b'a' * 16)
+            Integrity(Integrity.Id.AUTH_HMAC_SHA1_96), b'a' * 16,
+            None, b'')
 
         a = str(message.to_dict())
         data = message.to_bytes(crypto)
