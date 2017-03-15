@@ -32,6 +32,9 @@ class InvalidKePayload(IkeSaError):
 class AuthenticationFailed(IkeSaError):
     pass
 
+class InvalidSelectors(IkeSaError):
+    pass
+
 class Payload:
     class Type(SafeIntEnum):
         NONE = 0
@@ -544,6 +547,42 @@ class TrafficSelector(object):
             ('addr-range', '{} - {}'.format(self.start_addr, self.end_addr)),
         ])
         return result
+
+    def intersection(self, other):
+        """ Generates the intersection of two TS payloads
+        """
+        if self.ts_type != other.ts_type:
+            return None
+        ts_type = self.ts_type
+
+        # check if both have compatibles protocols
+        if (self.ip_proto != other.ip_proto and
+                self.ip_proto != TrafficSelector.IpProtocol.ANY and
+                other.ip_proto != TrafficSelector.IpProtocol.ANY):
+            return None
+
+        ip_proto = (self.ip_proto if self.ip_proto !=
+            TrafficSelector.IpProtocol.ANY else other.ip_proto)
+
+        start_port = max(self.start_port, other.start_port)
+        end_port = min(self.end_port, other.end_port)
+        if start_port > end_port:
+            return None
+
+        start_addr = max(self.start_addr, other.start_addr)
+        end_addr = min(self.end_addr, other.end_addr)
+        if start_addr > end_addr:
+            return None
+
+        return TrafficSelector(ts_type, ip_proto, start_port,
+            end_port, start_addr, end_addr)
+
+    def __eq__(self, other):
+        return (
+            (self.ts_type, self.ip_proto, self.start_port,
+             self.end_port, self.start_addr, self.end_addr) ==
+                (other.ts_type, other.ip_proto, other.start_port,
+                other.end_port, other.start_addr, other.end_addr))
 
 class PayloadTS(Payload):
     type = None

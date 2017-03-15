@@ -8,19 +8,78 @@ import os
 from message import (Message, Payload, PayloadNONCE, PayloadVENDOR, PayloadKE,
     Proposal, Transform, NoProposalChosen, PayloadSA, InvalidKePayload,
     InvalidSyntax, PayloadAUTH, AuthenticationFailed, PayloadIDi, PayloadIDr,
-    IkeSaError, PayloadTSi, PayloadTSr)
+    IkeSaError, PayloadTSi, PayloadTSr, TrafficSelector, InvalidSelectors)
 from helpers import SafeEnum, SafeIntEnum, hexstring
 from random import SystemRandom
 from crypto import DiffieHellman, Prf, Integrity, Cipher, Crypto
 from struct import pack, unpack
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 import json
+from ipaddress import ip_address, ip_network
 
 Keyring = namedtuple('Keyring',
     ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er', 'sk_pi', 'sk_pr']
 )
 
-class IkeSa:
+class Policy(object):
+    """ Represents a security policy
+
+        Policies are always defined as if src_selector was our side of the
+        conversation. E.g. a HTTP server would set src_port=80 and dst_port=0
+    """
+    class Mode(SafeIntEnum):
+        TRANSPORT = 1
+        TUNNEL = 2
+
+    def __init__(self, src_selector, src_port, dst_selector, dst_port,
+            ip_proto, ipsec_proto, mode, tunnel_src=None,
+            tunnel_dst=None):
+        self.src_selector = ip_network(src_selector)
+        self.src_port = src_port
+        self.dst_selector = ip_network(dst_selector)
+        self.dst_port = dst_port
+        self.ip_protocol = ip_proto
+        self.ipsec_protocol = ipsec_proto
+        self.mode = mode
+        self.tunnel_src = ip_address(tunnel_src) if tunnel_src else None
+        self.tunnel_dst = ip_address(tunnel_dst) if tunnel_dst else None
+
+    def get_tsi(self):
+        return TrafficSelector(
+            ts_type=TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
+            ip_proto=self.ip_protocol,
+            start_port=self.src_port,
+            end_port=65535 if self.src_port == 0 else self.src_port,
+            start_addr=self.src_selector[0],
+            end_addr=self.src_selector[-1]
+        )
+
+    def get_tsr(self):
+        return TrafficSelector(
+            ts_type=TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
+            ip_proto=self.ip_protocol,
+            start_port=self.dst_port,
+            end_port=65535 if self.dst_port == 0 else self.dst_port,
+            start_addr=self.dst_selector[0],
+            end_addr=self.dst_selector[-1]
+        )
+
+    def to_dict(self):
+        result = OrderedDict([
+            ('src_selector', '{}:{}'.format(self.src_selector, self.src_port)),
+            ('dst_selector', '{}:{}'.format(self.dst_selector, self.dst_port)),
+            ('ip_protocol', TrafficSelector.IpProtocol.safe_name(self.ip_protocol)),
+            ('ipsec_protocol', Proposal.Protocol.safe_name(self.ipsec_protocol)),
+            ('mode', Policy.Mode.safe_name(self.mode)),
+        ])
+        if self.mode == Policy.Mode.TUNNEL:
+            result.update(OrderedDict([
+                ('tunnel_src', str(self.tunnel_src)),
+                ('tunnel_dst', str(self.tunnel_dst)),
+            ]))
+        return result
+
+class IkeSa(object):
     class State(SafeIntEnum):
         INITIAL = 0
         INIT_RES_SENT = 1
@@ -29,7 +88,7 @@ class IkeSa:
     """ This class controls the state machine of a IKE SA
         It is triggered with received Messages and/or IPsec events
     """
-    def __init__(self, is_initiator, psk, my_id):
+    def __init__(self, is_initiator, psk, my_id, policies):
         self.state = IkeSa.State.INITIAL
         self.my_spi = SystemRandom().randint(0, 0xFFFFFFFFFFFFFFFF)
         self.peer_spi = 0
@@ -42,6 +101,7 @@ class IkeSa:
         self.peer_crypto = None
         self.psk = psk
         self.my_id = my_id
+        self.policies = policies
 
     @property
     def spi_i(self):
@@ -167,6 +227,24 @@ class IkeSa:
             ]
         )
         return self.select_best_sa_proposal(my_proposal, peer_payload_sa)
+
+    def _select_best_traffic_selector(self, payload_tsi, payload_tsr):
+        """ Selects best matching traffic selectors.
+            Only executed on the responder side, thus we need to use policy's
+            reversed TSs.
+            It iterates over the received TS in reversed order and returns the
+            first pair that intersecs with any of our policies
+        """
+        for tsi in reversed(payload_tsi.traffic_selectors):
+            for tsr in reversed(payload_tsr.traffic_selectors):
+                for policy in self.policies:
+                    policy_tsi = policy.get_tsi()
+                    policy_tsr = policy.get_tsr()
+                    narrowed_tsi = tsi.intersection(policy_tsr)
+                    narrowed_tsr = tsr.intersection(policy_tsi)
+                    if narrowed_tsi and narrowed_tsr:
+                        return (narrowed_tsi, narrowed_tsr)
+        raise InvalidSelectors('TS could not be matched with any Policy')
 
     def log_message(self, message, addr, data, send=True):
         logging.info('IKE_SA: {}. {} {} {} ({} bytes) {} {}'.format(
@@ -369,9 +447,9 @@ class IkeSa:
         # generate the response Payload SA
         response_payload_sa = PayloadSA([chosen_child_proposal])
 
-        # TODO: Make actual TS matching. So far just accepting the first one (bad practice!)
-        response_payload_tsi = PayloadTSi([request_payload_tsi.traffic_selectors[0]])
-        response_payload_tsr = PayloadTSr([request_payload_tsr.traffic_selectors[0]])
+        # generate response Payload TSi/TSr based on the chosen selectors
+        response_payload_tsi = PayloadTSi([chosen_tsi])
+        response_payload_tsr = PayloadTSr([chosen_tsr])
 
         # send my IDr
         response_payload_idr = PayloadIDr(self.my_id.id_type, self.my_id.id_data)
@@ -434,7 +512,11 @@ class IkeSaController:
         self.ike_sas = {}
         self.psk = psk
         self.my_id = my_id
-
+        self.policies = [
+            Policy('10.0.5.141/32', 23, '10.0.5.0/24', 0,
+                TrafficSelector.IpProtocol.TCP, Proposal.Protocol.ESP,
+                Policy.Mode.TRANSPORT),
+        ]
 
     def dispatch_message(self, data, addr):
         header = Message.parse(data, header_only=True)
@@ -442,7 +524,8 @@ class IkeSaController:
         # if IKE_SA_INIT request, then a new IkeSa must be created
         if (header.exchange_type == Message.Exchange.IKE_SA_INIT and
                 header.is_request):
-            ike_sa = IkeSa(is_initiator=False, psk=self.psk, my_id=self.my_id)
+            ike_sa = IkeSa(is_initiator=False, psk=self.psk, my_id=self.my_id,
+                           policies=self.policies)
             self.ike_sas[ike_sa.my_spi] = ike_sa
             logging.info('Starting the creation of IKE SA with SPI={}. Count={}'.format(
                 hexstring(pack('>Q', ike_sa.my_spi)), len(self.ike_sas)))

@@ -15,6 +15,7 @@ from protocol import Keyring
 from crypto import Prf, Cipher, Integrity, DiffieHellman, ESN, Crypto
 from ipaddress import ip_address
 from helpers import hexstring
+import json
 
 class TestPayloadMixin(object):
     def setUp(self):
@@ -161,6 +162,28 @@ class TestTrafficSelector(TestPayloadMixin, unittest.TestCase):
         self.object = TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
             TrafficSelector.IpProtocol.UDP, 0, 10, ip_address('192.168.1.1'),
             ip_address('192.168.10.10'))
+
+    def test_intersection_bijective(self):
+        ts2 = TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
+            TrafficSelector.IpProtocol.ANY, 4, 15, ip_address('192.167.1.5'),
+            ip_address('193.168.10.10'))
+        result1 = ts2.intersection(self.object)
+        result2 = self.object.intersection(ts2)
+        self.assertEqual(result1, result2)
+
+    def test_intersection_different_proto(self):
+        ts2 = TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
+            TrafficSelector.IpProtocol.TCP, 0, 10, ip_address('192.168.1.1'),
+            ip_address('192.168.10.10'))
+        result = ts2.intersection(self.object)
+        self.assertIsNone(result)
+
+    def test_intersection_invalid_type(self):
+        ts2 = TrafficSelector(TrafficSelector.Type.TS_IPV6_ADDR_RANGE,
+            TrafficSelector.IpProtocol.UDP, 0, 10, ip_address('192.168.1.1'),
+            ip_address('192.168.10.10'))
+        result = ts2.intersection(self.object)
+        self.assertIsNone(result)
 
 class TestPayloadTS(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
