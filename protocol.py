@@ -111,7 +111,7 @@ class IkeSa(object):
     def spi_r(self):
         return self.my_spi if self.is_initiator else self.peer_spi
 
-    def generate_ike_sa_key_material(self, ike_proposal, nonce_i, nonce_r,
+    def _generate_ike_sa_key_material(self, ike_proposal, nonce_i, nonce_r,
                 spi_i, spi_r, shared_secret):
         """ Generates IKE_SA key material based on the proposal and DH
         """
@@ -154,7 +154,7 @@ class IkeSa(object):
         logging.debug('Generated sk_pi: {}'.format(hexstring(self.ike_sa_keyring.sk_pi)))
         logging.debug('Generated sk_pr: {}'.format(hexstring(self.ike_sa_keyring.sk_pr)))
 
-    def generate_child_sa_key_material(self, ike_proposal, child_proposal,
+    def _generate_child_sa_key_material(self, ike_proposal, child_proposal,
             nonce_i, nonce_r, sk_d):
         """ Generates CHILD_SA key material
         """
@@ -182,7 +182,7 @@ class IkeSa(object):
         logging.debug('Generated sk_ei: {}'.format(hexstring(sk_ei)))
         logging.debug('Generated sk_er: {}'.format(hexstring(sk_er)))
 
-    def select_best_sa_proposal(self, my_proposal, peer_payload_sa):
+    def _select_best_sa_proposal(self, my_proposal, peer_payload_sa):
         """ Selects a received Payload SA wit our own suite
         """
         for peer_proposal in peer_payload_sa.proposals:
@@ -200,7 +200,7 @@ class IkeSa(object):
                         list(selected_transforms.values()))
         raise NoProposalChosen('Could not find a suitable matching Proposal')
 
-    def select_best_ike_sa_proposal(self, peer_payload_sa):
+    def _select_best_ike_sa_proposal(self, peer_payload_sa):
         my_proposal = Proposal(
             1, Proposal.Protocol.IKE, b'',
             [
@@ -214,9 +214,9 @@ class IkeSa(object):
                 Transform(Transform.Type.DH, DiffieHellman.Id.DH_2),
             ]
         )
-        return self.select_best_sa_proposal(my_proposal, peer_payload_sa)
+        return self._select_best_sa_proposal(my_proposal, peer_payload_sa)
 
-    def select_best_child_sa_proposal(self, peer_payload_sa):
+    def _select_best_child_sa_proposal(self, peer_payload_sa):
         my_proposal = Proposal(
             1, Proposal.Protocol.ESP, b'',
             [
@@ -226,7 +226,7 @@ class IkeSa(object):
                 Transform(Transform.Type.INTEG, Integrity.Id.AUTH_HMAC_MD5_96),
             ]
         )
-        return self.select_best_sa_proposal(my_proposal, peer_payload_sa)
+        return self._select_best_sa_proposal(my_proposal, peer_payload_sa)
 
     def _select_best_traffic_selector(self, payload_tsi, payload_tsr):
         """ Selects best matching traffic selectors.
@@ -336,7 +336,7 @@ class IkeSa(object):
         request_payload_nonce = request.get_payload(Payload.Type.NONCE)
 
         # generate the response payload SA with the chose proposal
-        self.chosen_proposal = self.select_best_ike_sa_proposal(request_payload_sa)
+        self.chosen_proposal = self._select_best_ike_sa_proposal(request_payload_sa)
 
         # check that DH groups match
         my_dh_group = self.chosen_proposal.get_transform(Transform.Type.DH).id
@@ -353,7 +353,7 @@ class IkeSa(object):
         response_payload_nonce = PayloadNONCE()
 
         # generate IKE SA key material
-        self.generate_ike_sa_key_material(
+        self._generate_ike_sa_key_material(
             ike_proposal=self.chosen_proposal,
             nonce_i=request_payload_nonce.nonce,
             nonce_r=response_payload_nonce.nonce,
@@ -429,14 +429,19 @@ class IkeSa(object):
         if auth_data != request_payload_auth.auth_data:
             raise AuthenticationFailed('Invalid AUTH data received')
 
-        # generate the response payload SA with the chose proposal
-        chosen_child_proposal = self.select_best_child_sa_proposal(request_payload_sa)
+        # generate the response payload SA with the chosen proposal
+        chosen_child_proposal = self._select_best_child_sa_proposal(
+            request_payload_sa)
+
+        # find matching TS
+        chosen_tsi, chosen_tsr = self._select_best_traffic_selector(
+            request_payload_tsi, request_payload_tsr)
 
         # TODO: Take this SPI from an actual acquire to avoid (unlikely) collisions
         chosen_child_proposal.spi = os.urandom(4)
 
         # generate CHILD key material
-        self.generate_child_sa_key_material(
+        self._generate_child_sa_key_material(
             ike_proposal=self.chosen_proposal,
             child_proposal=chosen_child_proposal,
             nonce_i=self.last_received_message.get_payload(Payload.Type.NONCE).nonce,
