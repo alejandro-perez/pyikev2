@@ -7,6 +7,7 @@ import unittest
 import ipsec
 from protocol import Policy
 from message import TrafficSelector, Proposal
+import subprocess
 
 class TestIpsec(unittest.TestCase):
     def setUp(self):
@@ -32,7 +33,6 @@ class TestIpsec(unittest.TestCase):
             Policy.Mode.TUNNEL, '155.54.1.1', '155.54.1.2')
         ipsec.create_policy(policy)
         text_pol = subprocess.check_output(['ip', 'xfrm', 'policy'])
-        print(text_pol)
         self.assertEqual(
             text_pol,
             b'src 10.0.0.0/8 dst 192.168.1.0/24 proto tcp sport 80 \n\tdir in '
