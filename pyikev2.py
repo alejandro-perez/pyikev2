@@ -6,7 +6,7 @@ __author__ = 'Alejandro Perez <alex@um.es>'
 import socket
 import argparse
 import logging
-from message import Message, PayloadID
+from message import Message, PayloadID, TrafficSelector, Proposal
 from protocol import IkeSaController
 from ipaddress import ip_address
 from configuration import Configuration
@@ -16,7 +16,7 @@ parser = argparse.ArgumentParser(description='Opensource IKEv2 daemon written in
 parser.add_argument('--verbose', '-v', action='store_true',
     help='Enable (much) more verbosity. WARNING: This will make your key '
     'material to be shown in the log output!')
-parser.add_argument('--listen', '-l', default='0.0.0.0', metavar='IP',
+parser.add_argument('--listen', '-l', default='', metavar='IP',
     help='IP address where the daemon will listen from. Defaults to 0.0.0.0.')
 parser.add_argument('--indent-json', '-i', type=int, default=None, metavar='N',
     help='Indent JSON log output with the provided number of spaces.'),
@@ -50,6 +50,10 @@ configuration = Configuration(
         },
     }
 )
+
+policy = Policy('10.0.5.141/32', 23, '10.0.5.0/24', 0,
+    TrafficSelector.IpProtocol.TCP, Proposal.Protocol.ESP,
+    Policy.Mode.TRANSPORT)
 
 # create IkeSaController
 ike_sa_controller = IkeSaController(configuration=configuration)
