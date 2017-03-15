@@ -12,6 +12,27 @@ from message import TrafficSelector, Proposal
 class IpsecError(Exception):
     pass
 
+def _ip_xfrm_add_policy(src, dst, ip_proto, sport, dport, dir,
+                        ipsec_proto, mode, tsrc, tdst):
+    command = [
+        'ip', 'xfrm', 'policy', 'add', 'src', src, 'dst', dst, 'proto', ip_proto,
+        'sport', sport, 'dport', dport, 'dir', dir, 'action', 'allow', 'tmpl'
+    ]
+    if mode == 'tunnel':
+        command += ['src', tsrc, 'dst', tdst]
+    command += ['proto', ipsec_proto, 'mode', mode]
+
+    proc = subprocess.Popen(command, stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE)
+    try:
+        outs, errs = proc.communicate(timeout=15)
+    except:
+        proc.kill()
+        raise IpsecError('Timeout sending ip xfrm command')
+
+    if proc.poll() != 0:
+        raise IpsecError('Could not create IPsec policy: {}'.format(errs))
+
 def create_policy(policy):
     """ Creates all the directions of a Policy object
     """
@@ -29,35 +50,16 @@ def create_policy(policy):
         Policy.Mode.TRANSPORT: 'transport',
     }
 
-    command = ['ip', 'xfrm', 'policy', 'add',
-        'src', str(policy.src_selector),
-        'dst', str(policy.dst_selector),
-        'proto', _ip_proto_names[policy.ip_protocol],
-        'sport', str(policy.src_port),
-        'dport', str(policy.dst_port),
-        'dir', 'out',
-        'action', 'allow',
-        'tmpl'
-    ]
+    # add outbound
+    _ip_xfrm_add_policy(
+        str(policy.src_selector), str(policy.dst_selector),
+        _ip_proto_names[policy.ip_protocol], str(policy.src_port),
+        str(policy.dst_port), 'out', _ipsec_proto_names[policy.ipsec_protocol],
+        _mode_names[policy.mode], str(policy.tunnel_src), str(policy.tunnel_dst))
 
-    # if tunnel model, add src and dst
-    if policy.mode == Policy.Mode.TUNNEL:
-        command += [
-            'src', str(policy.tunnel_src),
-            'dst', str(policy.tunnel_dst),
-        ]
-    command += [
-        'proto', _ipsec_proto_names[policy.ipsec_protocol],
-        'mode', _mode_names[policy.mode],
-    ]
-
-    proc = subprocess.Popen(command, stdout=subprocess.PIPE,
-                         stderr=subprocess.PIPE)
-    try:
-        outs, errs = proc.communicate(timeout=15)
-    except:
-        proc.kill()
-        raise IpsecError('Timeout sending ip xfrm command')
-
-    if proc.poll() != 0:
-        raise IpsecError('Could not create IPsec policy: {}'.format(errs))
+    # add inbound
+    _ip_xfrm_add_policy(
+        str(policy.dst_selector), str(policy.src_selector),
+        _ip_proto_names[policy.ip_protocol], str(policy.dst_port),
+        str(policy.src_port), 'in', _ipsec_proto_names[policy.ipsec_protocol],
+        _mode_names[policy.mode], str(policy.tunnel_dst), str(policy.tunnel_src))
