@@ -480,7 +480,7 @@ class IkeSaController:
         # for policy in self.policies:
         #     ipsec.create_policy(policy)
 
-    def dispatch_message(self, data, addr):
+    def dispatch_message(self, data, myaddr, peeraddr):
         header = Message.parse(data, header_only=True)
 
         # if IKE_SA_INIT request, then a new IkeSa must be created
@@ -508,7 +508,7 @@ class IkeSaController:
                 return None
 
         # generate the reply (if any)
-        status, reply = ike_sa.process_message(data, addr)
+        status, reply = ike_sa.process_message(data, peeraddr)
 
         # if the IKE_SA needs to be closed
         if not status:
