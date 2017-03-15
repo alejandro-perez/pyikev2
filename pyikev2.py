@@ -10,16 +10,19 @@ from message import Message, PayloadID, TrafficSelector, Proposal
 from protocol import IkeSaController
 from ipaddress import ip_address
 from configuration import Configuration
+import ipsec
+import json
 
 # parses the arguments
-parser = argparse.ArgumentParser(description='Opensource IKEv2 daemon written in Python.')
+parser = argparse.ArgumentParser(
+    description='Opensource IKEv2 daemon written in Python.')
 parser.add_argument('--verbose', '-v', action='store_true',
     help='Enable (much) more verbosity. WARNING: This will make your key '
     'material to be shown in the log output!')
 parser.add_argument('--listen', '-l', default='', metavar='IP',
     help='IP address where the daemon will listen from. Defaults to 0.0.0.0.')
 parser.add_argument('--indent-json', '-i', type=int, default=None, metavar='N',
-    help='Indent JSON log output with the provided number of spaces.'),
+    help='Indent JSON log output with the provided number of spaces.')
 args = parser.parse_args()
 
 # set logger
@@ -51,10 +54,15 @@ configuration = Configuration(
     }
 )
 
-policy = Policy('10.0.5.141/32', 23, '10.0.5.0/24', 0,
-    TrafficSelector.IpProtocol.TCP, Proposal.Protocol.ESP,
+# create the policy
+policy = Policy(
+    args.src_selector.split(':')[0], args.src_selector.split(':')[1],
+    args.dst_selector.split(':')[0], args.dst_selector.split(':')[1],
+    TrafficSelector.IpProtocol.ANY, Proposal.Protocol.ESP,
     Policy.Mode.TRANSPORT)
 
+logging.debug('Creating IPsec policy: {}'.format(
+    json.dumps(policy.to_dict(), indent=logging.indent_json)))
 # create IkeSaController
 ike_sa_controller = IkeSaController(configuration=configuration)
 
