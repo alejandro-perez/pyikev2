@@ -153,8 +153,7 @@ class TestPayloadNOTIFY(TestPayloadMixin, unittest.TestCase):
 class TestPayloadID(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
         super(TestPayloadID, self).setUp()
-        self.object = PayloadID(
-            PayloadID.Type.ID_IPV4_ADDR, b'12345678')
+        self.object = PayloadID(PayloadID.Type.ID_IPV4_ADDR, b'192.168.1.1')
 
 class TestTrafficSelector(TestPayloadMixin, unittest.TestCase):
     def setUp(self):

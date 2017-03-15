@@ -446,7 +446,7 @@ class PayloadID(Payload):
         elif self.id_type in (
                 PayloadID.Type.ID_IPV4_ADDR,
                 PayloadID.Type.ID_IPV6_ADDR):
-            return str(ip_address(self.id_data)),
+            return str(ip_address(self.id_data.decode())),
         else:
             return hexstring(self.id_data)
 
