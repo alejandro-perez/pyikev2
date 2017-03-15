@@ -10,6 +10,7 @@ from message import TrafficSelector, Proposal, Transform
 from crypto import Cipher, Integrity
 from helpers import hexstring, SafeIntEnum
 from ipaddress import ip_address, ip_network
+from collections import OrderedDict
 
 class IpsecError(Exception):
     pass
@@ -75,6 +76,7 @@ class Policy(object):
 _ip_proto_names = {
     TrafficSelector.IpProtocol.TCP: 'tcp',
     TrafficSelector.IpProtocol.UDP: 'udp',
+    TrafficSelector.IpProtocol.ANY: 'any',
 }
 _ipsec_proto_names = {
     Proposal.Protocol.ESP: 'esp',
