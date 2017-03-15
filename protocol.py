@@ -449,6 +449,8 @@ class IkeSa(object):
             sk_d=self.ike_sa_keyring.sk_d
         )
 
+        # generate the CHILD SAs according to the negotiated selectors and addresses
+
         # generate the response Payload SA
         response_payload_sa = PayloadSA([chosen_child_proposal])
 
