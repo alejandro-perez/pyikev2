@@ -6,16 +6,17 @@ __author__ = 'Alejandro Perez <alex@um.es>'
 import socket
 import argparse
 import logging
-from message import Message, PayloadID
+from message import Message, PayloadID, TrafficSelector, Proposal
 from protocol import IkeSaController
 from ipaddress import ip_address
+from ipsec import Policy
 
 # parses the arguments
 parser = argparse.ArgumentParser(description='Opensource IKEv2 daemon written in Python.')
 parser.add_argument('--verbose', '-v', action='store_true',
     help='Enable (much) more verbosity. WARNING: This will make your key '
     'material to be shown in the log output!')
-parser.add_argument('--listen', '-l', default='0.0.0.0', metavar='IP',
+parser.add_argument('--listen', '-l', default='', metavar='IP',
     help='IP address where the daemon will listen from. Defaults to 0.0.0.0.')
 parser.add_argument('--email-id', '-e', default='pyikev2@github.com',
     help='An email address to be used as our identity. '
@@ -48,12 +49,20 @@ if args.use_ip_id:
 else:
     my_id = PayloadID(PayloadID.Type.ID_RFC822_ADDR, args.email_id.encode())
 
+policy = Policy('10.0.5.141/32', 23, '10.0.5.0/24', 0,
+    TrafficSelector.IpProtocol.TCP, Proposal.Protocol.ESP,
+    Policy.Mode.TRANSPORT)
+
 # create IkeSaController
-ike_sa_contorller = IkeSaController(psk=args.pre_shared_key.encode(), my_id=my_id)
+ike_sa_controller = IkeSaController(
+    psk=args.pre_shared_key.encode(),
+    my_id=my_id,
+    policies=[policy]
+)
 
 # do server
 while True:
     data, addr = sock.recvfrom(4096)
-    data = ike_sa_contorller.dispatch_message(data, addr)
+    data = ike_sa_controller.dispatch_message(data, addr)
     if data:
         sock.sendto(data, addr)
