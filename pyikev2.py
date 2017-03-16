@@ -29,7 +29,7 @@ parser.add_argument('--use-ip-id', '-ip', action='store_true',
     ' It has precedence over --email.')
 parser.add_argument('--pre-shared-key', '-psk', required=True, metavar='KEY',
     help='The PSK to be used for authentication.')
-parser.add_argument('--indent-json', '-i', type=int, default=None, metavar='N',
+parser.add_argument('--indent-spaces', '-s', type=int, default=None, metavar='N',
     help='Indent JSON log output with the provided number of spaces.')
 parser.add_argument('--src-selector', '-src', required=True,
     metavar='IP/MASK:PORT', help='Source selector of protected traffic')
@@ -41,8 +41,7 @@ args = parser.parse_args()
 logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
     format='[%(asctime)s.%(msecs)03d] [%(levelname)-6s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S')
-logging.indent_json = args.indent_json
-
+logging.indent_spaces = args.indent_spaces
 
 # create socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -64,7 +63,7 @@ policy = Policy(
     Policy.Mode.TRANSPORT)
 
 logging.debug('Creating IPsec policy: {}'.format(
-    json.dumps(policy.to_dict(), indent=logging.indent_json)))
+    json.dumps(policy.to_dict(), indent=logging.indent_spaces)))
 # create IkeSaController
 ike_sa_controller = IkeSaController(
     psk=args.pre_shared_key.encode(),

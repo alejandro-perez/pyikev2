@@ -203,7 +203,7 @@ class IkeSa(object):
             len(data),
             'to' if send else 'from',
             addr))
-        logging.debug(json.dumps(message.to_dict(), indent=logging.indent_json))
+        logging.debug(json.dumps(message.to_dict(), indent=logging.indent_spaces))
 
     def process_message(self, data, addr):
         """ Performs the common tasks for IKE message handling,
@@ -515,7 +515,7 @@ class IkeSaController:
                     'Received message for unknown SPI={}. Omitting.'.format(
                         hexstring(pack('>Q', my_spi))))
                 logging.debug(json.dumps(header.to_dict(),
-                    indent=logging.indent_json))
+                    indent=logging.indent_spaces))
                 return None
 
         # generate the reply (if any)
