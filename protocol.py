@@ -8,7 +8,8 @@ import os
 from message import (Message, Payload, PayloadNONCE, PayloadVENDOR, PayloadKE,
     Proposal, Transform, NoProposalChosen, PayloadSA, InvalidKePayload,
     InvalidSyntax, PayloadAUTH, AuthenticationFailed, PayloadIDi, PayloadIDr,
-    IkeSaError, PayloadTSi, PayloadTSr, TrafficSelector, InvalidSelectors)
+    IkeSaError, PayloadTSi, PayloadTSr, TrafficSelector, InvalidSelectors, 
+    PayloadNOTIFY)
 from helpers import SafeEnum, SafeIntEnum, hexstring
 from random import SystemRandom
 from crypto import DiffieHellman, Prf, Integrity, Cipher, Crypto
@@ -18,6 +19,7 @@ import json
 from ipaddress import ip_address, ip_network
 from ipsec import Policy
 import ipsec
+import sys
 
 Keyring = namedtuple('Keyring',
     ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er', 'sk_pi', 'sk_pr']
@@ -396,6 +398,11 @@ class IkeSa(object):
         (ipsec_conf, chosen_tsr, chosen_tsi) = self._get_ipsec_configuration(
             request_payload_tsr, request_payload_tsi)
 
+        # check which mode peer wants
+        if (request.get_notifies(PayloadNOTIFY.Type.USE_TRANSPORT_MODE, True) and
+                ipsec_conf['mode'] != mode = Policy.Mode.TRANSPORT):
+            raise InvalidSelectors('We dont want to use transport mode')
+
         # generate the response payload SA with the chosen proposal
         chosen_child_proposal = self._select_best_child_sa_proposal(
             request_payload_sa, ipsec_conf)
@@ -409,6 +416,11 @@ class IkeSa(object):
             sk_d=self.ike_sa_keyring.sk_d
         )
 
+
+        # find matching TS
+        chosen_tsi, chosen_tsr = self._select_best_traffic_selector(
+            mode, request_payload_tsi, request_payload_tsr)
+
         # generate the CHILD SAs according to the negotiated selectors and addresses
         ipsec.create_child_sa(self.myaddr[0], self.peeraddr[0],
             chosen_child_proposal.protocol_id,
@@ -417,7 +429,7 @@ class IkeSa(object):
             self.child_sa_keyring.sk_er,
             chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
             self.child_sa_keyring.sk_ar,
-            Policy.Mode.TRANSPORT)
+            mode)
         self.ipsec_spi.append(chosen_child_proposal.spi)
 
         # TODO: Take this SPI from an actual acquire to avoid (unlikely) collisions
@@ -430,7 +442,7 @@ class IkeSa(object):
             self.child_sa_keyring.sk_ei,
             chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
             self.child_sa_keyring.sk_ai,
-            Policy.Mode.TRANSPORT)
+            mode)
         self.ipsec_spi.append(chosen_child_proposal.spi)
 
         # generate the response Payload SA
