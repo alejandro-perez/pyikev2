@@ -8,7 +8,8 @@ import os
 from message import (Message, Payload, PayloadNONCE, PayloadVENDOR, PayloadKE,
     Proposal, Transform, NoProposalChosen, PayloadSA, InvalidKePayload,
     InvalidSyntax, PayloadAUTH, AuthenticationFailed, PayloadIDi, PayloadIDr,
-    IkeSaError, PayloadTSi, PayloadTSr, TrafficSelector, InvalidSelectors)
+    IkeSaError, PayloadTSi, PayloadTSr, TrafficSelector, InvalidSelectors, 
+    PayloadNOTIFY)
 from helpers import SafeEnum, SafeIntEnum, hexstring
 from random import SystemRandom
 from crypto import DiffieHellman, Prf, Integrity, Cipher, Crypto
@@ -18,6 +19,7 @@ import json
 from ipaddress import ip_address, ip_network
 from ipsec import Policy
 import ipsec
+import sys
 
 Keyring = namedtuple('Keyring',
     ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er', 'sk_pi', 'sk_pr']
@@ -181,7 +183,7 @@ class IkeSa(object):
         )
         return self._select_best_sa_proposal(my_proposal, peer_payload_sa)
 
-    def _select_best_traffic_selector(self, payload_tsi, payload_tsr):
+    def _select_best_traffic_selector(self, mode, payload_tsi, payload_tsr):
         """ Selects best matching traffic selectors.
             Only executed on the responder side, thus we need to use policy's
             reversed TSs.
@@ -191,12 +193,13 @@ class IkeSa(object):
         for tsi in reversed(payload_tsi.traffic_selectors):
             for tsr in reversed(payload_tsr.traffic_selectors):
                 for policy in self.policies:
-                    policy_tsi = policy.get_tsi()
-                    policy_tsr = policy.get_tsr()
-                    narrowed_tsi = tsi.intersection(policy_tsr)
-                    narrowed_tsr = tsr.intersection(policy_tsi)
-                    if narrowed_tsi and narrowed_tsr:
-                        return (narrowed_tsi, narrowed_tsr)
+                    if policy.mode == mode:
+                        policy_tsi = policy.get_tsi()
+                        policy_tsr = policy.get_tsr()
+                        narrowed_tsi = tsi.intersection(policy_tsr)
+                        narrowed_tsr = tsr.intersection(policy_tsi)
+                        if narrowed_tsi and narrowed_tsr:
+                            return (narrowed_tsi, narrowed_tsr)
         raise InvalidSelectors('TS could not be matched with any Policy')
 
     def log_message(self, message, addr, data, send=True):
@@ -386,10 +389,6 @@ class IkeSa(object):
         chosen_child_proposal = self._select_best_child_sa_proposal(
             request_payload_sa)
 
-        # find matching TS
-        chosen_tsi, chosen_tsr = self._select_best_traffic_selector(
-            request_payload_tsi, request_payload_tsr)
-
         # generate CHILD key material
         self._generate_child_sa_key_material(
             ike_proposal=self.chosen_proposal,
@@ -399,6 +398,16 @@ class IkeSa(object):
             sk_d=self.ike_sa_keyring.sk_d
         )
 
+        # check which mode peer wants
+        if request.get_notifies(PayloadNOTIFY.Type.USE_TRANSPORT_MODE, True):
+            mode = Policy.Mode.TRANSPORT
+        else:
+            mode = Policy.Mode.TUNNEL
+
+        # find matching TS
+        chosen_tsi, chosen_tsr = self._select_best_traffic_selector(
+            mode, request_payload_tsi, request_payload_tsr)
+
         # generate the CHILD SAs according to the negotiated selectors and addresses
         ipsec.create_child_sa(self.myaddr[0], self.peeraddr[0],
             chosen_child_proposal.protocol_id,
@@ -407,7 +416,7 @@ class IkeSa(object):
             self.child_sa_keyring.sk_er,
             chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
             self.child_sa_keyring.sk_ar,
-            Policy.Mode.TRANSPORT)
+            mode)
         self.ipsec_spi.append(chosen_child_proposal.spi)
 
         # TODO: Take this SPI from an actual acquire to avoid (unlikely) collisions
@@ -420,7 +429,7 @@ class IkeSa(object):
             self.child_sa_keyring.sk_ei,
             chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
             self.child_sa_keyring.sk_ai,
-            Policy.Mode.TRANSPORT)
+            mode)
         self.ipsec_spi.append(chosen_child_proposal.spi)
 
         # generate the response Payload SA
