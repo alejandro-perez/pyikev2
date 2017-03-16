@@ -8,7 +8,7 @@ import os
 from message import (Message, Payload, PayloadNONCE, PayloadVENDOR, PayloadKE,
     Proposal, Transform, NoProposalChosen, PayloadSA, InvalidKePayload,
     InvalidSyntax, PayloadAUTH, AuthenticationFailed, PayloadIDi, PayloadIDr,
-    IkeSaError, PayloadTSi, PayloadTSr, TrafficSelector, InvalidSelectors, 
+    IkeSaError, PayloadTSi, PayloadTSr, TrafficSelector, InvalidSelectors,
     PayloadNOTIFY)
 from helpers import SafeEnum, SafeIntEnum, hexstring
 from random import SystemRandom
@@ -399,9 +399,16 @@ class IkeSa(object):
             request_payload_tsr, request_payload_tsi)
 
         # check which mode peer wants
-        if (request.get_notifies(PayloadNOTIFY.Type.USE_TRANSPORT_MODE, True) and
-                ipsec_conf['mode'] != mode = Policy.Mode.TRANSPORT):
-            raise InvalidSelectors('We dont want to use transport mode')
+        if request.get_notifies(PayloadNOTIFY.Type.USE_TRANSPORT_MODE, True):
+            mode = Policy.Mode.TRANSPORT
+            response_payload_notify = PayloadNOTIFY(Proposal.Protocol.NONE,
+                PayloadNOTIFY.Type.USE_TRANSPORT_MODE, b'', b'')
+        else:
+            mode = Policy.Mode.TUNNEL
+            response_payload_notify = None
+
+        if ipsec_conf.mode != mode:
+            raise InvalidSelectors('Invalid mode requested')
 
         # generate the response payload SA with the chosen proposal
         chosen_child_proposal = self._select_best_child_sa_proposal(
@@ -416,6 +423,14 @@ class IkeSa(object):
             sk_d=self.ike_sa_keyring.sk_d
         )
 
+        # check which mode peer wants
+        if request.get_notifies(PayloadNOTIFY.Type.USE_TRANSPORT_MODE, True):
+            mode = Policy.Mode.TRANSPORT
+            response_payload_notify = PayloadNOTIFY(Proposal.Protocol.NONE,
+                PayloadNOTIFY.Type.USE_TRANSPORT_MODE, b'', b'')
+        else:
+            mode = Policy.Mode.TUNNEL
+            response_payload_notify = None
 
         # find matching TS
         chosen_tsi, chosen_tsr = self._select_best_traffic_selector(
@@ -476,6 +491,9 @@ class IkeSa(object):
                 response_payload_tsr, response_payload_idr,
                 response_payload_auth],
         )
+
+        if response_payload_notify:
+            response.encrypted_payloads.append(response_payload_notify)
 
         # increase msg_id and transition
         self.state = IkeSa.State.ESTABLISHED
