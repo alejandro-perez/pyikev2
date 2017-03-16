@@ -103,7 +103,7 @@ def _run_command(command):
         proc.kill()
         raise IpsecError('Timeout sending ip xfrm command')
     if proc.poll() != 0:
-        raise IpsecError('Could not create IPsec policy: {}'.format(errs))
+        raise IpsecError(errs)
 
 
 def _ip_xfrm_add_policy(src, dst, ip_proto, sport, dport, dir,
