@@ -120,6 +120,8 @@ class IkeSa(object):
         sk_ei, sk_ai, sk_er, sk_ar = unpack(
             '>{0}s{1}s{0}s{1}s'.format(encr_key_size, integ_key_size),
             keymat)
+        self.child_sa_keyring = Keyring(sk_ai=sk_ai, sk_ei=sk_ei, sk_ar=sk_ar,
+            sk_er=sk_er, sk_d=None, sk_pi=None, sk_pr=None)
 
         logging.debug('Generated sk_ai: {}'.format(hexstring(sk_ai)))
         logging.debug('Generated sk_ar: {}'.format(hexstring(sk_ar)))
@@ -140,7 +142,7 @@ class IkeSa(object):
                 # If we have a transform of each type => success
                 if (set(selected_transforms) ==
                         set(x.type for x in my_proposal.transforms)):
-                    return Proposal(1, my_proposal.protocol_id, b'',
+                    return Proposal(1, my_proposal.protocol_id, peer_proposal.spi,
                         list(selected_transforms.values()))
         raise NoProposalChosen('Could not find a suitable matching Proposal')
 
@@ -393,9 +395,6 @@ class IkeSa(object):
         chosen_child_proposal = self._select_best_child_sa_proposal(
             request_payload_sa, ipsec_conf)
 
-        # TODO: Take this SPI from an actual acquire to avoid (unlikely) collisions
-        chosen_child_proposal.spi = os.urandom(4)
-
         # generate CHILD key material
         self._generate_child_sa_key_material(
             ike_proposal=self.chosen_proposal,
@@ -406,6 +405,26 @@ class IkeSa(object):
         )
 
         # generate the CHILD SAs according to the negotiated selectors and addresses
+        ipsec.create_child_sa(self.myaddr[0], self.peeraddr[0],
+            chosen_child_proposal.protocol_id,
+            chosen_child_proposal.spi,
+            chosen_child_proposal.get_transform(Transform.Type.ENCR).id,
+            self.child_sa_keyring.sk_er,
+            chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
+            self.child_sa_keyring.sk_ar,
+            Policy.Mode.TRANSPORT)
+
+        # TODO: Take this SPI from an actual acquire to avoid (unlikely) collisions
+        chosen_child_proposal.spi = os.urandom(4)
+
+        ipsec.create_child_sa(self.peeraddr[0], self.myaddr[0],
+            chosen_child_proposal.protocol_id,
+            chosen_child_proposal.spi,
+            chosen_child_proposal.get_transform(Transform.Type.ENCR).id,
+            self.child_sa_keyring.sk_ei,
+            chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
+            self.child_sa_keyring.sk_ai,
+            Policy.Mode.TRANSPORT)
 
         # generate the response Payload SA
         response_payload_sa = PayloadSA([chosen_child_proposal])
