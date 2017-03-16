@@ -154,7 +154,7 @@ def create_child_sa(src, dst, ipsec_protocol, spi, enc_algorith, sk_e,
         str(src), str(dst), _ipsec_proto_names[ipsec_protocol],
         '0x{}'.format(hexstring(spi)), _cipher_names[enc_algorith],
         '0x{}'.format(hexstring(sk_e)), _auth_names[auth_algorithm],
-        '0x{}'.format(hexstring(sk_e)), _mode_names[mode]
+        '0x{}'.format(hexstring(sk_a)), _mode_names[mode]
     )
 
 def flush_policies():
