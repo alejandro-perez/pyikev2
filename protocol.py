@@ -32,7 +32,7 @@ class IkeSa(object):
     """ This class controls the state machine of a IKE SA
         It is triggered with received Messages and/or IPsec events
     """
-    def __init__(self, is_initiator, configuration):
+    def __init__(self, is_initiator, configuration, myaddr, peeraddr):
         self.state = IkeSa.State.INITIAL
         self.my_spi = SystemRandom().randint(0, 0xFFFFFFFFFFFFFFFF)
         self.peer_spi = 0
@@ -44,6 +44,8 @@ class IkeSa(object):
         self.my_crypto = None
         self.peer_crypto = None
         self.configuration = configuration
+        self.myaddr = myaddr
+        self.peeraddr = peeraddr
 
     @property
     def spi_i(self):
@@ -489,10 +491,12 @@ class IkeSaController:
             # look for matching configuration
             ike_configuration = self.configuration.get_ike_configuration(addr[0])
 
-            ike_sa = IkeSa(is_initiator=False, configuration=ike_configuration)
+            ike_sa = IkeSa(is_initiator=False, configuration=ike_configuration, 
+                           myaddr=myaddr, peeraddr=peeraddr)
             self.ike_sas[ike_sa.my_spi] = ike_sa
-            logging.info('Starting the creation of IKE SA with SPI={}. Count={}'.format(
-                hexstring(pack('>Q', ike_sa.my_spi)), len(self.ike_sas)))
+            logging.info('Starting the creation of IKE SA with SPI={}. '
+                'Count={}'.format(hexstring(
+                    pack('>Q', ike_sa.my_spi)), len(self.ike_sas)))
 
         # else, look for the IkeSa in the dict
         else:
