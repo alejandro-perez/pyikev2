@@ -130,6 +130,12 @@ def _ip_xfrm_add_state(src, dst, ipsec_proto, spi, enc_algo, enc_key,
     command += ['auth', auth_algo, auth_key, 'mode', mode]
     _run_command(command)
 
+def _ip_xfrm_del_state(spi):
+    command = [
+        'ip', 'xfrm', 'state', 'deleteall', 'spi', spi
+    ]
+    _run_command(command)
+
 def create_policy(policy):
     """ Creates all the directions of a Policy object
     """
@@ -149,13 +155,15 @@ def create_policy(policy):
 
 def create_child_sa(src, dst, ipsec_protocol, spi, enc_algorith, sk_e,
         auth_algorithm, sk_a, mode):
-    # add outbound
     _ip_xfrm_add_state(
         str(src), str(dst), _ipsec_proto_names[ipsec_protocol],
         '0x{}'.format(hexstring(spi)), _cipher_names[enc_algorith],
         '0x{}'.format(hexstring(sk_e)), _auth_names[auth_algorithm],
         '0x{}'.format(hexstring(sk_a)), _mode_names[mode]
     )
+
+def delete_child_sa(spi):
+    _ip_xfrm_del_state('0x{}'.format(hexstring(spi)))
 
 def flush_policies():
     subprocess.call(['ip', 'xfrm', 'policy', 'flush'])
