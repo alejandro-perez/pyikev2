@@ -893,6 +893,10 @@ class Message:
     def is_responder(self):
         return not self.is_initiator
 
+    def get_notifies(self, notification_type, encrypted=False):
+        notifies = self.get_payloads(Payload.Type.NOTIFY, encrypted)
+        return [x for x in notifies if x.notification_type == notification_type]
+
     def get_payloads(self, payload_type, encrypted=False):
         collection = self.payloads if not encrypted else self.encrypted_payloads
         return [x for x in collection if x.type == payload_type]
