@@ -46,6 +46,11 @@ class IkeSa(object):
         self.configuration = configuration
         self.myaddr = myaddr
         self.peeraddr = peeraddr
+        self.ipsec_spi = []
+
+    def __del__(self):
+        for spi in self.ipsec_spi:
+            ipsec.delete_child_sa(spi)
 
     @property
     def spi_i(self):
@@ -413,6 +418,7 @@ class IkeSa(object):
             chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
             self.child_sa_keyring.sk_ar,
             Policy.Mode.TRANSPORT)
+        self.ipsec_spi.append(chosen_child_proposal.spi)
 
         # TODO: Take this SPI from an actual acquire to avoid (unlikely) collisions
         chosen_child_proposal.spi = os.urandom(4)
@@ -425,6 +431,7 @@ class IkeSa(object):
             chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
             self.child_sa_keyring.sk_ai,
             Policy.Mode.TRANSPORT)
+        self.ipsec_spi.append(chosen_child_proposal.spi)
 
         # generate the response Payload SA
         response_payload_sa = PayloadSA([chosen_child_proposal])
