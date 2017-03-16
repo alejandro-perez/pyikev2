@@ -364,11 +364,11 @@ class IkeSa(object):
                 'IKE SA state cannot proccess IKE_SA_INIT message')
 
         # get some relevant payloads from the message
-        request_payload_sa = request.get_encr_payload(Payload.Type.SA)
-        request_payload_tsi = request.get_encr_payload(Payload.Type.TSi)
-        request_payload_tsr = request.get_encr_payload(Payload.Type.TSr)
-        request_payload_idi = request.get_encr_payload(Payload.Type.IDi)
-        request_payload_auth = request.get_encr_payload(Payload.Type.AUTH)
+        request_payload_sa = request.get_payload(Payload.Type.SA, True)
+        request_payload_tsi = request.get_payload(Payload.Type.TSi, True)
+        request_payload_tsr = request.get_payload(Payload.Type.TSr, True)
+        request_payload_idi = request.get_payload(Payload.Type.IDi, True)
+        request_payload_auth = request.get_payload(Payload.Type.AUTH, True)
 
         # verify AUTH payload
         if request_payload_auth.method != PayloadAUTH.Method.PSK:
