@@ -58,9 +58,9 @@ else:
 
 # create the policy
 policy = Policy(
-    args.src_selector.split(':')[0], args.src_selector.split(':')[1],
-    args.dst_selector.split(':')[0], args.dst_selector.split(':')[1],
-    TrafficSelector.IpProtocol.ANY, Proposal.Protocol.ESP,
+    args.src_selector.split(':')[0], int(args.src_selector.split(':')[1]),
+    args.dst_selector.split(':')[0], int(args.dst_selector.split(':')[1]),
+    TrafficSelector.IpProtocol.TCP, Proposal.Protocol.ESP,
     Policy.Mode.TRANSPORT)
 
 logging.debug('Creating IPsec policy: {}'.format(
