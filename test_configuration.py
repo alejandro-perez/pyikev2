@@ -7,13 +7,12 @@ __author__ = 'Alejandro Perez <alex@um.es>'
 
 import unittest
 from ipaddress import ip_network, ip_address
-from configuration import (Configuration, ConfigurationError, 
+from configuration import (Configuration, ConfigurationError,
     ConfigurationNotFound, IkeConfiguration)
 
 class TestIkeConfiguration(unittest.TestCase):
     def test_empty(self):
-        with self.assertRaises(ConfigurationError):
-            conf = IkeConfiguration(ip_network('192.168.1.0/24'), {})
+        conf = IkeConfiguration(ip_network('192.168.1.0/24'), {})
 
 class TestConfiguration(unittest.TestCase):
     def test_empty(self):
@@ -35,7 +34,8 @@ class TestConfiguration(unittest.TestCase):
         conf = Configuration({
             '192.168.1.1/32': {
                 'psk': 'aa',
-                'email': 'alex@um.es'
+                'email': 'alex@um.es',
+                'encr': ['aes128'],
             }
         })
 
@@ -57,6 +57,17 @@ class TestConfiguration(unittest.TestCase):
         })
         with self.assertRaises(ConfigurationNotFound):
             ike_conf = conf.get_ike_configuration('192.168.2.5')
+
+    def test_invalid_dh(self):
+        with self.assertRaises(ConfigurationError):
+            conf = Configuration({
+                '192.168.1.1/32': {
+                    'psk': 'aa',
+                    'email': 'alex@um.es',
+                    'encr': ['aes128'],
+                    'dh': ['dh1', 'dh2', 'dh3']
+                }
+            })
 
 if __name__ == '__main__':
     unittest.main()
