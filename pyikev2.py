@@ -37,6 +37,14 @@ parser.add_argument('--src-selector', '-src', required=True,
     metavar='IP/MASK:PORT', help='Source selector of protected traffic')
 parser.add_argument('--dst-selector', '-dst', required=True,
     metavar='IP/MASK:PORT', help='Destination selector of protected traffic')
+parser.add_argument('--proto', '-p', required=True, default='tcp',
+    metavar='PROTO', help='IP protocol to be protected (tcp, udp, icmp)')
+parser.add_argument('--ips-proto', '-ipp', required=True, default='esp',
+    metavar='PROTO', help='IPSEC protocol to be used (esp, ah)')
+parser.add_argument('--mode', '-m', required=True, default='transport',
+    metavar='MODE', help='IPSEC mode to be used (tunnel, transport)')
+parser.add_argument('--tunnel-src', '-ts')
+parser.add_argument('--tunnel-dst', '-td')
 args = parser.parse_args()
 
 try:
@@ -67,12 +75,28 @@ if args.use_ip_id:
 else:
     my_id = PayloadID(PayloadID.Type.ID_RFC822_ADDR, args.email_id.encode())
 
+_mode_name_to_enum = {
+    'transport': Policy.Mode.TRANSPORT,
+    'tunnel': Policy.Mode.TUNNEL,
+}
+
+_ip_proto_to_enum = {
+    'tcp': TrafficSelector.IpProtocol.TCP,
+    'udp': TrafficSelector.IpProtocol.UDP,
+    'any': TrafficSelector.IpProtocol.ANY,
+}
+
+_ipsec_proto_to_enum = {
+    'esp': Proposal.Protocol.ESP,
+    'ah': Proposal.Protocol.AH
+}
+
 # create the policy
 policy = Policy(
     args.src_selector.split(':')[0], int(args.src_selector.split(':')[1]),
     args.dst_selector.split(':')[0], int(args.dst_selector.split(':')[1]),
-    TrafficSelector.IpProtocol.TCP, Proposal.Protocol.ESP,
-    Policy.Mode.TRANSPORT)
+    _ip_proto_to_enum[args.proto], _ipsec_proto_to_enum[args.ips_proto],
+    _mode_name_to_enum[args.mode], args.tunnel_src, args.tunnel_dst)
 
 logging.debug('Creating IPsec policy: {}'.format(
     json.dumps(policy.to_dict(), indent=logging.indent_spaces)))
