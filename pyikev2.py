@@ -9,6 +9,7 @@ import logging
 from message import Message, PayloadID
 from protocol import IkeSaController
 from ipaddress import ip_address
+from configuration import Configuration
 
 # parses the arguments
 parser = argparse.ArgumentParser(description='Opensource IKEv2 daemon written in Python.')
@@ -47,6 +48,15 @@ if args.use_ip_id:
         ip_address(sock.getsockname()[0]).packed)
 else:
     my_id = PayloadID(PayloadID.Type.ID_RFC822_ADDR, args.email_id.encode())
+
+
+configuration = Configuration({
+    '10.0.5.17/32': {
+        'psk': 'testing',
+        'id': 'alex@um.es',
+    }
+})
+
 
 # create IkeSaController
 ike_sa_contorller = IkeSaController(psk=args.pre_shared_key.encode(), my_id=my_id)
