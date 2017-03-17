@@ -18,14 +18,6 @@ parser.add_argument('--verbose', '-v', action='store_true',
     'material to be shown in the log output!')
 parser.add_argument('--listen', '-l', default='0.0.0.0', metavar='IP',
     help='IP address where the daemon will listen from. Defaults to 0.0.0.0.')
-parser.add_argument('--email-id', '-e', default='pyikev2@github.com',
-    help='An email address to be used as our identity. '
-    'Defaults to "pyikev2@github.com"', metavar='EMAIL')
-parser.add_argument('--use-ip-id', '-ip', action='store_true',
-    help='Whether to use the current IP address as our identity.'
-    ' It has precedence over --email.')
-parser.add_argument('--pre-shared-key', '-psk', required=True, metavar='KEY',
-    help='The PSK to be used for authentication.'),
 parser.add_argument('--indent-json', '-i', type=int, default=None, metavar='N',
     help='Indent JSON log output with the provided number of spaces.'),
 args = parser.parse_args()
@@ -42,28 +34,21 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((args.listen, 500))
 logging.info('Listening from {}'.format(sock.getsockname()))
 
-# create the template identity payload
-if args.use_ip_id:
-    my_id = PayloadID(PayloadID.Type.ID_IPV4_ADDR,
-        ip_address(sock.getsockname()[0]).packed)
-else:
-    my_id = PayloadID(PayloadID.Type.ID_RFC822_ADDR, args.email_id.encode())
-
-
 configuration = Configuration({
-    '10.0.5.17/32': {
+    '10.0.5.0/24': {
         'psk': 'testing',
-        'id': 'alex@um.es',
+        'id': 'bob@openikev2',
+        'encr': ['aes128'],
+        'dh': ['5', '2', '5']
     }
 })
 
-
 # create IkeSaController
-ike_sa_contorller = IkeSaController(psk=args.pre_shared_key.encode(), my_id=my_id)
+ike_sa_controller = IkeSaController(configuration=configuration)
 
 # do server
 while True:
     data, addr = sock.recvfrom(4096)
-    data = ike_sa_contorller.dispatch_message(data, addr)
+    data = ike_sa_controller.dispatch_message(data, addr)
     if data:
         sock.sendto(data, addr)

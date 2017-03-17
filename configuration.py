@@ -47,25 +47,27 @@ class IkeConfiguration(object):
             (e.g. comming fron JSON or YAML)
         """
         self.psk = conf_dict.get('psk', 'whatever').encode()
-        self.id = conf_dict.get('email', 'pyikev2').encode()
+        self.id = conf_dict.get('id', 'pyikev2').encode()
 
-        self.encr_transforms = self.load_crypto_algs('encr',
+        self.encr = self.load_crypto_algs('encr',
             conf_dict.get('encr', ['aes256']), _encr_name_to_transform)
-        self.integ_transforms = self.load_crypto_algs('integ',
+        self.integ = self.load_crypto_algs('integ',
             conf_dict.get('integ', ['sha1']), _integ_name_to_transform)
-        self.prf_transforms = self.load_crypto_algs('prf',
+        self.prf = self.load_crypto_algs('prf',
             conf_dict.get('prf', ['sha1']), _prf_name_to_transform)
-        self.dh_transforms = self.load_crypto_algs('dh',
+        self.dh = self.load_crypto_algs('dh',
             conf_dict.get('dh', ['5']), _dh_name_to_transform)
 
-    def load_crypto_algs(self, type, names, name_to_transform):
+    def load_crypto_algs(self, key, names, name_to_transform):
         transforms = []
+        if type(names) is not list:
+            raise ConfigurationError('{} should be a list.'.format(key))
         for x in names:
             try:
                 transforms.append(name_to_transform[x])
             except KeyError:
                 raise ConfigurationError(
-                    '{} algorithm "{}" not supported'.format(type, x))
+                    '{} algorithm "{}" not supported'.format(key, x))
         return transforms
 
 class Configuration(object):
