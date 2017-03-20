@@ -34,15 +34,22 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((args.listen, 500))
 logging.info('Listening from {}'.format(sock.getsockname()))
 
-configuration = Configuration(sock.getsockname()[0], {
-    '10.0.5.107': {
-        'psk': 'testing',
-        'id': 'bob@openikev2',
-        'peer_id': 'alice',
-        'encr': ['aes128'],
-        'dh': ['5']
+configuration = Configuration(
+    sock.getsockname()[0], 
+    {
+        '10.0.5.107': {
+            'psk': 'testing',
+            'id': 'bob@openikev2',
+            'dh': ['5'],
+            'protect': [
+                {
+                    'encr': ['aes256', 'aes128'],
+                    'ipsec_proto': 'ah'
+                }
+            ]
+        },
     }
-})
+)
 
 # create IkeSaController
 ike_sa_controller = IkeSaController(configuration=configuration)

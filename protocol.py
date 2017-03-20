@@ -206,16 +206,15 @@ class IkeSa(object):
         )
         return self._select_best_sa_proposal(my_proposal, peer_payload_sa)
 
-    def _select_best_child_sa_proposal(self, peer_payload_sa):
-        my_proposal = Proposal(
-            1, Proposal.Protocol.ESP, b'',
-            [
-                Transform(Transform.Type.ENCR, Cipher.Id.ENCR_AES_CBC, 256),
-                Transform(Transform.Type.ENCR, Cipher.Id.ENCR_AES_CBC, 128),
-                Transform(Transform.Type.INTEG, Integrity.Id.AUTH_HMAC_SHA1_96),
-                Transform(Transform.Type.INTEG, Integrity.Id.AUTH_HMAC_MD5_96),
-            ]
-        )
+    def _select_best_child_sa_proposal(self, peer_payload_sa, ipsec_conf):
+        proto = ipsec_conf['ipsec_proto']
+        if proto == Proposal.Protocol.ESP:
+            my_proposal = Proposal(
+                1, proto, b'', (ipsec_conf['encr'] + ipsec_conf['integ']))
+        else:
+            my_proposal = Proposal(
+                1, proto, b'', ipsec_conf['integ'])
+
         return self._select_best_sa_proposal(my_proposal, peer_payload_sa)
 
     def _generate_traffic_selectors(self, ipsec_conf):
@@ -446,7 +445,7 @@ class IkeSa(object):
 
         # generate the response payload SA with the chosen proposal
         chosen_child_proposal = self._select_best_child_sa_proposal(
-            request_payload_sa)
+            request_payload_sa, ipsec_conf)
 
         # TODO: Take this SPI from an actual acquire to avoid (unlikely) collisions
         chosen_child_proposal.spi = os.urandom(4)
