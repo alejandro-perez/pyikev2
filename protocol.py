@@ -422,19 +422,6 @@ class IkeSa(object):
             sk_d=self.ike_sa_keyring.sk_d
         )
 
-        # check which mode peer wants
-        if request.get_notifies(PayloadNOTIFY.Type.USE_TRANSPORT_MODE, True):
-            mode = Policy.Mode.TRANSPORT
-            response_payload_notify = PayloadNOTIFY(Proposal.Protocol.NONE,
-                PayloadNOTIFY.Type.USE_TRANSPORT_MODE, b'', b'')
-        else:
-            mode = Policy.Mode.TUNNEL
-            response_payload_notify = None
-
-        # find matching TS
-        chosen_tsi, chosen_tsr = self._select_best_traffic_selector(
-            mode, request_payload_tsi, request_payload_tsr)
-
         # generate the CHILD SAs according to the negotiated selectors and addresses
         ipsec.create_child_sa(self.myaddr[0], self.peeraddr[0],
             chosen_child_proposal.protocol_id,
