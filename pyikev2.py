@@ -58,7 +58,7 @@ configuration = Configuration(
             'protect': [
                 {
                     'encr': ['aes256', 'aes128'],
-                    'ipsec_proto': 'ah'
+                    'ipsec_proto': 'esp'
                 }
             ]
         },

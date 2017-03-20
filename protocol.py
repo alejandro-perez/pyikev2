@@ -531,7 +531,7 @@ class IkeSaController:
         if (header.exchange_type == Message.Exchange.IKE_SA_INIT and
                 header.is_request):
             # look for matching configuration
-            ike_configuration = self.configuration.get_ike_configuration(addr[0])
+            ike_configuration = self.configuration.get_ike_configuration(peeraddr[0])
 
             ike_sa = IkeSa(is_initiator=False, configuration=ike_configuration, 
                            myaddr=myaddr, peeraddr=peeraddr)
