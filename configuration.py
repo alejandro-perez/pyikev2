@@ -72,9 +72,9 @@ class Configuration(object):
                 ip = ip_address(key)
             except ValueError as ex:
                 raise ConfigurationError(str(ex))
-            self._configuration[ip] = self._load_ike_conf(value)
+            self._configuration[ip] = self._load_ike_conf(ip, value)
 
-    def _load_ike_conf(self, conf_dict):
+    def _load_ike_conf(self, peer_ip, conf_dict):
         result = {}
 
         result['psk'] = conf_dict.get('psk', 'whatever').encode()
@@ -91,11 +91,10 @@ class Configuration(object):
         result['dh'] = self._load_crypto_algs(
             'dh', conf_dict.get('dh', ['2']), _dh_name_to_transform)
 
-        if 'protect' in conf_dict:
-            ipsec_confs = []
-            for ipsec_conf in conf_dict['protect']:
-                ipsec_confs.append(self._load_ipsec_conf(ipsec_conf))
-            result['protect'] = ipsec_confs
+        ipsec_confs = []
+        for ipsec_conf in conf_dict.get('protect', [{}]):
+            ipsec_confs.append(self._load_ipsec_conf(peer_ip, ipsec_conf))
+        result['protect'] = ipsec_confs
         return result
 
     def _load_ip_network(self, value):
@@ -110,14 +109,14 @@ class Configuration(object):
         except ValueError:
             raise ConfigurationError(str(ex))
 
-    def _load_ipsec_conf(self, conf_dict):
+    def _load_ipsec_conf(self, peer_ip, conf_dict):
         result = {}
         result['my_subnet'] = self._load_ip_network(
             conf_dict.get('my_subnet', self.my_addr))
         result['peer_subnet'] = self._load_ip_network(
-            conf_dict.get('my_subnet', self.my_addr))
+            conf_dict.get('peer_subnet', peer_ip))
         result['my_port'] = int(conf_dict.get('my_port', 0))
-        result['peer_port'] = int(conf_dict.get('my_port', 0))
+        result['peer_port'] = int(conf_dict.get('peer_port', 0))
         result['ip_proto'] = self._load_from_dict(
             conf_dict.get('ip_proto', 'any'), _ip_proto_name_to_enum)
         result['mode'] = self._load_from_dict(
