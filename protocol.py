@@ -88,7 +88,7 @@ class IkeSa(object):
     """ This class controls the state machine of a IKE SA
         It is triggered with received Messages and/or IPsec events
     """
-    def __init__(self, is_initiator, psk, my_id, policies):
+    def __init__(self, is_initiator, configuration):
         self.state = IkeSa.State.INITIAL
         self.my_spi = SystemRandom().randint(0, 0xFFFFFFFFFFFFFFFF)
         self.peer_spi = 0
@@ -99,9 +99,7 @@ class IkeSa(object):
         self.chosen_proposal = None
         self.my_crypto = None
         self.peer_crypto = None
-        self.psk = psk
-        self.my_id = my_id
-        self.policies = policies
+        self.configuration = configuration
 
     @property
     def spi_i(self):
@@ -203,48 +201,59 @@ class IkeSa(object):
     def _select_best_ike_sa_proposal(self, peer_payload_sa):
         my_proposal = Proposal(
             1, Proposal.Protocol.IKE, b'',
-            [
-                Transform(Transform.Type.ENCR, Cipher.Id.ENCR_AES_CBC, 256),
-                Transform(Transform.Type.ENCR, Cipher.Id.ENCR_AES_CBC, 128),
-                Transform(Transform.Type.INTEG, Integrity.Id.AUTH_HMAC_SHA1_96),
-                Transform(Transform.Type.INTEG, Integrity.Id.AUTH_HMAC_MD5_96),
-                Transform(Transform.Type.PRF, Prf.Id.PRF_HMAC_SHA1),
-                Transform(Transform.Type.PRF, Prf.Id.PRF_HMAC_MD5),
-                Transform(Transform.Type.DH, DiffieHellman.Id.DH_5),
-                Transform(Transform.Type.DH, DiffieHellman.Id.DH_2),
-            ]
+            (self.configuration['encr'] + self.configuration['integ'] +
+                self.configuration['prf'] + self.configuration['dh'])
         )
         return self._select_best_sa_proposal(my_proposal, peer_payload_sa)
 
-    def _select_best_child_sa_proposal(self, peer_payload_sa):
-        my_proposal = Proposal(
-            1, Proposal.Protocol.ESP, b'',
-            [
-                Transform(Transform.Type.ENCR, Cipher.Id.ENCR_AES_CBC, 256),
-                Transform(Transform.Type.ENCR, Cipher.Id.ENCR_AES_CBC, 128),
-                Transform(Transform.Type.INTEG, Integrity.Id.AUTH_HMAC_SHA1_96),
-                Transform(Transform.Type.INTEG, Integrity.Id.AUTH_HMAC_MD5_96),
-            ]
-        )
+    def _select_best_child_sa_proposal(self, peer_payload_sa, ipsec_conf):
+        proto = ipsec_conf['ipsec_proto']
+        if proto == Proposal.Protocol.ESP:
+            my_proposal = Proposal(
+                1, proto, b'', (ipsec_conf['encr'] + ipsec_conf['integ']))
+        else:
+            my_proposal = Proposal(
+                1, proto, b'', ipsec_conf['integ'])
+
         return self._select_best_sa_proposal(my_proposal, peer_payload_sa)
 
-    def _select_best_traffic_selector(self, payload_tsi, payload_tsr):
-        """ Selects best matching traffic selectors.
-            Only executed on the responder side, thus we need to use policy's
-            reversed TSs.
+    def _generate_traffic_selectors(self, ipsec_conf):
+        """ Generates traffic selectors based on an ipsec configuration
+        """
+        conf_tsi = TrafficSelector(
+            TrafficSelector.Type.TS_IPV4_ADDR_RANGE, 
+            ipsec_conf['ip_proto'], 
+            ipsec_conf['my_port'],
+            65535 if ipsec_conf['my_port'] == 0 else ipsec_conf['my_port'],
+            ipsec_conf['my_subnet'][0],
+            ipsec_conf['my_subnet'][-1])
+        conf_tsr = TrafficSelector(
+            TrafficSelector.Type.TS_IPV4_ADDR_RANGE, 
+            ipsec_conf['ip_proto'], 
+            ipsec_conf['peer_port'],
+            65535 if ipsec_conf['peer_port'] == 0 else ipsec_conf['peer_port'],
+            ipsec_conf['peer_subnet'][0],
+            ipsec_conf['peer_subnet'][-1])
+        return (conf_tsi, conf_tsr)
+
+    def _get_ipsec_configuration(self, payload_tsi, payload_tsr):
+        """ Find matching IPsec configuration.
             It iterates over the received TS in reversed order and returns the
-            first pair that intersecs with any of our policies
+            first configuration that is bigger than our selectors, and the 
+            narrowed selectors as well
         """
         for tsi in reversed(payload_tsi.traffic_selectors):
             for tsr in reversed(payload_tsr.traffic_selectors):
-                for policy in self.policies:
-                    policy_tsi = policy.get_tsi()
-                    policy_tsr = policy.get_tsr()
-                    narrowed_tsi = tsi.intersection(policy_tsr)
-                    narrowed_tsr = tsr.intersection(policy_tsi)
+                for ipsec_conf in self.configuration['protect']:
+                    (conf_tsi, 
+                     conf_tsr) = self._generate_traffic_selectors(ipsec_conf)
+                    narrowed_tsi = tsi.intersection(conf_tsi)
+                    narrowed_tsr = tsr.intersection(conf_tsr)
                     if narrowed_tsi and narrowed_tsr:
-                        return (narrowed_tsi, narrowed_tsr)
-        raise InvalidSelectors('TS could not be matched with any Policy')
+                        return ipsec_conf, narrowed_tsi, narrowed_tsr
+
+        raise InvalidSelectors(
+            'TS could not be matched with any IPsec configuration')
 
     def log_message(self, message, addr, data, send=True):
         logging.info('IKE_SA: {}. {} {} {} ({} bytes) {} {}'.format(
@@ -341,7 +350,7 @@ class IkeSa(object):
         # check that DH groups match
         my_dh_group = self.chosen_proposal.get_transform(Transform.Type.DH).id
         if my_dh_group != request_payload_ke.dh_group:
-            raise InvalidKePayload(my_dh_group)
+            raise InvalidKePayload('Invalid DH group used. I request {}'.format(my_dh_group))
 
         # generate the response payload KE
         dh = DiffieHellman(request_payload_ke.dh_group)
@@ -393,7 +402,7 @@ class IkeSa(object):
     def _generate_psk_auth_payload(self, message_data, nonce, payload_id, sk_p):
         prf = self.peer_crypto.prf.prf
         data_to_be_signed = (message_data + nonce + prf(sk_p, payload_id.to_bytes()))
-        keypad = prf(self.psk, b'Key Pad for IKEv2')
+        keypad = prf(self.configuration['psk'], b'Key Pad for IKEv2')
         return prf(keypad, data_to_be_signed)
 
     def _generate_peer_psk_auth_payload(self, payload_id):
@@ -429,13 +438,14 @@ class IkeSa(object):
         if auth_data != request_payload_auth.auth_data:
             raise AuthenticationFailed('Invalid AUTH data received')
 
+        # find matching IPsec configuration and TS 
+        # (reverse order as we are responders)
+        (ipsec_conf, chosen_tsr, chosen_tsi) = self._get_ipsec_configuration(
+            request_payload_tsr, request_payload_tsi)
+
         # generate the response payload SA with the chosen proposal
         chosen_child_proposal = self._select_best_child_sa_proposal(
-            request_payload_sa)
-
-        # find matching TS
-        chosen_tsi, chosen_tsr = self._select_best_traffic_selector(
-            request_payload_tsi, request_payload_tsr)
+            request_payload_sa, ipsec_conf)
 
         # TODO: Take this SPI from an actual acquire to avoid (unlikely) collisions
         chosen_child_proposal.spi = os.urandom(4)
@@ -457,7 +467,8 @@ class IkeSa(object):
         response_payload_tsr = PayloadTSr([chosen_tsr])
 
         # send my IDr
-        response_payload_idr = PayloadIDr(self.my_id.id_type, self.my_id.id_data)
+        response_payload_idr = PayloadIDr(self.configuration['id'].id_type,
+                                          self.configuration['id'].id_data)
 
         # generate AUTH payload
         auth_data = self._generate_my_psk_auth_payload(response_payload_idr)
@@ -513,15 +524,9 @@ class IkeSa(object):
         # return response
         return response
 class IkeSaController:
-    def __init__(self, psk, my_id):
+    def __init__(self, configuration):
         self.ike_sas = {}
-        self.psk = psk
-        self.my_id = my_id
-        self.policies = [
-            Policy('10.0.5.141/32', 23, '10.0.5.0/24', 0,
-                TrafficSelector.IpProtocol.TCP, Proposal.Protocol.ESP,
-                Policy.Mode.TRANSPORT),
-        ]
+        self.configuration = configuration
 
     def dispatch_message(self, data, addr):
         header = Message.parse(data, header_only=True)
@@ -529,8 +534,10 @@ class IkeSaController:
         # if IKE_SA_INIT request, then a new IkeSa must be created
         if (header.exchange_type == Message.Exchange.IKE_SA_INIT and
                 header.is_request):
-            ike_sa = IkeSa(is_initiator=False, psk=self.psk, my_id=self.my_id,
-                           policies=self.policies)
+            # look for matching configuration
+            ike_configuration = self.configuration.get_ike_configuration(addr[0])
+
+            ike_sa = IkeSa(is_initiator=False, configuration=ike_configuration)
             self.ike_sas[ike_sa.my_spi] = ike_sa
             logging.info('Starting the creation of IKE SA with SPI={}. Count={}'.format(
                 hexstring(pack('>Q', ike_sa.my_spi)), len(self.ike_sas)))
