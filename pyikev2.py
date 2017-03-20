@@ -34,12 +34,13 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((args.listen, 500))
 logging.info('Listening from {}'.format(sock.getsockname()))
 
-configuration = Configuration({
-    '10.0.5.0/24': {
+configuration = Configuration(sock.getsockname()[0], {
+    '10.0.5.107': {
         'psk': 'testing',
         'id': 'bob@openikev2',
+        'peer_id': 'alice',
         'encr': ['aes128'],
-        'dh': ['5', '2', '5']
+        'dh': ['5']
     }
 })
 

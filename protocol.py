@@ -202,8 +202,8 @@ class IkeSa(object):
     def _select_best_ike_sa_proposal(self, peer_payload_sa):
         my_proposal = Proposal(
             1, Proposal.Protocol.IKE, b'',
-            (self.configuration.encr + self.configuration.integ +
-                self.configuration.prf + self.configuration.dh)
+            (self.configuration['encr'] + self.configuration['integ'] +
+                self.configuration['prf'] + self.configuration['dh'])
         )
         return self._select_best_sa_proposal(my_proposal, peer_payload_sa)
 
@@ -384,7 +384,7 @@ class IkeSa(object):
     def _generate_psk_auth_payload(self, message_data, nonce, payload_id, sk_p):
         prf = self.peer_crypto.prf.prf
         data_to_be_signed = (message_data + nonce + prf(sk_p, payload_id.to_bytes()))
-        keypad = prf(self.configuration.psk, b'Key Pad for IKEv2')
+        keypad = prf(self.configuration['psk'], b'Key Pad for IKEv2')
         return prf(keypad, data_to_be_signed)
 
     def _generate_peer_psk_auth_payload(self, payload_id):
@@ -448,8 +448,8 @@ class IkeSa(object):
         response_payload_tsr = PayloadTSr([chosen_tsr])
 
         # send my IDr
-        response_payload_idr = PayloadIDr(PayloadIDr.Type.ID_RFC822_ADDR,
-                                          self.configuration.id)
+        response_payload_idr = PayloadIDr(self.configuration['id'].id_type,
+                                          self.configuration['id'].id_data)
 
         # generate AUTH payload
         auth_data = self._generate_my_psk_auth_payload(response_payload_idr)

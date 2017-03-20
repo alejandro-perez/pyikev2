@@ -9,6 +9,7 @@ import unittest
 from ipaddress import ip_network, ip_address
 from configuration import (
     Configuration, ConfigurationError, ConfigurationNotFound)
+from pprint import pprint
 
 class TestConfiguration(unittest.TestCase):
     def setUp(self):
@@ -35,8 +36,16 @@ class TestConfiguration(unittest.TestCase):
                 'psk': 'aa',
                 'email': 'alex@um.es',
                 'encr': ['aes128'],
+                'protect': [
+                    {
+                        'src_selector': '192.168.1.1'
+                    }
+                ]
+
+                
             }
         })
+
 
     def test_found(self):
         conf = Configuration(self.my_addr, {
