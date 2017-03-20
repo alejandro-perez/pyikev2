@@ -5,8 +5,8 @@
 """
 from ipaddress import ip_network, ip_address
 from message import Transform, PayloadID, TrafficSelector, Proposal
-from protocol import Policy
 from crypto import Cipher, DiffieHellman, Integrity, Prf
+import ipsec
 
 class ConfigurationError(Exception):
     pass
@@ -48,8 +48,8 @@ _ip_proto_name_to_enum = {
 }
 
 _mode_name_to_enum = {
-    'transport': Policy.Mode.TRANSPORT,
-    'tunnel': Policy.Mode.TUNNEL,
+    'transport': ipsec.Mode.TRANSPORT,
+    'tunnel': ipsec.Mode.TUNNEL,
 }
 
 _ipsec_proto_name_to_enum = {
@@ -74,14 +74,17 @@ class Configuration(object):
                 raise ConfigurationError(str(ex))
             self._configuration[ip] = self._load_ike_conf(ip, value)
 
+    def items(self):
+        return self._configuration.items()
+
     def _load_ike_conf(self, peer_ip, conf_dict):
         result = {}
 
         result['psk'] = conf_dict.get('psk', 'whatever').encode()
-        result['id'] = PayloadID(PayloadID.Type.ID_RFC822_ADDR, 
-                                 conf_dict.get('id', 'pyikev2').encode())
-        result['peer_id'] = PayloadID(PayloadID.Type.ID_RFC822_ADDR, 
-                                      conf_dict.get('id', 'pyikev2').encode())
+        result['id'] = PayloadID(PayloadID.Type.ID_FQDN,
+            conf_dict.get('id', 'https://github.com/alejandro-perez/pyikev2').encode())
+        result['peer_id'] = PayloadID(PayloadID.Type.ID_FQDN,
+            conf_dict.get('id', 'https://github.com/alejandro-perez/pyikev2').encode())
         result['encr'] = self._load_crypto_algs(
             'encr', conf_dict.get('encr', ['aes256']), _encr_name_to_transform)
         result['integ'] = self._load_crypto_algs(
@@ -106,7 +109,7 @@ class Configuration(object):
     def _load_ip_address(self, value):
         try:
             return ip_address(value)
-        except ValueError:
+        except ValueError as ex:
             raise ConfigurationError(str(ex))
 
     def _load_ipsec_conf(self, peer_ip, conf_dict):

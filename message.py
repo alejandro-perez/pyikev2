@@ -35,6 +35,9 @@ class AuthenticationFailed(IkeSaError):
 class InvalidSelectors(IkeSaError):
     pass
 
+class PayloadNotFound(IkeSaError):
+    pass
+
 class Payload:
     class Type(SafeIntEnum):
         NONE = 0
@@ -890,14 +893,18 @@ class Message:
     def is_responder(self):
         return not self.is_initiator
 
-    def get_payload(self, payload_type):
-        return next(x for x in self.payloads if x.type == payload_type)
+    def get_notifies(self, notification_type, encrypted=False):
+        notifies = self.get_payloads(Payload.Type.NOTIFY, encrypted)
+        return [x for x in notifies if x.notification_type == notification_type]
 
-    def get_payloads(self, payload_type):
-        return [x for x in self.payloads if x.type == payload_type]
+    def get_payloads(self, payload_type, encrypted=False):
+        collection = self.payloads if not encrypted else self.encrypted_payloads
+        return [x for x in collection if x.type == payload_type]
 
-    def get_encr_payload(self, payload_type):
-        return next(x for x in self.encrypted_payloads if x.type == payload_type)
-
-    def get_encr_payloads(self, payload_type):
-        return [x for x in self.encrypted_payloads if x.type == payload_type]
+    def get_payload(self, payload_type, encrypted=False):
+        try:
+            return self.get_payloads(payload_type, encrypted)[0]
+        except IndexError:
+            raise PayloadNotFound(
+                'Required payload {} was not found in message'
+                ''.format(Payload.Type.safe_name(payload_type)))
