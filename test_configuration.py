@@ -11,15 +11,18 @@ from configuration import (
     Configuration, ConfigurationError, ConfigurationNotFound)
 
 class TestConfiguration(unittest.TestCase):
+    def setUp(self):
+        self.my_addr = ip_address('192.168.1.1')
+    
     def test_empty(self):
-        conf = Configuration({})
+        conf = Configuration(self.my_addr, {})
 
     def test_no_ip(self):
         with self.assertRaises(ConfigurationError):
-            conf = Configuration({'a': {}})
+            conf = Configuration(self.my_addr, {'a': {}})
 
     def test_ip(self):
-        conf = Configuration({
+        conf = Configuration(self.my_addr, {
             '192.168.1.1': {
                 'psk': 'aa',
                 'email': 'alex@um.es'
@@ -27,7 +30,7 @@ class TestConfiguration(unittest.TestCase):
         })
 
     def test_valid(self):
-        conf = Configuration({
+        conf = Configuration(self.my_addr, {
             '192.168.1.1': {
                 'psk': 'aa',
                 'email': 'alex@um.es',
@@ -36,7 +39,7 @@ class TestConfiguration(unittest.TestCase):
         })
 
     def test_found(self):
-        conf = Configuration({
+        conf = Configuration(self.my_addr, {
             '192.168.1.5': {
                 'psk': 'aa',
                 'email': 'alex@um.es'
@@ -45,7 +48,7 @@ class TestConfiguration(unittest.TestCase):
         ike_conf = conf.get_ike_configuration('192.168.1.5')
 
     def test_not_found(self):
-        conf = Configuration({
+        conf = Configuration(self.my_addr, {
             '192.168.1.5': {
                 'psk': 'aa',
                 'email': 'alex@um.es'
@@ -56,7 +59,7 @@ class TestConfiguration(unittest.TestCase):
 
     def test_invalid_dh(self):
         with self.assertRaises(ConfigurationError):
-            conf = Configuration({
+            conf = Configuration(self.my_addr, {
                 '192.168.1.1': {
                     'psk': 'aa',
                     'email': 'alex@um.es',

@@ -39,36 +39,16 @@ _dh_name_to_transform = {
     '18': Transform(Transform.Type.DH, DiffieHellman.Id.DH_18),
 }
 
-class IkeConfiguration(object):
-    """ Represents the configuration applicable to an individual IKE SA
-    """
-    def __init__(self, key, conf_dict):
-        """ Creates a new IkeConfiguration object from a textual dict
-            (e.g. comming fron JSON or YAML)
-        """
-        self.psk = conf_dict.get('psk', 'whatever').encode()
-        self.id = conf_dict.get('id', 'pyikev2').encode()
-
-        self.encr = self.load_crypto_algs('encr',
-            conf_dict.get('encr', ['aes256']), _encr_name_to_transform)
-        self.integ = self.load_crypto_algs('integ',
-            conf_dict.get('integ', ['sha1']), _integ_name_to_transform)
-        self.prf = self.load_crypto_algs('prf',
-            conf_dict.get('prf', ['sha1']), _prf_name_to_transform)
-        self.dh = self.load_crypto_algs('dh',
-            conf_dict.get('dh', ['5']), _dh_name_to_transform)
-
-
-
 class Configuration(object):
     """ Represents the daemon configuration
         Basically, a collection of IkeConfigurations
     """
-    def __init__(self, conf_dict):
+    def __init__(self, my_addr, conf_dict):
         """ Creates a new Configuration object from a textual dict
             (e.g. comming fron JSON or YAML)
         """
         self._configuration = {}
+        self.my_addr = my_addr
         for key, value in conf_dict.items():
             try:
                 ip = ip_address(key)
@@ -91,7 +71,20 @@ class Configuration(object):
             'prf', conf_dict.get('prf', ['sha1']), _prf_name_to_transform)
         result['dh'] = self._load_crypto_algs(
             'dh', conf_dict.get('dh', ['2']), _dh_name_to_transform)
+
+        if 'protect' in conf_dict:
+            ipsec_confs = []
+            for ipsec_conf in conf_dict['protect']:
+                ipsec_confs.append(self._load_ipsec_conf(ipsec_conf))
+            result['protect'] = ipsec_confs
         return result
+
+    def _load_ipsec_conf(self, conf_dict):
+        result = {}
+        return result
+
+
+
 
     def get_ike_configuration(self, addr):
         addr = ip_address(addr)
