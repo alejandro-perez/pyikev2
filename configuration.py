@@ -74,6 +74,9 @@ class Configuration(object):
                 raise ConfigurationError(str(ex))
             self._configuration[ip] = self._load_ike_conf(ip, value)
 
+    def items(self):
+        return self._configuration.items()
+
     def _load_ike_conf(self, peer_ip, conf_dict):
         result = {}
 
