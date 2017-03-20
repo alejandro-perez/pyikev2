@@ -15,63 +15,9 @@ from collections import OrderedDict
 class IpsecError(Exception):
     pass
 
-class Policy(object):
-    """ Represents a security policy
-
-        Policies are always defined as if src_selector was our side of the
-        conversation. E.g. a HTTP server would set src_port=80 and dst_port=0
-    """
-    class Mode(SafeIntEnum):
-        TRANSPORT = 1
-        TUNNEL = 2
-
-    def __init__(self, src_selector, src_port, dst_selector, dst_port,
-            ip_proto, ipsec_proto, mode, tunnel_src=None,
-            tunnel_dst=None):
-        self.src_selector = ip_network(src_selector)
-        self.src_port = src_port
-        self.dst_selector = ip_network(dst_selector)
-        self.dst_port = dst_port
-        self.ip_protocol = ip_proto
-        self.ipsec_protocol = ipsec_proto
-        self.mode = mode
-        self.tunnel_src = ip_address(tunnel_src) if tunnel_src else None
-        self.tunnel_dst = ip_address(tunnel_dst) if tunnel_dst else None
-
-    def get_tsi(self):
-        return TrafficSelector(
-            ts_type=TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
-            ip_proto=self.ip_protocol,
-            start_port=self.src_port,
-            end_port=65535 if self.src_port == 0 else self.src_port,
-            start_addr=self.src_selector[0],
-            end_addr=self.src_selector[-1]
-        )
-
-    def get_tsr(self):
-        return TrafficSelector(
-            ts_type=TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
-            ip_proto=self.ip_protocol,
-            start_port=self.dst_port,
-            end_port=65535 if self.dst_port == 0 else self.dst_port,
-            start_addr=self.dst_selector[0],
-            end_addr=self.dst_selector[-1]
-        )
-
-    def to_dict(self):
-        result = OrderedDict([
-            ('src_selector', '{}:{}'.format(self.src_selector, self.src_port)),
-            ('dst_selector', '{}:{}'.format(self.dst_selector, self.dst_port)),
-            ('ip_protocol', TrafficSelector.IpProtocol.safe_name(self.ip_protocol)),
-            ('ipsec_protocol', Proposal.Protocol.safe_name(self.ipsec_protocol)),
-            ('mode', Policy.Mode.safe_name(self.mode)),
-        ])
-        if self.mode == Policy.Mode.TUNNEL:
-            result.update(OrderedDict([
-                ('tunnel_src', str(self.tunnel_src)),
-                ('tunnel_dst', str(self.tunnel_dst)),
-            ]))
-        return result
+class Mode(SafeIntEnum):
+    TRANSPORT = 1
+    TUNNEL = 2
 
 _ip_proto_names = {
     TrafficSelector.IpProtocol.TCP: 'tcp',
@@ -90,8 +36,8 @@ _auth_names = {
     Integrity.Id.AUTH_HMAC_SHA1_96: 'sha1'
 }
 _mode_names = {
-    Policy.Mode.TUNNEL: 'tunnel',
-    Policy.Mode.TRANSPORT: 'transport',
+    Mode.TUNNEL: 'tunnel',
+    Mode.TRANSPORT: 'transport',
 }
 
 def _run_command(command):

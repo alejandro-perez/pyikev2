@@ -17,7 +17,6 @@ from struct import pack, unpack
 from collections import namedtuple, OrderedDict
 import json
 from ipaddress import ip_address, ip_network
-from ipsec import Policy
 import ipsec
 import sys
 
@@ -400,14 +399,14 @@ class IkeSa(object):
 
         # check which mode peer wants
         if request.get_notifies(PayloadNOTIFY.Type.USE_TRANSPORT_MODE, True):
-            mode = Policy.Mode.TRANSPORT
+            mode = ipsec.Mode.TRANSPORT
             response_payload_notify = PayloadNOTIFY(Proposal.Protocol.NONE,
                 PayloadNOTIFY.Type.USE_TRANSPORT_MODE, b'', b'')
         else:
-            mode = Policy.Mode.TUNNEL
+            mode = ipsec.Mode.TUNNEL
             response_payload_notify = None
 
-        if ipsec_conf.mode != mode:
+        if ipsec_conf['mode'] != mode:
             raise InvalidSelectors('Invalid mode requested')
 
         # generate the response payload SA with the chosen proposal

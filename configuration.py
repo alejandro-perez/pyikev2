@@ -5,8 +5,8 @@
 """
 from ipaddress import ip_network, ip_address
 from message import Transform, PayloadID, TrafficSelector, Proposal
-from protocol import Policy
 from crypto import Cipher, DiffieHellman, Integrity, Prf
+import ipsec
 
 class ConfigurationError(Exception):
     pass
@@ -48,8 +48,8 @@ _ip_proto_name_to_enum = {
 }
 
 _mode_name_to_enum = {
-    'transport': Policy.Mode.TRANSPORT,
-    'tunnel': Policy.Mode.TUNNEL,
+    'transport': ipsec.Mode.TRANSPORT,
+    'tunnel': ipsec.Mode.TUNNEL,
 }
 
 _ipsec_proto_name_to_enum = {

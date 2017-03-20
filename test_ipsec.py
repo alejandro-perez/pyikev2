@@ -5,7 +5,6 @@
 """
 import unittest
 import ipsec
-from ipsec import Policy
 from message import TrafficSelector, Proposal
 import subprocess
 from crypto import Cipher, Integrity
@@ -60,7 +59,7 @@ class TestIpsec(unittest.TestCase):
     def test_create_tunnel_ipsec_sa(self):
         ipsec.create_child_sa('192.168.1.1', '192.168.1.3', Proposal.Protocol.ESP,
             b'1234', Cipher.Id.ENCR_AES_CBC, b'1'*16, Integrity.Id.AUTH_HMAC_MD5_96,
-            b'1'*16, Policy.Mode.TUNNEL)
+            b'1'*16, ipsec.Mode.TUNNEL)
         text_state = subprocess.check_output(['ip', 'xfrm', 'state'])
         self.assertEqual(
             text_state,
