@@ -524,8 +524,6 @@ class IkeSaController:
         for peer_addr, ike_conf in configuration.items():
             ipsec.create_policies(myaddr, peer_addr, ike_conf)
 
-        #     ipsec.create_policy(policy)
-
     def dispatch_message(self, data, myaddr, peeraddr):
         header = Message.parse(data, header_only=True)
 

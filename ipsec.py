@@ -113,7 +113,6 @@ def create_policies(my_addr, peer_addr, ike_conf):
             str(ipsec_conf['my_port']), 'fwd', _ipsec_proto_names[ipsec_conf['ipsec_proto']],
             _mode_names[ipsec_conf['mode']], str(peer_addr), str(my_addr))
 
-
 def create_child_sa(src, dst, ipsec_protocol, spi, enc_algorith, sk_e,
         auth_algorithm, sk_a, mode):
     _ip_xfrm_add_state(
