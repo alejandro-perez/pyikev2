@@ -4,7 +4,7 @@
 """ This module defines the classes for the protocol handling.
 """
 from ipaddress import ip_network, ip_address
-from message import Transform
+from message import Transform, PayloadID
 from crypto import Cipher, DiffieHellman, Integrity, Prf
 
 class ConfigurationError(Exception):
@@ -58,7 +58,50 @@ class IkeConfiguration(object):
         self.dh = self.load_crypto_algs('dh',
             conf_dict.get('dh', ['5']), _dh_name_to_transform)
 
-    def load_crypto_algs(self, key, names, name_to_transform):
+
+
+class Configuration(object):
+    """ Represents the daemon configuration
+        Basically, a collection of IkeConfigurations
+    """
+    def __init__(self, conf_dict):
+        """ Creates a new Configuration object from a textual dict
+            (e.g. comming fron JSON or YAML)
+        """
+        self._configuration = {}
+        for key, value in conf_dict.items():
+            try:
+                ip = ip_address(key)
+            except ValueError as ex:
+                raise ConfigurationError(str(ex))
+            self._configuration[ip] = self._load_ike_conf(value)
+
+    def _load_ike_conf(self, conf_dict):
+        result = {}
+        result['psk'] = conf_dict.get('psk', 'whatever').encode()
+        result['id'] = PayloadID(PayloadID.Type.ID_RFC822_ADDR, 
+                                 conf_dict.get('id', 'pyikev2').encode())
+        result['peer_id'] = PayloadID(PayloadID.Type.ID_RFC822_ADDR, 
+                                      conf_dict.get('id', 'pyikev2').encode())
+        result['encr'] = self._load_crypto_algs(
+            'encr', conf_dict.get('encr', ['aes256']), _encr_name_to_transform)
+        result['integ'] = self._load_crypto_algs(
+            'integ', conf_dict.get('integ', ['sha1']), _integ_name_to_transform)
+        result['prf'] = self._load_crypto_algs(
+            'prf', conf_dict.get('prf', ['sha1']), _prf_name_to_transform)
+        result['dh'] = self._load_crypto_algs(
+            'dh', conf_dict.get('dh', ['2']), _dh_name_to_transform)
+        return result
+
+    def get_ike_configuration(self, addr):
+        addr = ip_address(addr)
+        try:
+            found = next(key for key in self._configuration if addr == key)
+        except StopIteration:
+            raise ConfigurationNotFound
+        return self._configuration[found]
+
+    def _load_crypto_algs(self, key, names, name_to_transform):
         transforms = []
         if type(names) is not list:
             raise ConfigurationError('{} should be a list.'.format(key))
@@ -69,29 +112,3 @@ class IkeConfiguration(object):
                 raise ConfigurationError(
                     '{} algorithm "{}" not supported'.format(key, x))
         return transforms
-
-class Configuration(object):
-    """ Represents the daemon configuration
-        Basically, a collection of IkeConfigurations
-    """
-    def __init__(self, conf_dict):
-        """ Creates a new Configuration object from a textual dict
-            (e.g. comming fron JSON or YAML)
-        """
-        self._ike_configurations = {}
-        for ip_range, ike_conf_dict in conf_dict.items():
-            try:
-                ip_range = ip_network(ip_range)
-                self._ike_configurations[ip_range] = IkeConfiguration(
-                    ip_range, ike_conf_dict)
-            except ValueError as ex:
-                raise ConfigurationError(str(ex))
-
-    def get_ike_configuration(self, addr):
-        addr = ip_address(addr)
-        try:
-            found = next(key for key in self._ike_configurations if addr in key)
-        except StopIteration:
-            raise ConfigurationNotFound
-        return self._ike_configurations[found]
-

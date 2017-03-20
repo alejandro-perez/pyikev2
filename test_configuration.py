@@ -7,18 +7,14 @@ __author__ = 'Alejandro Perez <alex@um.es>'
 
 import unittest
 from ipaddress import ip_network, ip_address
-from configuration import (Configuration, ConfigurationError,
-    ConfigurationNotFound, IkeConfiguration)
-
-class TestIkeConfiguration(unittest.TestCase):
-    def test_empty(self):
-        conf = IkeConfiguration(ip_network('192.168.1.0/24'), {})
+from configuration import (
+    Configuration, ConfigurationError, ConfigurationNotFound)
 
 class TestConfiguration(unittest.TestCase):
     def test_empty(self):
         conf = Configuration({})
 
-    def test_no_range(self):
+    def test_no_ip(self):
         with self.assertRaises(ConfigurationError):
             conf = Configuration({'a': {}})
 
@@ -32,7 +28,7 @@ class TestConfiguration(unittest.TestCase):
 
     def test_valid(self):
         conf = Configuration({
-            '192.168.1.1/32': {
+            '192.168.1.1': {
                 'psk': 'aa',
                 'email': 'alex@um.es',
                 'encr': ['aes128'],
@@ -41,7 +37,7 @@ class TestConfiguration(unittest.TestCase):
 
     def test_found(self):
         conf = Configuration({
-            '192.168.1.0/24': {
+            '192.168.1.5': {
                 'psk': 'aa',
                 'email': 'alex@um.es'
             }
@@ -50,7 +46,7 @@ class TestConfiguration(unittest.TestCase):
 
     def test_not_found(self):
         conf = Configuration({
-            '192.168.1.0/24': {
+            '192.168.1.5': {
                 'psk': 'aa',
                 'email': 'alex@um.es'
             }
@@ -61,7 +57,7 @@ class TestConfiguration(unittest.TestCase):
     def test_invalid_dh(self):
         with self.assertRaises(ConfigurationError):
             conf = Configuration({
-                '192.168.1.1/32': {
+                '192.168.1.1': {
                     'psk': 'aa',
                     'email': 'alex@um.es',
                     'encr': ['aes128'],
