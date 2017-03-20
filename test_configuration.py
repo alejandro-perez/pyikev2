@@ -9,12 +9,11 @@ import unittest
 from ipaddress import ip_network, ip_address
 from configuration import (
     Configuration, ConfigurationError, ConfigurationNotFound)
-from pprint import pprint
 
 class TestConfiguration(unittest.TestCase):
     def setUp(self):
         self.my_addr = ip_address('192.168.1.1')
-    
+
     def test_empty(self):
         conf = Configuration(self.my_addr, {})
 
@@ -42,7 +41,7 @@ class TestConfiguration(unittest.TestCase):
                     }
                 ]
 
-                
+
             }
         })
 

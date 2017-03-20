@@ -49,7 +49,7 @@ class IkeSa(object):
         self.peeraddr = peeraddr
         self.ipsec_spi = []
 
-    def __del__(self):
+    def delete_child_sa(self):
         for spi in self.ipsec_spi:
             ipsec.delete_child_sa(spi)
 
@@ -175,15 +175,15 @@ class IkeSa(object):
         """ Generates traffic selectors based on an ipsec configuration
         """
         conf_tsi = TrafficSelector(
-            TrafficSelector.Type.TS_IPV4_ADDR_RANGE, 
-            ipsec_conf['ip_proto'], 
+            TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
+            ipsec_conf['ip_proto'],
             ipsec_conf['my_port'],
             65535 if ipsec_conf['my_port'] == 0 else ipsec_conf['my_port'],
             ipsec_conf['my_subnet'][0],
             ipsec_conf['my_subnet'][-1])
         conf_tsr = TrafficSelector(
-            TrafficSelector.Type.TS_IPV4_ADDR_RANGE, 
-            ipsec_conf['ip_proto'], 
+            TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
+            ipsec_conf['ip_proto'],
             ipsec_conf['peer_port'],
             65535 if ipsec_conf['peer_port'] == 0 else ipsec_conf['peer_port'],
             ipsec_conf['peer_subnet'][0],
@@ -193,13 +193,13 @@ class IkeSa(object):
     def _get_ipsec_configuration(self, payload_tsi, payload_tsr):
         """ Find matching IPsec configuration.
             It iterates over the received TS in reversed order and returns the
-            first configuration that is bigger than our selectors, and the 
+            first configuration that is bigger than our selectors, and the
             narrowed selectors as well
         """
         for tsi in reversed(payload_tsi.traffic_selectors):
             for tsr in reversed(payload_tsr.traffic_selectors):
                 for ipsec_conf in self.configuration['protect']:
-                    (conf_tsi, 
+                    (conf_tsi,
                      conf_tsr) = self._generate_traffic_selectors(ipsec_conf)
                     narrowed_tsi = tsi.intersection(conf_tsi)
                     narrowed_tsr = tsr.intersection(conf_tsr)
@@ -392,7 +392,7 @@ class IkeSa(object):
         if auth_data != request_payload_auth.auth_data:
             raise AuthenticationFailed('Invalid AUTH data received')
 
-        # find matching IPsec configuration and TS 
+        # find matching IPsec configuration and TS
         # (reverse order as we are responders)
         (ipsec_conf, chosen_tsr, chosen_tsi) = self._get_ipsec_configuration(
             request_payload_tsr, request_payload_tsi)
@@ -514,14 +514,16 @@ class IkeSa(object):
         return response
 
 class IkeSaController:
-    def __init__(self, configuration):
+    def __init__(self, myaddr, configuration):
         self.ike_sas = {}
         self.configuration = configuration
 
         # establish policies
         ipsec.flush_policies()
         ipsec.flush_ipsec_sa()
-        # for policy in self.policies:
+        for peer_addr, ike_conf in configuration.items():
+            ipsec.create_policies(myaddr, peer_addr, ike_conf)
+
         #     ipsec.create_policy(policy)
 
     def dispatch_message(self, data, myaddr, peeraddr):
@@ -533,7 +535,7 @@ class IkeSaController:
             # look for matching configuration
             ike_configuration = self.configuration.get_ike_configuration(peeraddr[0])
 
-            ike_sa = IkeSa(is_initiator=False, configuration=ike_configuration, 
+            ike_sa = IkeSa(is_initiator=False, configuration=ike_configuration,
                            myaddr=myaddr, peeraddr=peeraddr)
             self.ike_sas[ike_sa.my_spi] = ike_sa
             logging.info('Starting the creation of IKE SA with SPI={}. '
@@ -558,6 +560,7 @@ class IkeSaController:
 
         # if the IKE_SA needs to be closed
         if not status:
+            ike_sa.delete_child_sa()
             del self.ike_sas[ike_sa.my_spi]
             logging.info('Deleted IKE_SA with SPI={}. Count={}'.format(
                 hexstring(pack('>Q', ike_sa.my_spi)), len(self.ike_sas)))

@@ -49,16 +49,18 @@ sock.bind((ip, 500))
 logging.info('Listening from {}'.format(sock.getsockname()))
 
 configuration = Configuration(
-    sock.getsockname()[0], 
+    sock.getsockname()[0],
     {
         '10.0.5.107': {
             'psk': 'testing',
-            'id': 'bob@openikev2',
             'dh': ['5'],
+            'id': 'bob@openikev2',
             'protect': [
                 {
                     'encr': ['aes256', 'aes128'],
-                    'ipsec_proto': 'esp'
+                    'ipsec_proto': 'esp',
+                    'ip_proto': 'tcp',
+                    'mode': 'tunnel',
                 }
             ]
         },
@@ -66,7 +68,8 @@ configuration = Configuration(
 )
 
 # create IkeSaController
-ike_sa_controller = IkeSaController(configuration=configuration)
+ike_sa_controller = IkeSaController(sock.getsockname()[0],
+                                    configuration=configuration)
 
 # do server
 while True:

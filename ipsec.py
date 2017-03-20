@@ -58,8 +58,7 @@ def _ip_xfrm_add_policy(src, dst, ip_proto, sport, dport, dir,
         'ip', 'xfrm', 'policy', 'add', 'src', src, 'dst', dst, 'proto', ip_proto,
         'sport', sport, 'dport', dport, 'dir', dir, 'action', 'allow', 'tmpl'
     ]
-    if mode == 'tunnel':
-        command += ['src', tsrc, 'dst', tdst]
+    command += ['src', tsrc, 'dst', tdst]
     command += ['proto', ipsec_proto, 'mode', mode]
     _run_command(command)
 
@@ -82,22 +81,38 @@ def _ip_xfrm_del_state(spi):
     ]
     _run_command(command)
 
-def create_policy(policy):
-    """ Creates all the directions of a Policy object
+def create_policies(my_addr, peer_addr, ike_conf):
+    """ Creates all the IPsec policies associated to a ike_configuration
     """
-    # add outbound
-    _ip_xfrm_add_policy(
-        str(policy.src_selector), str(policy.dst_selector),
-        _ip_proto_names[policy.ip_protocol], str(policy.src_port),
-        str(policy.dst_port), 'out', _ipsec_proto_names[policy.ipsec_protocol],
-        _mode_names[policy.mode], str(policy.tunnel_src), str(policy.tunnel_dst))
+    for ipsec_conf in ike_conf['protect']:
+        if ipsec_conf['mode'] == Mode.TUNNEL:
+            src_selector = ipsec_conf['my_subnet']
+            dst_selector = ipsec_conf['peer_subnet']
+        else:
+            src_selector = my_addr
+            dst_selector = peer_addr
 
-    # add inbound
-    _ip_xfrm_add_policy(
-        str(policy.dst_selector), str(policy.src_selector),
-        _ip_proto_names[policy.ip_protocol], str(policy.dst_port),
-        str(policy.src_port), 'in', _ipsec_proto_names[policy.ipsec_protocol],
-        _mode_names[policy.mode], str(policy.tunnel_dst), str(policy.tunnel_src))
+        # add outbound
+        _ip_xfrm_add_policy(
+            str(src_selector), str(dst_selector),
+            _ip_proto_names[ipsec_conf['ip_proto']], str(ipsec_conf['my_port']),
+            str(ipsec_conf['peer_port']), 'out', _ipsec_proto_names[ipsec_conf['ipsec_proto']],
+            _mode_names[ipsec_conf['mode']], str(my_addr), str(peer_addr))
+
+        # add inbound
+        _ip_xfrm_add_policy(
+            str(dst_selector), str(src_selector),
+            _ip_proto_names[ipsec_conf['ip_proto']], str(ipsec_conf['peer_port']),
+            str(ipsec_conf['my_port']), 'in', _ipsec_proto_names[ipsec_conf['ipsec_proto']],
+            _mode_names[ipsec_conf['mode']], str(peer_addr), str(my_addr))
+
+        # add fwd
+        _ip_xfrm_add_policy(
+            str(dst_selector), str(src_selector),
+            _ip_proto_names[ipsec_conf['ip_proto']], str(ipsec_conf['peer_port']),
+            str(ipsec_conf['my_port']), 'fwd', _ipsec_proto_names[ipsec_conf['ipsec_proto']],
+            _mode_names[ipsec_conf['mode']], str(peer_addr), str(my_addr))
+
 
 def create_child_sa(src, dst, ipsec_protocol, spi, enc_algorith, sk_e,
         auth_algorithm, sk_a, mode):

@@ -8,6 +8,7 @@ import ipsec
 from message import TrafficSelector, Proposal
 import subprocess
 from crypto import Cipher, Integrity
+from ipaddress import ip_address, ip_network
 
 class TestIpsec(unittest.TestCase):
     def setUp(self):
@@ -15,37 +16,68 @@ class TestIpsec(unittest.TestCase):
         ipsec.flush_ipsec_sa()
 
     def test_create_transport_policy(self):
-        policy = Policy('192.168.1.0/24', 0, '10.0.0.0/8', 80,
-            TrafficSelector.IpProtocol.TCP, Proposal.Protocol.AH,
-            Policy.Mode.TRANSPORT)
-        ipsec.create_policy(policy)
+        ike_conf = {
+            'protect': [
+                {
+                    # 'my_subnet': ip_network('192.168.1.0/24'),
+                    # 'peer_subnet': ip_network('10.0.0.0/8'),
+                    'my_port': 0,
+                    'peer_port': 80,
+                    'ip_proto': TrafficSelector.IpProtocol.TCP,
+                    'ipsec_proto': Proposal.Protocol.AH,
+                    'mode': ipsec.Mode.TRANSPORT
+                }
+            ]
+        }
+        ipsec.create_policies(ip_address('192.168.1.1'),
+                              ip_address('192.168.1.2'),
+                              ike_conf)
+
         text_pol = subprocess.check_output(['ip', 'xfrm', 'policy'])
         self.assertEqual(
             text_pol,
-            b'src 10.0.0.0/8 dst 192.168.1.0/24 proto tcp sport 80 \n\tdir in '
-            b'priority 0 \n\ttmpl src 0.0.0.0 dst 0.0.0.0\n\t\tproto ah reqid '
-            b'0 mode transport\nsrc 192.168.1.0/24 dst 10.0.0.0/8 proto tcp dp'
-            b'ort 80 \n\tdir out priority 0 \n\ttmpl src 0.0.0.0 dst 0.0.0.0\n'
-            b'\t\tproto ah reqid 0 mode transport\n')
+            b'src 192.168.1.2/32 dst 192.168.1.1/32 proto tcp sport 80 \n\tdir'
+            b' fwd priority 0 \n\ttmpl src 192.168.1.2 dst 192.168.1.1\n\t\tpr'
+            b'oto ah reqid 0 mode transport\nsrc 192.168.1.2/32 dst 192.168.1.'
+            b'1/32 proto tcp sport 80 \n\tdir in priority 0 \n\ttmpl src 192.1'
+            b'68.1.2 dst 192.168.1.1\n\t\tproto ah reqid 0 mode transport\nsrc'
+            b' 192.168.1.1/32 dst 192.168.1.2/32 proto tcp dport 80 \n\tdir ou'
+            b't priority 0 \n\ttmpl src 192.168.1.1 dst 192.168.1.2\n\t\tproto'
+            b' ah reqid 0 mode transport\n')
 
     def test_create_tunnel_policy(self):
-        policy = Policy('192.168.1.0/24', 0, '10.0.0.0/8', 80,
-            TrafficSelector.IpProtocol.TCP, Proposal.Protocol.AH,
-            Policy.Mode.TUNNEL, '155.54.1.1', '155.54.1.2')
-        ipsec.create_policy(policy)
+        ike_conf = {
+            'protect': [
+                {
+                    'my_subnet': ip_network('192.168.1.0/24'),
+                    'peer_subnet': ip_network('10.0.0.0/8'),
+                    'my_port': 0,
+                    'peer_port': 80,
+                    'ip_proto': TrafficSelector.IpProtocol.TCP,
+                    'ipsec_proto': Proposal.Protocol.AH,
+                    'mode': ipsec.Mode.TUNNEL
+                }
+            ]
+        }
+        ipsec.create_policies(ip_address('192.168.1.1'),
+                              ip_address('192.168.1.2'),
+                              ike_conf)
         text_pol = subprocess.check_output(['ip', 'xfrm', 'policy'])
         self.assertEqual(
             text_pol,
-            b'src 10.0.0.0/8 dst 192.168.1.0/24 proto tcp sport 80 \n\tdir in '
-            b'priority 0 \n\ttmpl src 155.54.1.2 dst 155.54.1.1\n\t\tproto ah '
-            b'reqid 0 mode tunnel\nsrc 192.168.1.0/24 dst 10.0.0.0/8 proto tcp'
-            b' dport 80 \n\tdir out priority 0 \n\ttmpl src 155.54.1.1 dst 155'
-            b'.54.1.2\n\t\tproto ah reqid 0 mode tunnel\n')
+            b'src 10.0.0.0/8 dst 192.168.1.0/24 proto tcp sport 80 \n\tdir fwd'
+            b' priority 0 \n\ttmpl src 192.168.1.2 dst 192.168.1.1\n\t\tproto '
+            b'ah reqid 0 mode tunnel\nsrc 10.0.0.0/8 dst 192.168.1.0/24 proto '
+            b'tcp sport 80 \n\tdir in priority 0 \n\ttmpl src 192.168.1.2 dst '
+            b'192.168.1.1\n\t\tproto ah reqid 0 mode tunnel\nsrc 192.168.1.0/2'
+            b'4 dst 10.0.0.0/8 proto tcp dport 80 \n\tdir out priority 0 \n\tt'
+            b'mpl src 192.168.1.1 dst 192.168.1.2\n\t\tproto ah reqid 0 mode t'
+            b'unnel\n')
 
     def test_create_transport_ipsec_sa(self):
         ipsec.create_child_sa('192.168.1.1', '192.168.1.2', Proposal.Protocol.ESP,
             b'1234', Cipher.Id.ENCR_AES_CBC, b'1'*16, Integrity.Id.AUTH_HMAC_MD5_96,
-            b'1'*16, Policy.Mode.TRANSPORT)
+            b'1'*16, ipsec.Mode.TRANSPORT)
         text_state = subprocess.check_output(['ip', 'xfrm', 'state'])
         self.assertEqual(
             text_state,

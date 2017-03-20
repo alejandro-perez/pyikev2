@@ -81,10 +81,10 @@ class Configuration(object):
         result = {}
 
         result['psk'] = conf_dict.get('psk', 'whatever').encode()
-        result['id'] = PayloadID(PayloadID.Type.ID_RFC822_ADDR, 
-                                 conf_dict.get('id', 'pyikev2').encode())
-        result['peer_id'] = PayloadID(PayloadID.Type.ID_RFC822_ADDR, 
-                                      conf_dict.get('id', 'pyikev2').encode())
+        result['id'] = PayloadID(PayloadID.Type.ID_FQDN,
+            conf_dict.get('id', 'https://github.com/alejandro-perez/pyikev2').encode())
+        result['peer_id'] = PayloadID(PayloadID.Type.ID_FQDN,
+            conf_dict.get('id', 'https://github.com/alejandro-perez/pyikev2').encode())
         result['encr'] = self._load_crypto_algs(
             'encr', conf_dict.get('encr', ['aes256']), _encr_name_to_transform)
         result['integ'] = self._load_crypto_algs(
@@ -109,7 +109,7 @@ class Configuration(object):
     def _load_ip_address(self, value):
         try:
             return ip_address(value)
-        except ValueError:
+        except ValueError as ex:
             raise ConfigurationError(str(ex))
 
     def _load_ipsec_conf(self, peer_ip, conf_dict):
