@@ -290,6 +290,54 @@ class IkeSa(object):
 
         return True, None
 
+    def _process_ike_sa_negotiation_request(self, request, encrypted=False,
+                                            old_sk_d=None):
+        """ Process a IKE_SA negotiation request (SA, Ni, KEi), and returns
+            appropriate response payloads (SA, Nr, KEr) or raises exception
+            on error.
+            It sets self.chosen_proposal and self.ike_sa_keyring as a result
+        """
+        # generate the response payload SA with the chosen proposal
+        payload_sa = request.get_payload(Payload.Type.SA, encrypted)
+        payload_nonce = request.get_payload(Payload.Type.NONCE, encrypted)
+        payload_ke = request.get_payload(Payload.Type.KE, encrypted)
+
+        self.chosen_proposal = self._select_best_ike_sa_proposal(payload_sa)
+        # if this is a rekey, hence spi is not empty, send ours
+        if self.chosen_proposal.spi:
+            self.chosen_proposal.spi = pack('>Q', self.my_spi)
+        response_payload_sa = PayloadSA([self.chosen_proposal])
+
+        # generate payload NONCE
+        response_payload_nonce = PayloadNONCE()
+
+        # check that DH groups match
+        my_dh_group = self.chosen_proposal.get_transform(Transform.Type.DH).id
+        if my_dh_group != payload_ke.dh_group:
+            raise InvalidKePayload('Invalid DH group used. I requested {}'
+                                   ''.format(my_dh_group))
+
+        # generate the response payload KE
+        dh = DiffieHellman(payload_ke.dh_group)
+        dh.compute_secret(payload_ke.ke_data)
+        logging.debug('Generated DH shared secret: {}'
+                      ''.format(hexstring(dh.shared_secret)))
+        response_payload_ke = PayloadKE(dh.group, dh.public_key)
+
+        # generate IKE SA key material
+        self.ike_sa_keyring = self._generate_ike_sa_key_material(
+            ike_proposal=self.chosen_proposal,
+            nonce_i=payload_nonce.nonce,
+            nonce_r=response_payload_nonce.nonce,
+            spi_i=self.peer_spi,
+            spi_r=self.my_spi,
+            shared_secret=dh.shared_secret,
+            old_sk_d=old_sk_d
+        )
+
+        return [response_payload_sa, response_payload_nonce,
+                response_payload_ke]
+
     def process_ike_sa_init_request(self, request):
         """ Processes a IKE_SA_INIT message and returns a IKE_SA_INIT response
         """
@@ -298,43 +346,12 @@ class IkeSa(object):
             raise IkeSaError(
                 'IKE SA state cannot proccess IKE_SA_INIT message')
 
-        # get some relevant payloads from the message
-        request_payload_sa = request.get_payload(Payload.Type.SA)
-        request_payload_ke = request.get_payload(Payload.Type.KE)
-        request_payload_nonce = request.get_payload(Payload.Type.NONCE)
-
-        # generate the response payload SA with the chose proposal
-        self.chosen_proposal = self._select_best_ike_sa_proposal(request_payload_sa)
-
-        # check that DH groups match
-        my_dh_group = self.chosen_proposal.get_transform(Transform.Type.DH).id
-        if my_dh_group != request_payload_ke.dh_group:
-            raise InvalidKePayload('Invalid DH group used. I request {}'.format(my_dh_group))
-
-        # generate the response payload KE
-        dh = DiffieHellman(request_payload_ke.dh_group)
-        dh.compute_secret(request_payload_ke.ke_data)
-        logging.debug('Generated DH shared secret: {}'.format(hexstring(dh.shared_secret)))
-        response_payload_ke = PayloadKE(dh.group, dh.public_key)
-
-        # generate payload NONCE
-        response_payload_nonce = PayloadNONCE()
-
-        # generate IKE SA key material
-        self.ike_sa_keyring = self._generate_ike_sa_key_material(
-            ike_proposal=self.chosen_proposal,
-            nonce_i=request_payload_nonce.nonce,
-            nonce_r=response_payload_nonce.nonce,
-            spi_i=self.peer_spi,
-            spi_r=self.my_spi,
-            shared_secret=dh.shared_secret
-        )
+        # process the IKE_SA negotiation payloads
+        response_payloads = self._process_ike_sa_negotiation_request(request,
+                                                                     False)
 
         # generate the response payload VENDOR.
-        response_payload_vendor = PayloadVENDOR(b'pyikev2-0.1')
-
-        # generate the response Payload SA
-        response_payload_sa = PayloadSA([self.chosen_proposal])
+        response_payloads.append(PayloadVENDOR(b'pyikev2-0.1'))
 
         # generate the message
         response = Message(
@@ -347,8 +364,7 @@ class IkeSa(object):
             can_use_higher_version=False,
             is_initiator=False,
             message_id=self.peer_msg_id,
-            payloads=[response_payload_sa, response_payload_ke,
-                response_payload_nonce, response_payload_vendor],
+            payloads=response_payloads,
             encrypted_payloads=[],
         )
 
