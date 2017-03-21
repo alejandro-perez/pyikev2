@@ -688,8 +688,9 @@ class PayloadDELETE(Payload):
         except struct_error:
             raise InvalidSyntax('Error parsing Payload DELETE.')
         spis = []
-        for offset in range(0, num_spis):
-            spis.append(data[offset:offset+spi_size])
+        offset = 4
+        for i in range(0, num_spis):
+            spis.append(data[offset:offset + spi_size])
             offset += spi_size
         return PayloadDELETE(protocol_id, spis)
 
