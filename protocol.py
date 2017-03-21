@@ -34,6 +34,7 @@ class IkeSa(object):
         INITIAL = 0
         INIT_RES_SENT = 1
         ESTABLISHED = 2
+        REKEYED = 3
 
     def __init__(self, is_initiator, peer_spi, configuration, myaddr, peeraddr):
         self.state = IkeSa.State.INITIAL
@@ -243,6 +244,7 @@ class IkeSa(object):
             (Message.Exchange.IKE_SA_INIT, True): self.process_ike_sa_init_request,
             (Message.Exchange.IKE_AUTH, True): self.process_ike_auth_request,
             (Message.Exchange.INFORMATIONAL, True): self.process_informational_request,
+            (Message.Exchange.CREATE_CHILD_SA, True): self.process_create_child_sa_request,
         }
 
         # parse the whole message (including encrypted data)
@@ -537,7 +539,68 @@ class IkeSa(object):
             payloads=[],
             encrypted_payloads=response_payloads,
         )
+        return response
 
+    def process_create_child_sa_request(self, request):
+        """ Processes a CREATE_CHILD_SA message and returns response
+        """
+        # check state
+        if self.state != IkeSa.State.ESTABLISHED:
+            raise IkeSaError(
+                'IKE SA state cannot proccess CREATE_CHILD_SA message')
+
+        # determine whether this concerns to IKE_SA or CHILD_SA
+        payload_sa = request.get_payload(Payload.Type.SA, True)
+        proposal = payload_sa.proposals[0]
+        if proposal.protocol_id == Proposal.Protocol.IKE:
+            logging.info('Received request for rekeying current IKE_SA')
+            self.new_ike_sa = IkeSa(self.is_initiator, int.from_bytes(proposal.spi, 'big'),
+                                    self.configuration, self.myaddr, self.peeraddr)
+            # take over the existing child sas
+            self.new_ike_sa.child_sas = self.child_sas
+            self.child_sas = []
+            response_payloads = self.new_ike_sa._process_ike_sa_negotiation_request(request, True, self.ike_sa_keyring.sk_d)
+            self.new_ike_sa.state = IkeSa.State.ESTABLISHED
+            self.state = IkeSa.State.REKEYED
+        else:
+            raise InvalidSelectors('Rekey/creation of CHILD_SA not implemented yet')
+
+        # rekey_notify = request.get_notifies(PayloadNOTIFY.Type.REKEY_SA, True)
+        # response_rekey_notify = None
+        # if rekey_notify:
+        #     if len(rekey_notify) > 1:
+        #         logging.warning('More than one rekey notification in the '
+        #                         'message. Only the first one will be taken'
+        #                         ' into account.')
+        #     rekey_notify = rekey_notify[0]
+
+        #     # if this is a IKE_SA rekey, should be handled in other method
+        #     if rekey_notify.protocol_id == Proposal.Protocol.IKE:
+        #         # response_payloads = self._process_rekey_ike_sa_request(request)
+        #         raise InvalidSelectors('Rekey of IKE_SA not implemented yet')
+        #     # if this is a CHILD_SA rekey, should be handled in other method
+        #     else:
+        #         # response_payloads = self._process_rekey_child_sa_request(request)
+        #         raise InvalidSelectors('Rekey of CHILD_SA not implemented yet')
+        # # if there is no REKEY_SA payload, this is a regular create_child_sa
+        # else:
+        #     # response_payloads = self._process_create_child_sa_request(request)
+        #         raise InvalidSelectors('Creation of CHILD_SA not implemented yet')
+
+        # don't do anything yet, just reply with empty informational
+        response = Message(
+            spi_i=request.spi_i,
+            spi_r=request.spi_r,
+            major=2,
+            minor=0,
+            exchange_type=Message.Exchange.CREATE_CHILD_SA,
+            is_response=True,
+            can_use_higher_version=False,
+            is_initiator=self.is_initiator,
+            message_id=self.peer_msg_id,
+            payloads=[],
+            encrypted_payloads=response_payloads,
+        )
         return response
 
 class IkeSaController:
@@ -583,6 +646,10 @@ class IkeSaController:
 
         # generate the reply (if any)
         status, reply = ike_sa.process_message(data, peeraddr)
+
+        # if rekeyed, add the new IkeSa
+        if ike_sa.state == IkeSa.State.REKEYED:
+            self.ike_sas[ike_sa.new_ike_sa.my_spi] = ike_sa.new_ike_sa
 
         # if the IKE_SA needs to be closed
         if not status:
