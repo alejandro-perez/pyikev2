@@ -132,13 +132,15 @@ class IkeSa(object):
         sk_ei, sk_ai, sk_er, sk_ar = unpack(
             '>{0}s{1}s{0}s{1}s'.format(encr_key_size, integ_key_size),
             keymat)
-        self.child_sa_keyring = Keyring(sk_ai=sk_ai, sk_ei=sk_ei, sk_ar=sk_ar,
+        child_sa_keyring = Keyring(sk_ai=sk_ai, sk_ei=sk_ei, sk_ar=sk_ar,
             sk_er=sk_er, sk_d=None, sk_pi=None, sk_pr=None)
 
         logging.debug('Generated sk_ai: {}'.format(hexstring(sk_ai)))
         logging.debug('Generated sk_ar: {}'.format(hexstring(sk_ar)))
         logging.debug('Generated sk_ei: {}'.format(hexstring(sk_ei)))
         logging.debug('Generated sk_er: {}'.format(hexstring(sk_er)))
+
+        return child_sa_keyring
 
     def _select_best_sa_proposal(self, my_proposal, peer_payload_sa):
         """ Selects a received Payload SA wit our own suite
@@ -412,7 +414,7 @@ class IkeSa(object):
             request_payload_sa, ipsec_conf)
 
         # generate CHILD key material
-        self._generate_child_sa_key_material(
+        child_sa_keyring = self._generate_child_sa_key_material(
             ike_proposal=self.chosen_proposal,
             child_proposal=chosen_child_proposal,
             nonce_i=self.last_received_message.get_payload(Payload.Type.NONCE).nonce,
