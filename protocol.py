@@ -580,6 +580,8 @@ class IkeSa(object):
         # determine whether this concerns to IKE_SA or CHILD_SA
         payload_sa = request.get_payload(Payload.Type.SA, True)
         proposal = payload_sa.proposals[0]
+
+        # if this is a IKE_REKEY
         if proposal.protocol_id == Proposal.Protocol.IKE:
             logging.info('Received request for rekeying current IKE_SA')
             self.new_ike_sa = IkeSa(self.is_initiator, int.from_bytes(proposal.spi, 'big'),
@@ -590,32 +592,27 @@ class IkeSa(object):
             response_payloads = self.new_ike_sa._process_ike_sa_negotiation_request(request, True, self.ike_sa_keyring.sk_d)
             self.new_ike_sa.state = IkeSa.State.ESTABLISHED
             self.state = IkeSa.State.REKEYED
+
+        # if it concerns to CHILD_SAs
         else:
-            raise InvalidSelectors('Rekey/creation of CHILD_SA not implemented yet')
+            response_payloads = self._process_create_child_sa_negotiation_req(request,
+                                                                              bootstrap=False)
 
-        # rekey_notify = request.get_notifies(PayloadNOTIFY.Type.REKEY_SA, True)
-        # response_rekey_notify = None
-        # if rekey_notify:
-        #     if len(rekey_notify) > 1:
-        #         logging.warning('More than one rekey notification in the '
-        #                         'message. Only the first one will be taken'
-        #                         ' into account.')
-        #     rekey_notify = rekey_notify[0]
+            # if this was a rekey, delete old CHILD and send notification
+            rekey_notify = request.get_notifies(PayloadNOTIFY.Type.REKEY_SA, True)
+            if rekey_notify:
+                if len(rekey_notify) > 1:
+                    logging.warning('More than one rekey notification in the '
+                                    'message. Only the first one will be taken'
+                                    ' into account.')
+                rekey_notify = rekey_notify[0]
+                rekeyed_child_sa = next(x for x in self.child_sas if x.outbound_spi == rekey_notify.spi)
+                response_payloads.append(
+                    PayloadNOTIFY(
+                        proposal.protocol_id,
+                        PayloadNOTIFY.Type.REKEY_SA,
+                        rekeyed_child_sa.inbound_spi, b''))
 
-        #     # if this is a IKE_SA rekey, should be handled in other method
-        #     if rekey_notify.protocol_id == Proposal.Protocol.IKE:
-        #         # response_payloads = self._process_rekey_ike_sa_request(request)
-        #         raise InvalidSelectors('Rekey of IKE_SA not implemented yet')
-        #     # if this is a CHILD_SA rekey, should be handled in other method
-        #     else:
-        #         # response_payloads = self._process_rekey_child_sa_request(request)
-        #         raise InvalidSelectors('Rekey of CHILD_SA not implemented yet')
-        # # if there is no REKEY_SA payload, this is a regular create_child_sa
-        # else:
-        #     # response_payloads = self._process_create_child_sa_request(request)
-        #         raise InvalidSelectors('Creation of CHILD_SA not implemented yet')
-
-        # don't do anything yet, just reply with empty informational
         response = Message(
             spi_i=request.spi_i,
             spi_r=request.spi_r,
