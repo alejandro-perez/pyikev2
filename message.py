@@ -673,6 +673,41 @@ class PayloadSK(Payload):
         ]))
         return result
 
+class PayloadDELETE(Payload):
+    type = Payload.Type.DELETE
+
+    def __init__(self, protocol_id, spis, critical=False):
+        super(PayloadDELETE, self).__init__(critical)
+        self.protocol_id = protocol_id
+        self.spis = spis
+
+    @classmethod
+    def parse(cls, data, critical=False):
+        try:
+            protocol_id, spi_size, num_spis = unpack_from('>BBH', data)
+        except struct_error:
+            raise InvalidSyntax('Error parsing Payload DELETE.')
+        spis = []
+        for offset in range(0, num_spis):
+            spis.append(data[offset:offset+spi_size])
+            offset += spi_size
+        return PayloadDELETE(protocol_id, spis)
+
+    def to_bytes(self):
+        data = bytearray(pack('>BBH', self.protocol_id,
+                              len(self.spis[0]) if self.spis else 0,
+                              len(self.spis)))
+        for spi in self.spis:
+            data += spi
+        return data
+
+    def to_dict(self):
+        result = super(PayloadDELETE, self).to_dict()
+        result.update(OrderedDict([
+            ('protocol_id', Proposal.Protocol.safe_name(self.protocol_id)),
+            ('spis', [hexstring(x) for x in self.spis]),
+        ]))
+        return result
 
 class PayloadFactory:
     # Payload SK is intentionally left out, as it needs keyring and proposal
@@ -687,7 +722,8 @@ class PayloadFactory:
         Payload.Type.NOTIFY: PayloadNOTIFY,
         Payload.Type.TSi: PayloadTSi,
         Payload.Type.TSr: PayloadTSr,
-        Payload.Type.SK: PayloadSK
+        Payload.Type.SK: PayloadSK,
+        Payload.Type.DELETE: PayloadDELETE,
     }
 
     @classmethod

@@ -9,7 +9,8 @@ import unittest
 from message import (
     PayloadNONCE, PayloadKE, PayloadVENDOR, PayloadSK, InvalidSyntax, Transform,
     Proposal, PayloadSA, Message, UnsupportedCriticalPayload, PayloadNOTIFY,
-    PayloadID, TrafficSelector, PayloadTS, PayloadAUTH, PayloadNOTIFY
+    PayloadID, TrafficSelector, PayloadTS, PayloadAUTH, PayloadNOTIFY,
+    PayloadDELETE
 )
 from protocol import Keyring
 from crypto import Prf, Cipher, Integrity, DiffieHellman, ESN, Crypto
@@ -210,6 +211,11 @@ class TestPayloadNOTIFY(TestPayloadMixin, unittest.TestCase):
         super(TestPayloadNOTIFY, self).setUp()
         self.object = PayloadNOTIFY(Proposal.Protocol.AH,
             PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN, b'spi', b'data')
+
+class TestPayloadDELETE(TestPayloadMixin, unittest.TestCase):
+    def setUp(self):
+        super(TestPayloadDELETE, self).setUp()
+        self.object = PayloadDELETE(Proposal.Protocol.AH, [b'1234', b'1235'])
 
 class TestMessage(TestPayloadMixin, unittest.TestCase):
     def setUp(self):

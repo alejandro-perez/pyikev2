@@ -9,7 +9,7 @@ from message import (Message, Payload, PayloadNONCE, PayloadVENDOR, PayloadKE,
     Proposal, Transform, NoProposalChosen, PayloadSA, InvalidKePayload,
     InvalidSyntax, PayloadAUTH, AuthenticationFailed, PayloadIDi, PayloadIDr,
     IkeSaError, PayloadTSi, PayloadTSr, TrafficSelector, InvalidSelectors,
-    PayloadNOTIFY)
+    PayloadNOTIFY, PayloadNotFound)
 from helpers import SafeEnum, SafeIntEnum, hexstring
 from random import SystemRandom
 from crypto import DiffieHellman, Prf, Integrity, Cipher, Crypto
@@ -494,6 +494,15 @@ class IkeSa(object):
             raise IkeSaError(
                 'IKE SA state cannot proccess INFORMATIONAL message')
 
+        response_payloads = []
+
+        # check delete payloads
+        try:
+            request_delete_payload = request.get_payload(Payload.Type.DELETE, True)
+            response_payloads.append(request_delete_payload)
+        except PayloadNotFound:
+            pass
+
         # don't do anything yet, just reply with empty informational
         response = Message(
             spi_i=request.spi_i,
@@ -506,11 +515,9 @@ class IkeSa(object):
             is_initiator=self.is_initiator,
             message_id=self.my_msg_id,
             payloads=[],
-            encrypted_payloads=[],
+            encrypted_payloads=response_payloads,
         )
 
-        # transition NOT NEEDED
-        # return response
         return response
 
 class IkeSaController:
