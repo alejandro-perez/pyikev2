@@ -24,6 +24,8 @@ Keyring = namedtuple('Keyring',
     ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er', 'sk_pi', 'sk_pr']
 )
 
+ChildSa = namedtuple('ChildSa', ['inbound_spi', 'outbound_spi'])
+
 class IkeSa(object):
     """ This class controls the state machine of a IKE SA
         It is triggered with received Messages and/or IPsec events
@@ -47,11 +49,7 @@ class IkeSa(object):
         self.configuration = configuration
         self.myaddr = myaddr
         self.peeraddr = peeraddr
-        self.ipsec_spi = []
-
-    def delete_child_sa(self):
-        for spi in self.ipsec_spi:
-            ipsec.delete_child_sa(spi)
+        self.child_sas = []
 
     @property
     def spi_i(self):
@@ -105,6 +103,11 @@ class IkeSa(object):
         logging.debug('Generated sk_pr: {}'.format(hexstring(ike_sa_keyring.sk_pr)))
 
         return ike_sa_keyring
+
+    def delete_child_sas(self):
+        for child_sa in self.child_sas:
+            ipsec.delete_child_sa(child_sa.inbound_spi)
+            ipsec.delete_child_sa(child_sa.outbound_spi)
 
 
     def _generate_child_sa_key_material(self, ike_proposal, child_proposal,
@@ -418,37 +421,36 @@ class IkeSa(object):
         )
 
         # generate the CHILD SAs according to the negotiated selectors and addresses
+        child_sa = ChildSa(outbound_spi=chosen_child_proposal.spi,
+                           inbound_spi=os.urandom(4))
+
         ipsec.create_child_sa(self.myaddr[0], self.peeraddr[0],
             chosen_child_proposal.protocol_id,
-            chosen_child_proposal.spi,
+            child_sa.outbound_spi,
             chosen_child_proposal.get_transform(Transform.Type.ENCR).id,
-            self.child_sa_keyring.sk_er,
+            child_sa_keyring.sk_er,
             chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
-            self.child_sa_keyring.sk_ar,
+            child_sa_keyring.sk_ar,
             mode)
-        self.ipsec_spi.append(chosen_child_proposal.spi)
-
-        # TODO: Take this SPI from an actual acquire to avoid (unlikely) collisions
-        chosen_child_proposal.spi = os.urandom(4)
-
         ipsec.create_child_sa(self.peeraddr[0], self.myaddr[0],
             chosen_child_proposal.protocol_id,
-            chosen_child_proposal.spi,
+            child_sa.inbound_spi,
             chosen_child_proposal.get_transform(Transform.Type.ENCR).id,
-            self.child_sa_keyring.sk_ei,
+            child_sa_keyring.sk_ei,
             chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
-            self.child_sa_keyring.sk_ai,
+            child_sa_keyring.sk_ai,
             mode)
-        self.ipsec_spi.append(chosen_child_proposal.spi)
+        self.child_sas.append(child_sa)
 
         # generate the response Payload SA
+        chosen_child_proposal.spi = child_sa.inbound_spi
         response_payload_sa = PayloadSA([chosen_child_proposal])
 
         # generate response Payload TSi/TSr based on the chosen selectors
         response_payload_tsi = PayloadTSi([chosen_tsi])
         response_payload_tsr = PayloadTSr([chosen_tsr])
 
-        # send my IDr
+        # generate IDr
         response_payload_idr = PayloadIDr(self.configuration['id'].id_type,
                                           self.configuration['id'].id_data)
 
@@ -561,7 +563,7 @@ class IkeSaController:
 
         # if the IKE_SA needs to be closed
         if not status:
-            ike_sa.delete_child_sa()
+            ike_sa.delete_child_sas()
             del self.ike_sas[ike_sa.my_spi]
             logging.info('Deleted IKE_SA with SPI={}. Count={}'.format(
                 hexstring(pack('>Q', ike_sa.my_spi)), len(self.ike_sas)))
