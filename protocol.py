@@ -60,7 +60,7 @@ class IkeSa(object):
         return self.my_spi if self.is_initiator else self.peer_spi
 
     def _generate_ike_sa_key_material(self, ike_proposal, nonce_i, nonce_r,
-                spi_i, spi_r, shared_secret):
+                spi_i, spi_r, shared_secret, old_sk_d=None):
         """ Generates IKE_SA key material based on the proposal and DH
         """
         prf = Prf(ike_proposal.get_transform(Transform.Type.PRF).id)
@@ -70,7 +70,11 @@ class IkeSa(object):
             ike_proposal.get_transform(Transform.Type.ENCR).keylen
         )
 
-        SKEYSEED = prf.prf(nonce_i + nonce_r, shared_secret)
+        if not old_sk_d:
+            SKEYSEED = prf.prf(nonce_i + nonce_r, shared_secret)
+        else:
+            SKEYSEED = prf.prf(old_sk_d, shared_secret + nonce_i + nonce_r, )
+
         logging.debug('Generated SKEYSEED: {}'.format(hexstring(SKEYSEED)))
 
         keymat = prf.prfplus(
