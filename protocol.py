@@ -9,7 +9,7 @@ from message import (Message, Payload, PayloadNONCE, PayloadVENDOR, PayloadKE,
     Proposal, Transform, NoProposalChosen, PayloadSA, InvalidKePayload,
     InvalidSyntax, PayloadAUTH, AuthenticationFailed, PayloadIDi, PayloadIDr,
     IkeSaError, PayloadTSi, PayloadTSr, TrafficSelector, InvalidSelectors,
-    PayloadNOTIFY, PayloadNotFound)
+    PayloadNOTIFY, PayloadNotFound, PayloadDELETE)
 from helpers import SafeEnum, SafeIntEnum, hexstring
 from random import SystemRandom
 from crypto import DiffieHellman, Prf, Integrity, Cipher, Crypto
@@ -525,22 +525,35 @@ class IkeSa(object):
     def process_informational_request(self, request):
         """ Processes an INFORMATIONAL message and returns a INFORMATIONAL response
         """
-        # check state
-        if self.state not in (IkeSa.State.ESTABLISHED, IkeSa.State.REKEYED):
-            raise IkeSaError(
-                'IKE SA state cannot proccess INFORMATIONAL message')
-
+        # state is checked for each particular subcase
         response_payloads = []
-
-        # check delete payloads
         try:
-            request_delete_payload = request.get_payload(Payload.Type.DELETE, True)
-            response_payloads.append(request_delete_payload)
-            self.state = IkeSa.State.DELETED
+            delete_payload = request.get_payload(Payload.Type.DELETE, True)
+
+            # if protocol is IKE, just mark the IKE SA for removal and return
+            # emtpy INFORMATIONAL exchange
+            if delete_payload.protocol_id == Proposal.Protocol.IKE:
+                if self.state not in (IkeSa.State.ESTABLISHED, IkeSa.State.REKEYED):
+                    raise IkeSaError(
+                        'IKE SA state cannot be deleted on this state: {}'
+                        ''.format(self.state))
+
+                self.state = IkeSa.State.DELETED
+
+            # if protocol is either AH or ESP, delete the child sas and return
+            # the inbound SPI
+            else:
+                child_sa = next(x for x in self.child_sas if
+                                    x.outbound_spi == delete_payload.spis[0])
+                ipsec.delete_child_sa(child_sa.outbound_spi)
+                ipsec.delete_child_sa(child_sa.inbound_spi)
+                self.child_sas.remove(child_sa)
+                response_payloads.append(
+                    PayloadDELETE(
+                        delete_payload.protocol_id, [child_sa.inbound_spi]))
         except PayloadNotFound:
             pass
 
-        # don't do anything yet, just reply with empty informational
         response = Message(
             spi_i=request.spi_i,
             spi_r=request.spi_r,
@@ -630,7 +643,7 @@ class IkeSaController:
             ipsec.create_policies(myaddr, peer_addr, ike_conf)
 
     def dispatch_message(self, data, myaddr, peeraddr):
-        header = Message.parse(data, header_only=True)
+        header = Message.parse(data)
 
         # if IKE_SA_INIT request, then a new IkeSa must be created
         if (header.exchange_type == Message.Exchange.IKE_SA_INIT and
