@@ -81,28 +81,31 @@ class IkeSa(object):
             prf.key_size * 3 + integ.key_size * 2 + cipher.key_size * 2
         )
 
-        self.ike_sa_keyring = Keyring._make(
+        ike_sa_keyring = Keyring._make(
             unpack('>{0}s{1}s{1}s{2}s{2}s{0}s{0}s'.format(
                     prf.key_size, integ.key_size, cipher.key_size),
                 keymat))
 
-        crypto_i = Crypto(cipher, self.ike_sa_keyring.sk_ei,
-            integ, self.ike_sa_keyring.sk_ai,
-            prf, self.ike_sa_keyring.sk_pi)
-        crypto_r = Crypto(cipher, self.ike_sa_keyring.sk_er,
-            integ, self.ike_sa_keyring.sk_ar,
-            prf, self.ike_sa_keyring.sk_pr)
+        crypto_i = Crypto(cipher, ike_sa_keyring.sk_ei,
+            integ, ike_sa_keyring.sk_ai,
+            prf, ike_sa_keyring.sk_pi)
+        crypto_r = Crypto(cipher, ike_sa_keyring.sk_er,
+            integ, ike_sa_keyring.sk_ar,
+            prf, ike_sa_keyring.sk_pr)
 
         self.my_crypto = crypto_i if self.is_initiator else crypto_r
         self.peer_crypto = crypto_r if self.is_initiator else crypto_i
 
-        logging.debug('Generated sk_d: {}'.format(hexstring(self.ike_sa_keyring.sk_d)))
-        logging.debug('Generated sk_ai: {}'.format(hexstring(self.ike_sa_keyring.sk_ai)))
-        logging.debug('Generated sk_ar: {}'.format(hexstring(self.ike_sa_keyring.sk_ar)))
-        logging.debug('Generated sk_ei: {}'.format(hexstring(self.ike_sa_keyring.sk_ei)))
-        logging.debug('Generated sk_er: {}'.format(hexstring(self.ike_sa_keyring.sk_er)))
-        logging.debug('Generated sk_pi: {}'.format(hexstring(self.ike_sa_keyring.sk_pi)))
-        logging.debug('Generated sk_pr: {}'.format(hexstring(self.ike_sa_keyring.sk_pr)))
+        logging.debug('Generated sk_d: {}'.format(hexstring(ike_sa_keyring.sk_d)))
+        logging.debug('Generated sk_ai: {}'.format(hexstring(ike_sa_keyring.sk_ai)))
+        logging.debug('Generated sk_ar: {}'.format(hexstring(ike_sa_keyring.sk_ar)))
+        logging.debug('Generated sk_ei: {}'.format(hexstring(ike_sa_keyring.sk_ei)))
+        logging.debug('Generated sk_er: {}'.format(hexstring(ike_sa_keyring.sk_er)))
+        logging.debug('Generated sk_pi: {}'.format(hexstring(ike_sa_keyring.sk_pi)))
+        logging.debug('Generated sk_pr: {}'.format(hexstring(ike_sa_keyring.sk_pr)))
+
+        return ike_sa_keyring
+
 
     def _generate_child_sa_key_material(self, ike_proposal, child_proposal,
             nonce_i, nonce_r, sk_d):
@@ -308,7 +311,7 @@ class IkeSa(object):
         response_payload_nonce = PayloadNONCE()
 
         # generate IKE SA key material
-        self._generate_ike_sa_key_material(
+        self.ike_sa_keyring = self._generate_ike_sa_key_material(
             ike_proposal=self.chosen_proposal,
             nonce_i=request_payload_nonce.nonce,
             nonce_r=response_payload_nonce.nonce,
