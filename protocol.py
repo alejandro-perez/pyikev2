@@ -33,10 +33,10 @@ class IkeSa(object):
         INIT_RES_SENT = 1
         ESTABLISHED = 2
 
-    def __init__(self, is_initiator, configuration, myaddr, peeraddr):
+    def __init__(self, is_initiator, peer_spi, configuration, myaddr, peeraddr):
         self.state = IkeSa.State.INITIAL
         self.my_spi = SystemRandom().randint(0, 0xFFFFFFFFFFFFFFFF)
-        self.peer_spi = 0
+        self.peer_spi = peer_spi
         self.my_msg_id = 0
         self.peer_msg_id = 0
         self.is_initiator = is_initiator
@@ -285,10 +285,6 @@ class IkeSa(object):
             raise IkeSaError(
                 'IKE SA state cannot proccess IKE_SA_INIT message')
 
-        # initialize IKE SA state
-        self.peer_spi = request.spi_i
-        self.peer_msg_id = 0
-
         # get some relevant payloads from the message
         request_payload_sa = request.get_payload(Payload.Type.SA)
         request_payload_ke = request.get_payload(Payload.Type.KE)
@@ -536,7 +532,8 @@ class IkeSaController:
             # look for matching configuration
             ike_configuration = self.configuration.get_ike_configuration(peeraddr[0])
 
-            ike_sa = IkeSa(is_initiator=False, configuration=ike_configuration,
+            ike_sa = IkeSa(is_initiator=False, peer_spi=header.spi_i,
+                           configuration=ike_configuration,
                            myaddr=myaddr, peeraddr=peeraddr)
             self.ike_sas[ike_sa.my_spi] = ike_sa
             logging.info('Starting the creation of IKE SA with SPI={}. '
