@@ -236,7 +236,7 @@ class IkeSa(object):
         message = Message.parse(data, header_only=False, crypto=self.peer_crypto)
         self.log_message(message, addr, data, send=False)
 
-        # check message_id
+        # check message_id and handle retransmissions
         if (message.message_id == self.peer_msg_id - 1 and
                 data == self.last_received_message_data):
             logging.warning('Retransmission detected. Sending last sent message')
@@ -247,17 +247,14 @@ class IkeSa(object):
                 ''.format(self.peer_msg_id))
             return True, None
 
-        # get the handler fnc
+        # process the message
         try:
             handler = _handler_dict[(message.exchange_type, message.is_request)]
+            reply = handler(message)
         except KeyError:
             logging.error('I don\'t know how to handle this message. '
                 'Please, implement a handler!')
             return False, None
-
-        # try to process the message and get a reply
-        try:
-            reply = handler(message)
         except IkeSaError as ex:
             # TODO: Some errors are non-aborting (and send NOTIFY or such)
             logging.error(ex)
@@ -276,7 +273,6 @@ class IkeSa(object):
             self.log_message(reply, addr, reply_data, send=True)
             self.last_sent_message_data = reply_data
             self.last_sent_message = reply
-            self.my_msg_id = self.my_msg_id + 1
             return True, reply_data
 
         return True, None
@@ -341,7 +337,7 @@ class IkeSa(object):
             is_response=True,
             can_use_higher_version=False,
             is_initiator=False,
-            message_id=self.my_msg_id,
+            message_id=self.peer_msg_id,
             payloads=[response_payload_sa, response_payload_ke,
                 response_payload_nonce, response_payload_vendor],
             encrypted_payloads=[],
@@ -471,7 +467,7 @@ class IkeSa(object):
             is_response=True,
             can_use_higher_version=False,
             is_initiator=False,
-            message_id=self.my_msg_id,
+            message_id=self.peer_msg_id,
             payloads=[],
             encrypted_payloads=[response_payload_sa, response_payload_tsi,
                 response_payload_tsr, response_payload_idr,
@@ -513,7 +509,7 @@ class IkeSa(object):
             is_response=True,
             can_use_higher_version=False,
             is_initiator=self.is_initiator,
-            message_id=self.my_msg_id,
+            message_id=self.peer_msg_id,
             payloads=[],
             encrypted_payloads=response_payloads,
         )
