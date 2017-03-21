@@ -53,14 +53,6 @@ class IkeSa(object):
         self.peeraddr = peeraddr
         self.child_sas = []
 
-    @property
-    def spi_i(self):
-        return self.my_spi if self.is_initiator else self.peer_spi
-
-    @property
-    def spi_r(self):
-        return self.my_spi if self.is_initiator else self.peer_spi
-
     def _generate_ike_sa_key_material(self, ike_proposal, nonce_i, nonce_r,
                 spi_i, spi_r, shared_secret, old_sk_d=None):
         """ Generates IKE_SA key material based on the proposal and DH
