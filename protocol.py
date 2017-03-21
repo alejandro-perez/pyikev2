@@ -35,6 +35,7 @@ class IkeSa(object):
         INIT_RES_SENT = 1
         ESTABLISHED = 2
         REKEYED = 3
+        DELETED = 4
 
     def __init__(self, is_initiator, peer_spi, configuration, myaddr, peeraddr):
         self.state = IkeSa.State.INITIAL
@@ -512,7 +513,7 @@ class IkeSa(object):
         """ Processes an INFORMATIONAL message and returns a INFORMATIONAL response
         """
         # check state
-        if self.state != IkeSa.State.ESTABLISHED:
+        if self.state not in (IkeSa.State.ESTABLISHED, IkeSa.State.REKEYED):
             raise IkeSaError(
                 'IKE SA state cannot proccess INFORMATIONAL message')
 
@@ -522,6 +523,7 @@ class IkeSa(object):
         try:
             request_delete_payload = request.get_payload(Payload.Type.DELETE, True)
             response_payloads.append(request_delete_payload)
+            self.state = IkeSa.State.DELETED
         except PayloadNotFound:
             pass
 
@@ -652,9 +654,10 @@ class IkeSaController:
             self.ike_sas[ike_sa.new_ike_sa.my_spi] = ike_sa.new_ike_sa
 
         # if the IKE_SA needs to be closed
-        if not status:
+        if not status or ike_sa.state in (IkeSa.State.DELETED,):
             ike_sa.delete_child_sas()
             del self.ike_sas[ike_sa.my_spi]
             logging.info('Deleted IKE_SA with SPI={}. Count={}'.format(
                 hexstring(pack('>Q', ike_sa.my_spi)), len(self.ike_sas)))
+
         return reply
