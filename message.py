@@ -917,7 +917,7 @@ class Message:
             ('is_initiator', self.is_initiator),
             ('is_responder', self.is_responder),
             ('message_id', self.message_id),
-            ('payloads', [x.to_dict() for x in self.payloads]),
+            ('payloads', [x.to_dict() for x in self.payloads if x.type != Payload.Type.SK]),
             ('encrypted_payloads', [x.to_dict() for x in self.encrypted_payloads]),
         ])
 

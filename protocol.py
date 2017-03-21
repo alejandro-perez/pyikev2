@@ -25,14 +25,14 @@ Keyring = namedtuple('Keyring',
 )
 
 class IkeSa(object):
+    """ This class controls the state machine of a IKE SA
+        It is triggered with received Messages and/or IPsec events
+    """
     class State(SafeIntEnum):
         INITIAL = 0
         INIT_RES_SENT = 1
         ESTABLISHED = 2
 
-    """ This class controls the state machine of a IKE SA
-        It is triggered with received Messages and/or IPsec events
-    """
     def __init__(self, is_initiator, configuration, myaddr, peeraddr):
         self.state = IkeSa.State.INITIAL
         self.my_spi = SystemRandom().randint(0, 0xFFFFFFFFFFFFFFFF)
