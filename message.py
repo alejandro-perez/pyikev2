@@ -831,7 +831,9 @@ class Message:
             message.payloads = cls._parse_payloads(data[28:], header[2])
 
             # if there is a Payload SK
-            if message.payloads and message.payloads[-1].type == Payload.Type.SK:
+            if (message.payloads and
+                    message.payloads[-1].type == Payload.Type.SK and
+                    crypto is not None):
                 payload_sk = message.payloads[-1]
 
                 # check integrity
