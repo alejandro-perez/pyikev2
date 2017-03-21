@@ -67,7 +67,7 @@ class IkeSa(object):
         if not old_sk_d:
             SKEYSEED = prf.prf(nonce_i + nonce_r, shared_secret)
         else:
-            SKEYSEED = prf.prf(old_sk_d, shared_secret + nonce_i + nonce_r, )
+            SKEYSEED = prf.prf(old_sk_d, shared_secret + nonce_i + nonce_r)
 
         logging.debug('Generated SKEYSEED: {}'.format(hexstring(SKEYSEED)))
 
@@ -385,28 +385,25 @@ class IkeSa(object):
             self.last_received_message.get_payload(Payload.Type.NONCE).nonce,
             payload_id, self.my_crypto.sk_p)
 
-    def process_ike_auth_request(self, request):
-        """ Processes a IKE_AUTH request message and returns a
-            IKE_AUTH response
+    def _process_create_child_sa_negotiation_req(self, request, bootstrap=True):
+        """ This method process a CREATE CHILD SA negotiation request
         """
-        # check state
-        if self.state != IkeSa.State.INIT_RES_SENT:
-            raise InvalidSyntax(
-                'IKE SA state cannot proccess IKE_SA_INIT message')
-
         # get some relevant payloads from the message
+        response_payloads = []
         request_payload_sa = request.get_payload(Payload.Type.SA, True)
         request_payload_tsi = request.get_payload(Payload.Type.TSi, True)
         request_payload_tsr = request.get_payload(Payload.Type.TSr, True)
-        request_payload_idi = request.get_payload(Payload.Type.IDi, True)
-        request_payload_auth = request.get_payload(Payload.Type.AUTH, True)
 
-        # verify AUTH payload
-        if request_payload_auth.method != PayloadAUTH.Method.PSK:
-            raise AuthenticationFailed('AUTH method not supported')
-        auth_data = self._generate_peer_psk_auth_payload(request_payload_idi)
-        if auth_data != request_payload_auth.auth_data:
-            raise AuthenticationFailed('Invalid AUTH data received')
+        if bootstrap:
+            request_payload_nonce = (
+                self.last_received_message.get_payload(Payload.Type.NONCE))
+            response_payload_nonce = (
+                self.last_sent_message.get_payload(Payload.Type.NONCE))
+        else:
+            request_payload_nonce = request.get_payload(Payload.Type.NONCE,
+                                                        True)
+            response_payload_nonce = PayloadNONCE()
+            response_payloads.append(response_payload_nonce)
 
         # find matching IPsec configuration and TS
         # (reverse order as we are responders)
@@ -416,11 +413,12 @@ class IkeSa(object):
         # check which mode peer wants
         if request.get_notifies(PayloadNOTIFY.Type.USE_TRANSPORT_MODE, True):
             mode = ipsec.Mode.TRANSPORT
-            response_payload_notify = PayloadNOTIFY(Proposal.Protocol.NONE,
-                PayloadNOTIFY.Type.USE_TRANSPORT_MODE, b'', b'')
+            response_payloads.append(
+                PayloadNOTIFY(
+                    Proposal.Protocol.NONE,
+                    PayloadNOTIFY.Type.USE_TRANSPORT_MODE, b'', b''))
         else:
             mode = ipsec.Mode.TUNNEL
-            response_payload_notify = None
 
         if ipsec_conf['mode'] != mode:
             raise InvalidSelectors('Invalid mode requested')
@@ -433,8 +431,8 @@ class IkeSa(object):
         child_sa_keyring = self._generate_child_sa_key_material(
             ike_proposal=self.chosen_proposal,
             child_proposal=chosen_child_proposal,
-            nonce_i=self.last_received_message.get_payload(Payload.Type.NONCE).nonce,
-            nonce_r=self.last_sent_message.get_payload(Payload.Type.NONCE).nonce,
+            nonce_i=request_payload_nonce.nonce,
+            nonce_r=response_payload_nonce.nonce,
             sk_d=self.ike_sa_keyring.sk_d
         )
 
@@ -462,11 +460,37 @@ class IkeSa(object):
 
         # generate the response Payload SA
         chosen_child_proposal.spi = child_sa.inbound_spi
-        response_payload_sa = PayloadSA([chosen_child_proposal])
+        response_payloads.append(PayloadSA([chosen_child_proposal]))
 
         # generate response Payload TSi/TSr based on the chosen selectors
-        response_payload_tsi = PayloadTSi([chosen_tsi])
-        response_payload_tsr = PayloadTSr([chosen_tsr])
+        response_payloads.append(PayloadTSi([chosen_tsi]))
+        response_payloads.append(PayloadTSr([chosen_tsr]))
+
+        return response_payloads
+
+    def process_ike_auth_request(self, request):
+        """ Processes a IKE_AUTH request message and returns a
+            IKE_AUTH response
+        """
+        # check state
+        if self.state != IkeSa.State.INIT_RES_SENT:
+            raise InvalidSyntax(
+                'IKE SA state cannot proccess IKE_SA_INIT message')
+
+        # get some relevant payloads from the message
+        request_payload_idi = request.get_payload(Payload.Type.IDi, True)
+        request_payload_auth = request.get_payload(Payload.Type.AUTH, True)
+
+        # verify AUTH payload
+        if request_payload_auth.method != PayloadAUTH.Method.PSK:
+            raise AuthenticationFailed('AUTH method not supported')
+        auth_data = self._generate_peer_psk_auth_payload(request_payload_idi)
+        if auth_data != request_payload_auth.auth_data:
+            raise AuthenticationFailed('Invalid AUTH data received')
+
+        # process the CHILD_SA creation negotiation
+        response_payloads = self._process_create_child_sa_negotiation_req(
+            request, bootstrap=True)
 
         # generate IDr
         response_payload_idr = PayloadIDr(self.configuration['id'].id_type,
@@ -475,6 +499,8 @@ class IkeSa(object):
         # generate AUTH payload
         auth_data = self._generate_my_psk_auth_payload(response_payload_idr)
         response_payload_auth = PayloadAUTH(PayloadAUTH.Method.PSK, auth_data)
+
+        response_payloads += [response_payload_idr, response_payload_auth]
 
         # generate the message
         response = Message(
@@ -488,13 +514,8 @@ class IkeSa(object):
             is_initiator=False,
             message_id=self.peer_msg_id,
             payloads=[],
-            encrypted_payloads=[response_payload_sa, response_payload_tsi,
-                response_payload_tsr, response_payload_idr,
-                response_payload_auth],
+            encrypted_payloads=response_payloads,
         )
-
-        if response_payload_notify:
-            response.encrypted_payloads.append(response_payload_notify)
 
         # increase msg_id and transition
         self.state = IkeSa.State.ESTABLISHED
