@@ -29,6 +29,7 @@ _ipsec_proto_names = {
     Proposal.Protocol.AH: 'ah',
 }
 _cipher_names = {
+    None: 'none',
     Cipher.Id.ENCR_AES_CBC: 'aes'
 }
 _auth_names = {
