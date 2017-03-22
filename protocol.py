@@ -204,14 +204,14 @@ class IkeSa(object):
 
     def log_message(self, message, addr, data, send=True):
         logging.info(
-            'IKE_SA: {}. {} {} {} ({} bytes) {} {}'.format(
+            'IKE_SA: {}. {} {} {} ({} bytes) {} {}:{}'.format(
                 hexstring(pack('>Q', self.my_spi)),
                 'Sent' if send else 'Received',
                 Message.Exchange.safe_name(message.exchange_type),
                 'response' if message.is_response else 'request',
                 len(data),
                 'to' if send else 'from',
-                addr))
+                addr[0], addr[1]))
         logging.debug(json.dumps(message.to_dict(),
                                  indent=None if logging.no_indent else 2))
 
@@ -691,7 +691,7 @@ class IkeSaController:
             ipsec.create_policies(myaddr, peer_addr, ike_conf)
 
     def dispatch_message(self, data, myaddr, peeraddr):
-        header = Message.parse(data)
+        header = Message.parse(data, header_only=True)
 
         # if IKE_SA_INIT request, then a new IkeSa must be created
         if (header.exchange_type == Message.Exchange.IKE_SA_INIT and
