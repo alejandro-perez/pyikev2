@@ -27,7 +27,9 @@ class NoProposalChosen(IkeSaError):
     pass
 
 class InvalidKePayload(IkeSaError):
-    pass
+    def __init__(self, *args, group=None, **kwargs):
+        super(InvalidKePayload, self).__init__(self, *args, **kwargs)
+        self.group = group
 
 class AuthenticationFailed(IkeSaError):
     pass
