@@ -152,6 +152,6 @@ class Configuration(object):
         if type(names) is not list:
             raise ConfigurationError('{} should be a list.'.format(key))
         for x in names:
-            transform = self._load_from_dict(x, name_to_transform)
+            transform = self._load_from_dict(str(x), name_to_transform)
             transforms.append(transform)
         return transforms

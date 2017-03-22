@@ -14,6 +14,7 @@ import ipsec
 import json
 import netifaces
 import sys
+import yaml
 
 # parses the arguments
 parser = argparse.ArgumentParser(
@@ -23,6 +24,8 @@ parser.add_argument('--verbose', '-v', action='store_true',
     'material to be shown in the log output!')
 parser.add_argument('--interface', '-i', required=True, metavar='IFACE',
     help='Interface where the daemon will listen from.')
+parser.add_argument('--configuration-file', '-c', required=True, metavar='FILE',
+    help='Configuration file.')
 parser.add_argument('--indent-spaces', '-s', type=int, default=2, metavar='N',
     help='Indent JSON log output with the provided number of spaces.'
     ' Use 0 to disable indentation.')
@@ -49,24 +52,21 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((ip, 500))
 logging.info('Listening from {}'.format(sock.getsockname()))
 
-configuration = Configuration(
-    sock.getsockname()[0],
-    {
-        '10.0.5.107': {
-            'psk': 'testing',
-            'dh': ['5'],
-            'id': 'bob@openikev2',
-            'protect': [
-                {
-                    'encr': ['aes256', 'aes128'],
-                    'ipsec_proto': 'esp',
-                    'ip_proto': 'tcp',
-                    'mode': 'tunnel',
-                }
-            ]
-        },
-    }
-)
+# load configuration
+try:
+    with open(args.configuration_file, 'r') as file:
+        conf_dict = yaml.load(file, yaml.Loader)
+except FileNotFoundError:
+    logging.error(
+        'Configuration file "{}" do not exist.'.format(args.configuration_file))
+    sys.exit(1)
+except yaml.YAMLError as ex:
+    logging.error(
+        'Error in configuration file {}:\n{}'.format(args.configuration_file,
+                                                    str(ex)))
+    sys.exit(1)
+
+configuration = Configuration(sock.getsockname()[0], conf_dict)
 
 # create IkeSaController
 ike_sa_controller = IkeSaController(sock.getsockname()[0],
