@@ -23,17 +23,21 @@ interfaces = netifaces.interfaces()
 # parses the arguments
 parser = argparse.ArgumentParser(
     description='Opensource IKEv2 daemon written in Python.', prog='pyikev2')
-parser.add_argument('--verbose', '-v', action='store_true',
+parser.add_argument(
+    '--verbose', '-v', action='store_true',
     help='Enable (much) more verbosity. WARNING: This will make your key '
     'material to be shown in the log output!')
-parser.add_argument('--interface', '-i', required=True, metavar='IFACE',
-    choices=interfaces,
+parser.add_argument(
+    '--interface', '-i', required=True, metavar='IFACE', choices=interfaces,
     help='Interface where the daemon will listen from. Choices: %(choices)s')
-parser.add_argument('--configuration-file', '-c', required=True, metavar='FILE',
+parser.add_argument(
+    '--configuration-file', '-c', required=True, metavar='FILE',
     help='Configuration file.')
-parser.add_argument('--no-indent', '-ni', action='store_true',
+parser.add_argument(
+    '--no-indent', '-ni', action='store_true',
     help='Disables JSON indentation to provide a more compact log output.')
-parser.add_argument('--version', action='version', version='%(prog)s {}'.format(__version__))
+parser.add_argument(
+    '--version', action='version', version='%(prog)s {}'.format(__version__))
 args = parser.parse_args()
 
 try:
