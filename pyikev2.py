@@ -23,8 +23,9 @@ parser.add_argument('--verbose', '-v', action='store_true',
     'material to be shown in the log output!')
 parser.add_argument('--interface', '-i', required=True, metavar='IFACE',
     help='Interface where the daemon will listen from.')
-parser.add_argument('--indent-spaces', '-s', type=int, default=None, metavar='N',
-    help='Indent JSON log output with the provided number of spaces.')
+parser.add_argument('--indent-spaces', '-s', type=int, default=2, metavar='N',
+    help='Indent JSON log output with the provided number of spaces.'
+    ' Use 0 to disable indentation.')
 args = parser.parse_args()
 
 try:
@@ -41,7 +42,7 @@ except KeyError:
 logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
     format='[%(asctime)s.%(msecs)03d] [%(levelname)-6s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S')
-logging.indent_spaces = args.indent_spaces
+logging.indent_spaces = args.indent_spaces if args.indent_spaces > 0 else None
 
 # create socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
