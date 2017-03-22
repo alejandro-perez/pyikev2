@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 #
 __author__ = 'Alejandro Perez <alex@um.es>'
+__version__ = "0.1"
 
 import socket
 import argparse
@@ -16,19 +17,23 @@ import netifaces
 import sys
 import yaml
 
+# check the available interfaces
+interfaces = netifaces.interfaces()
+
 # parses the arguments
 parser = argparse.ArgumentParser(
-    description='Opensource IKEv2 daemon written in Python.')
+    description='Opensource IKEv2 daemon written in Python.', prog='pyikev2')
 parser.add_argument('--verbose', '-v', action='store_true',
     help='Enable (much) more verbosity. WARNING: This will make your key '
     'material to be shown in the log output!')
 parser.add_argument('--interface', '-i', required=True, metavar='IFACE',
-    help='Interface where the daemon will listen from.')
+    choices=interfaces,
+    help='Interface where the daemon will listen from. Choices: %(choices)s')
 parser.add_argument('--configuration-file', '-c', required=True, metavar='FILE',
     help='Configuration file.')
-parser.add_argument('--indent-spaces', '-s', type=int, default=2, metavar='N',
-    help='Indent JSON log output with the provided number of spaces.'
-    ' Use 0 to disable indentation.')
+parser.add_argument('--no-indent', '-ni', action='store_true',
+    help='Disables JSON indentation to provide a more compact log output.')
+parser.add_argument('--version', action='version', version='%(prog)s {}'.format(__version__))
 args = parser.parse_args()
 
 try:
@@ -45,7 +50,7 @@ except KeyError:
 logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
     format='[%(asctime)s.%(msecs)03d] [%(levelname)-6s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S')
-logging.indent_spaces = args.indent_spaces if args.indent_spaces > 0 else None
+logging.no_indent = args.no_indent
 
 # create socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

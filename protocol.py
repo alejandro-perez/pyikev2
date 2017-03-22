@@ -212,8 +212,8 @@ class IkeSa(object):
                 len(data),
                 'to' if send else 'from',
                 addr))
-        logging.debug(json.dumps(message.to_dict(), 
-                                 indent=logging.indent_spaces))
+        logging.debug(json.dumps(message.to_dict(),
+                                 indent=None if logging.no_indent else 2))
 
     def _generate_ike_error_response(self, request, notification_type, 
                                      notification_data=b''):
@@ -710,8 +710,8 @@ class IkeSaController:
             except KeyError:
                 logging.warning('Received message for unknown SPI={}. Omitting.'
                                 ''.format(hexstring(pack('>Q', my_spi))))
-                logging.debug(json.dumps(header.to_dict(), 
-                              indent=logging.indent_spaces))
+                logging.debug(json.dumps(header.to_dict(),
+                              indent=None if logging.no_indent else 2))
                 return None
 
         # generate the reply (if any)
