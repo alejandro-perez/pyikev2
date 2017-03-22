@@ -181,20 +181,10 @@ class IkeSa(object):
     def _generate_traffic_selectors(self, ipsec_conf):
         """ Generates traffic selectors based on an ipsec configuration
         """
-        conf_tsi = TrafficSelector(
-            TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
-            ipsec_conf['ip_proto'],
-            ipsec_conf['my_port'],
-            65535 if ipsec_conf['my_port'] == 0 else ipsec_conf['my_port'],
-            ipsec_conf['my_subnet'][0],
-            ipsec_conf['my_subnet'][-1])
-        conf_tsr = TrafficSelector(
-            TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
-            ipsec_conf['ip_proto'],
-            ipsec_conf['peer_port'],
-            65535 if ipsec_conf['peer_port'] == 0 else ipsec_conf['peer_port'],
-            ipsec_conf['peer_subnet'][0],
-            ipsec_conf['peer_subnet'][-1])
+        conf_tsi = TrafficSelector.from_network(
+            ipsec_conf['my_subnet'], ipsec_conf['my_port'], ipsec_conf['ip_proto'])
+        conf_tsr = TrafficSelector.from_network(
+            ipsec_conf['peer_subnet'], ipsec_conf['peer_port'], ipsec_conf['ip_proto'])
         return (conf_tsi, conf_tsr)
 
     def _get_ipsec_configuration(self, payload_tsi, payload_tsr):

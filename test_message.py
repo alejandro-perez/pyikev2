@@ -17,6 +17,7 @@ from crypto import Prf, Cipher, Integrity, DiffieHellman, ESN, Crypto
 from ipaddress import ip_address
 from helpers import hexstring
 import json
+from ipaddress import ip_network
 
 class TestPayloadMixin(object):
     def setUp(self):
@@ -184,6 +185,10 @@ class TestTrafficSelector(TestPayloadMixin, unittest.TestCase):
             ip_address('192.168.10.10'))
         result = ts2.intersection(self.object)
         self.assertIsNone(result)
+
+    def test_from_network(self):
+        ts = TrafficSelector.from_network(ip_network('192.168.2.0/22', strict=False), 0, 0)
+        self.assertEqual(ts.end_addr, ip_address('192.168.3.255'))
 
 class TestPayloadTS(TestPayloadMixin, unittest.TestCase):
     def setUp(self):

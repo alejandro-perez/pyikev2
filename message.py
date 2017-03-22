@@ -12,7 +12,7 @@ from struct import pack, unpack, pack_into, unpack_from, error as struct_error
 from collections import OrderedDict
 from helpers import hexstring, SafeIntEnum
 from crypto import Prf, Cipher, Integrity, DiffieHellman, ESN
-from ipaddress import ip_address
+from ipaddress import ip_address, ip_network
 
 class IkeSaError(Exception):
     pass
@@ -517,7 +517,7 @@ class TrafficSelector(object):
         MH = 135
 
     def __init__(self, ts_type, ip_proto, start_port, end_port,
-            start_addr, end_addr):
+                 start_addr, end_addr):
         self.ts_type = ts_type
         self.ip_proto = ip_proto
         self.start_port = start_port
@@ -526,6 +526,10 @@ class TrafficSelector(object):
         self.end_addr = end_addr
 
     @classmethod
+    def from_network(cls, subnet, port, ip_proto):
+        return TrafficSelector(
+            TrafficSelector.Type.TS_IPV4_ADDR_RANGE, ip_proto, port,
+            65535 if port == 0 else port, subnet[0], subnet[-1])
     def parse(cls, data, critical=False):
         try:
             (ts_type, ip_proto, _, start_port, end_port) = unpack_from('>BBHHH', data)
