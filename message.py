@@ -17,6 +17,9 @@ from ipaddress import ip_address, ip_network
 class IkeSaError(Exception):
     pass
 
+class ChildSaError(Exception):
+    pass
+
 class InvalidSyntax(IkeSaError):
     pass
 
@@ -27,7 +30,7 @@ class NoProposalChosen(IkeSaError):
     pass
 
 class InvalidKePayload(IkeSaError):
-    def __init__(self, *args, group=None, **kwargs):
+    def __init__(self, *args, group, **kwargs):
         super(InvalidKePayload, self).__init__(self, *args, **kwargs)
         self.group = group
 
@@ -39,6 +42,11 @@ class InvalidSelectors(IkeSaError):
 
 class PayloadNotFound(IkeSaError):
     pass
+
+class ChildSaNotFound(ChildSaError):
+    def __init__(self, *args, spi, **kwargs):
+        super(ChildSaNotFound, self).__init__(self, *args, **kwargs)
+        self.spi = spi
 
 class Payload:
     class Type(SafeIntEnum):
@@ -64,13 +72,9 @@ class Payload:
         self.critical = critical
 
     def to_dict(self):
-        result = OrderedDict([
-            ('type', Payload.Type.safe_name(self.type)),
-        ])
+        result = OrderedDict([('type', Payload.Type.safe_name(self.type))])
         if self.critical:
-            result.update(OrderedDict([
-                ('critical', self.critical)
-            ]))
+            result.update(OrderedDict([('critical', self.critical)]))
         return result
 
 class PayloadKE(Payload):
@@ -99,7 +103,7 @@ class PayloadKE(Payload):
         result = super(PayloadKE, self).to_dict()
         result.update(OrderedDict([
             ('dh_group', self.dh_group),
-            ('ke_data', hexstring(self.ke_data))
+            ('ke_data', hexstring(self.ke_data)),
         ]))
         return result
 
@@ -162,9 +166,8 @@ class Transform:
         return result
 
     def __eq__(self, other):
-        return ((self.type, self.id, self.keylen) ==
-            (other.type, other.id, other.keylen))
-
+        return ((self.type, self.id, self.keylen) 
+                 == (other.type, other.id, other.keylen))
 
 class Proposal:
     class Protocol(SafeIntEnum):
@@ -184,7 +187,7 @@ class Proposal:
     @classmethod
     def parse(cls, data):
         try:
-            num, protocol_id, spi_size, num_transforms = unpack_from('>BBBB', data)
+            num, protocol_id, spi_size, n_transforms = unpack_from('>BBBB', data)
         except struct_error:
             raise InvalidSyntax('Error parsing Proposal')
 
@@ -207,28 +210,24 @@ class Proposal:
             transforms.append(transform)
             offset += length
 
-        if num_transforms != len(transforms):
+        if n_transforms != len(transforms):
             raise InvalidSyntax(
                 'Indicated # of transforms ({}) differs from the actual # of '
-                ' transforms ({})'.format(num_transforms, len(transforms)))
+                ' transforms ({})'.format(n_transforms, len(transforms)))
 
         return Proposal(num, protocol_id, spi, transforms)
 
     def to_bytes(self):
-        data = bytearray(pack(
-            '>BBBB', self.num, self.protocol_id, len(self.spi), len(self.transforms)
-        ))
-
+        data = bytearray(pack('>BBBB', self.num, self.protocol_id, 
+                                       len(self.spi), len(self.transforms)))
         if len(self.spi):
             data += self.spi
 
         for index in range(0, len(self.transforms)):
             transform = self.transforms[index]
             transform_data = transform.to_bytes()
-            data += pack(
-                '>BBH', (0 if index == len(self.transforms) - 1 else 3),
-                0, len(transform_data) + 4
-            )
+            data += pack('>BBH', 0 if index == len(self.transforms) - 1 else 3,
+                                 0, len(transform_data) + 4)
             data += transform_data
 
         return data
@@ -269,17 +268,14 @@ class PayloadSA(Payload):
                 proposal = Proposal.parse(data[start:end])
                 proposals.append(proposal)
                 offset += length
-
         return PayloadSA(proposals)
 
     def to_bytes(self):
         data = bytearray()
         for index in range(0, len(self.proposals)):
             proposal_data = self.proposals[index].to_bytes()
-            data += pack(
-                '>BBH', (0 if index == len(self.proposals) - 1 else 2),
-                0, len(proposal_data) + 4
-            )
+            data += pack('>BBH', 0 if index == len(self.proposals) - 1 else 2,
+                                 0, len(proposal_data) + 4)
             data += proposal_data
         return data
 
@@ -319,7 +315,8 @@ class PayloadNONCE(Payload):
         super(PayloadNONCE, self).__init__(critical)
         if nonce is not None:
             if len(nonce) < 16 or len(nonce) > 256:
-                raise InvalidSyntax('Invalid Payload NONCE length: {}'.format(len(nonce)))
+                raise InvalidSyntax(
+                    'Invalid Payload NONCE length: {}'.format(len(nonce)))
             self.nonce = nonce
         else:
             random = SystemRandom()
@@ -335,9 +332,7 @@ class PayloadNONCE(Payload):
 
     def to_dict(self):
         result = super(PayloadNONCE, self).to_dict()
-        result.update(OrderedDict([
-            ('nonce', hexstring(self.nonce)),
-        ]))
+        result.update(OrderedDict([('nonce', hexstring(self.nonce))]))
         return result
 
 class PayloadNOTIFY(Payload):
@@ -374,7 +369,8 @@ class PayloadNOTIFY(Payload):
         ESP_TFC_PADDING_NOT_SUPPORTED = 16394
         NON_FIRST_FRAGMENTS_ALSO = 16395
 
-    def __init__(self, protocol_id, notification_type, spi, notification_data, critical=False):
+    def __init__(self, protocol_id, notification_type, spi, notification_data, 
+                 critical=False):
         super(PayloadNOTIFY, self).__init__(critical)
         self.protocol_id = protocol_id
         self.notification_type = notification_type
@@ -392,10 +388,12 @@ class PayloadNOTIFY(Payload):
         else:
             spi = b''
         notification_data = data[4 + spi_size:]
-        return PayloadNOTIFY(protocol_id, notification_type, spi, notification_data)
+        return PayloadNOTIFY(protocol_id, notification_type, spi, 
+                             notification_data)
 
     def to_bytes(self):
-        data = bytearray(pack('>BBH', self.protocol_id, len(self.spi), self.notification_type))
+        data = bytearray(pack('>BBH', self.protocol_id, len(self.spi), 
+                                      self.notification_type))
         if len(self.spi) > 0:
             data += self.spi
         data += self.notification_data
@@ -406,7 +404,8 @@ class PayloadNOTIFY(Payload):
         result.update(OrderedDict([
             ('protocol_id', Proposal.Protocol.safe_name(self.protocol_id)),
             ('spi', hexstring(self.spi)),
-            ('notification_type', PayloadNOTIFY.Type.safe_name(self.notification_type)),
+            ('notification_type', PayloadNOTIFY.Type.safe_name(
+                self.notification_type)),
             ('notification_data', hexstring(self.notification_data)),
         ]))
         return result
@@ -548,19 +547,23 @@ class TrafficSelector(object):
     @classmethod
     def parse(cls, data, critical=False):
         try:
-            (ts_type, ip_proto, _, start_port, end_port) = unpack_from('>BBHHH', data)
-            addr_len = 4 if ts_type == TrafficSelector.Type.TS_IPV4_ADDR_RANGE else 16
-            start_addr, end_addr = unpack_from('>{0}s{0}s'.format(addr_len), data, 8)
+            (ts_type, ip_proto, 
+                _, start_port, end_port) = unpack_from('>BBHHH', data)
+            addr_len = (4 if ts_type == TrafficSelector.Type.TS_IPV4_ADDR_RANGE 
+                          else 16)
+            start_addr, end_addr = unpack_from('>{0}s{0}s'.format(addr_len), 
+                                               data, 8)
         except struct_error:
             raise InvalidSyntax('Error parsing Traffic selector.')
         return TrafficSelector(ts_type, ip_proto, start_port, end_port,
-            ip_address(start_addr), ip_address(end_addr))
+                               ip_address(start_addr), ip_address(end_addr))
 
     def to_bytes(self):
-        addr_len = 4 if self.ts_type == TrafficSelector.Type.TS_IPV4_ADDR_RANGE else 16
-        return pack('>BBHHH{0}s{0}s'.format(addr_len),
-            self.ts_type, self.ip_proto, 8 + addr_len * 2, self.start_port,
-            self.end_port, self.start_addr.packed, self.end_addr.packed)
+        addr_len = (4 if self.ts_type == TrafficSelector.Type.TS_IPV4_ADDR_RANGE
+                      else 16)
+        return pack('>BBHHH{0}s{0}s'.format(addr_len), self.ts_type, 
+                    self.ip_proto, 8 + addr_len * 2, self.start_port,
+                    self.end_port, self.start_addr.packed, self.end_addr.packed)
 
     def to_dict(self):
         return OrderedDict([
@@ -579,13 +582,13 @@ class TrafficSelector(object):
         ts_type = self.ts_type
 
         # check if both have compatibles protocols
-        if (self.ip_proto != other.ip_proto and
-                self.ip_proto != TrafficSelector.IpProtocol.ANY and
-                other.ip_proto != TrafficSelector.IpProtocol.ANY):
+        if (self.ip_proto != other.ip_proto
+                and self.ip_proto != TrafficSelector.IpProtocol.ANY
+                and other.ip_proto != TrafficSelector.IpProtocol.ANY):
             return None
 
-        ip_proto = (self.ip_proto if self.ip_proto !=
-            TrafficSelector.IpProtocol.ANY else other.ip_proto)
+        ip_proto = (self.ip_proto if self.ip_proto 
+                        != TrafficSelector.IpProtocol.ANY else other.ip_proto)
 
         start_port = max(self.start_port, other.start_port)
         end_port = min(self.end_port, other.end_port)
@@ -598,13 +601,13 @@ class TrafficSelector(object):
             return None
 
         return TrafficSelector(ts_type, ip_proto, start_port,
-            end_port, start_addr, end_addr)
+                               end_port, start_addr, end_addr)
 
     def __eq__(self, other):
         return (
             (self.ts_type, self.ip_proto, self.start_port,
-             self.end_port, self.start_addr, self.end_addr) ==
-                (other.ts_type, other.ip_proto, other.start_port,
+             self.end_port, self.start_addr, self.end_addr)
+                == (other.ts_type, other.ip_proto, other.start_port,
                 other.end_port, other.start_addr, other.end_addr))
 
 class PayloadTS(Payload):
@@ -674,16 +677,19 @@ class PayloadSK(Payload):
         iv = self.ciphertext[:crypto.cipher.block_size]
         ciphertext = self.ciphertext[
             crypto.cipher.block_size:-crypto.integrity.hash_size]
-        decrypted = crypto.cipher.decrypt(crypto.sk_e, bytes(iv), bytes(ciphertext))
+        decrypted = crypto.cipher.decrypt(crypto.sk_e, bytes(iv), 
+                                          bytes(ciphertext))
         padlen = decrypted[-1]
         return decrypted[:-1-padlen]
 
     @classmethod
     def generate(cls, cleartext, crypto):
         iv = crypto.cipher.generate_iv()
-        padlen = crypto.cipher.block_size - (len(cleartext) % crypto.cipher.block_size) - 1
-        cleartext += b'\x00' * padlen + padlen.to_bytes(1, 'big')
-        encrypted = crypto.cipher.encrypt(crypto.sk_e, bytes(iv), bytes(cleartext))
+        padlen = (crypto.cipher.block_size 
+                  - (len(cleartext) % crypto.cipher.block_size) - 1)
+        cleartext += b'\x00' * padlen + pack('>B', padlen)
+        encrypted = crypto.cipher.encrypt(crypto.sk_e, bytes(iv), 
+                                          bytes(cleartext))
         return PayloadSK(iv + encrypted + b'\x00' * crypto.integrity.hash_size)
 
     def to_dict(self):
@@ -794,20 +800,16 @@ class Message:
                 (next_payload_type,critical, length) = unpack_from('>BBH', data, offset)
             except struct_error as ex:
                 raise InvalidSyntax(ex)
-
             critical = critical >> 7
             start = offset + 4
             end = offset + length
-
             # Parse the payload. If not known and critical, raise exception
             try:
                 payload = PayloadFactory.parse(payload_type, data[start:end], critical)
-
                 # If payload SK, annotate next_payload_type and set it to NONE
                 if payload_type == Payload.Type.SK:
                     payload.next_payload_type = next_payload_type
                     next_payload_type = Payload.Type.NONE
-
                 # offset is increased in any case
                 payloads.append(payload)
             except InvalidSyntax as ex:
@@ -884,7 +886,8 @@ class Message:
             else:
                 next_payload_type = Payload.Type.NONE
 
-            payloads_data += pack('>BBH', next_payload_type, 0, len(payload_data) + 4)
+            payloads_data += pack('>BBH', next_payload_type, 0, 
+                                          len(payload_data) + 4)
             payloads_data += payload_data
         return payloads_data
 
@@ -895,11 +898,13 @@ class Message:
             cleartext = self._payloads_to_bytes(self.encrypted_payloads)
             payload_sk = PayloadSK.generate(cleartext, crypto)
             payload_sk.next_payload_type = (
-                self.encrypted_payloads[0].type  if self.encrypted_payloads else Payload.Type.NONE)
+                self.encrypted_payloads[0].type if self.encrypted_payloads 
+                                                else Payload.Type.NONE)
             self.payloads.append(payload_sk)
 
         # generate header_data
-        first_payload_type = self.payloads[0].type if self.payloads else Payload.Type.NONE
+        first_payload_type = (self.payloads[0].type if self.payloads 
+                                                    else Payload.Type.NONE)
         header_data = bytearray(pack(
             '>2Q4B2L', self.spi_i, self.spi_r, first_payload_type,
             (self.major << 4 | self.minor & 0x0F), self.exchange_type,
@@ -923,7 +928,7 @@ class Message:
             checksum = crypto.integrity.compute(
                 crypto.sk_a, data[:-crypto.integrity.hash_size])
             pack_into('>{}s'.format(len(checksum)),
-                data, len(data) - len(checksum), checksum)
+                      data, len(data) - len(checksum), checksum)
 
         return data
 
