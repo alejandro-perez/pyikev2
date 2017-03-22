@@ -430,7 +430,9 @@ class IkeSa(object):
         child_sa = ChildSa(outbound_spi=chosen_child_proposal.spi,
                            inbound_spi=os.urandom(4))
 
-        ipsec.create_child_sa(self.myaddr[0], self.peeraddr[0],
+        ipsec.create_child_sa(
+            self.myaddr[0], self.peeraddr[0],
+            chosen_tsr, chosen_tsi,
             chosen_child_proposal.protocol_id,
             child_sa.outbound_spi,
             chosen_child_proposal.get_transform(Transform.Type.ENCR).id,
@@ -438,7 +440,9 @@ class IkeSa(object):
             chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
             child_sa_keyring.sk_ar,
             mode)
-        ipsec.create_child_sa(self.peeraddr[0], self.myaddr[0],
+        ipsec.create_child_sa(
+            self.peeraddr[0], self.myaddr[0],
+            chosen_tsi, chosen_tsr,
             chosen_child_proposal.protocol_id,
             child_sa.inbound_spi,
             chosen_child_proposal.get_transform(Transform.Type.ENCR).id,

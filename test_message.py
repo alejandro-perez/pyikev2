@@ -190,6 +190,13 @@ class TestTrafficSelector(TestPayloadMixin, unittest.TestCase):
         ts = TrafficSelector.from_network(ip_network('192.168.2.0/22', strict=False), 0, 0)
         self.assertEqual(ts.end_addr, ip_address('192.168.3.255'))
 
+    def test_get_network(self):
+        ts2 = TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
+            TrafficSelector.IpProtocol.TCP, 0, 10, ip_address('192.168.1.1'),
+            ip_address('192.168.10.10'))
+        self.assertEqual(ts2.get_network(), ip_network('192.168.0.0/20'))
+
+
 class TestPayloadTS(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
         super(TestPayloadTS, self).setUp()

@@ -530,6 +530,20 @@ class TrafficSelector(object):
         return TrafficSelector(
             TrafficSelector.Type.TS_IPV4_ADDR_RANGE, ip_proto, port,
             65535 if port == 0 else port, subnet[0], subnet[-1])
+
+    def get_network(self):
+        network = ip_network(self.start_addr)
+        while self.end_addr not in network:
+            network = network.supernet()
+        return network
+
+    def get_port(self):
+        if self.start_port == 0 and self.end_port == 65535:
+            return 0
+        else:
+            return self.end_port
+
+    @classmethod
     def parse(cls, data, critical=False):
         try:
             (ts_type, ip_proto, _, start_port, end_port) = unpack_from('>BBHHH', data)

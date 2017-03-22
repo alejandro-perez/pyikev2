@@ -55,17 +55,18 @@ def _run_command(command):
 def _ip_xfrm_add_policy(src, dst, ip_proto, sport, dport, dir,
                         ipsec_proto, mode, tsrc, tdst):
     command = [
-        'ip', 'xfrm', 'policy', 'add', 'src', src, 'dst', dst, 'proto', ip_proto,
-        'sport', sport, 'dport', dport, 'dir', dir, 'action', 'allow', 'tmpl'
+        'ip', 'xfrm', 'policy', 'add', 'src', src, 'dst', dst, 'proto', ip_proto
     ]
+    if ip_proto in ('tcp', 'udp'):
+        command += ['sport', sport, 'dport', dport]
+    command += ['dir', dir, 'action', 'allow', 'tmpl']
     command += ['src', tsrc, 'dst', tdst]
     command += ['proto', ipsec_proto, 'mode', mode]
     _run_command(command)
 
-# intentionally no support for selectors yet
-# this can generate problem. Should not support narrowing.
-def _ip_xfrm_add_state(src, dst, ipsec_proto, spi, enc_algo, enc_key,
-                       auth_algo, auth_key, mode):
+def _ip_xfrm_add_state(src, dst, ipsec_proto, src_net, src_port, dst_net,
+                        dst_port, ip_proto, spi, enc_algo, enc_key,
+                        auth_algo, auth_key, mode):
     command = [
         'ip', 'xfrm', 'state', 'add', 'src', src, 'dst', dst, 'proto',
         ipsec_proto, 'spi', spi
@@ -73,6 +74,10 @@ def _ip_xfrm_add_state(src, dst, ipsec_proto, spi, enc_algo, enc_key,
     if ipsec_proto == 'esp':
         command += ['enc', enc_algo, enc_key]
     command += ['auth', auth_algo, auth_key, 'mode', mode]
+    command += ['sel', 'src', str(src_net), 'dst', str(dst_net), 'proto', ip_proto]
+
+    if ip_proto in ('tcp', 'udp'):
+        command += ['sport', str(src_port), 'dport', str(dst_port)]
     _run_command(command)
 
 def _ip_xfrm_del_state(spi):
@@ -113,10 +118,12 @@ def create_policies(my_addr, peer_addr, ike_conf):
             str(ipsec_conf['my_port']), 'fwd', _ipsec_proto_names[ipsec_conf['ipsec_proto']],
             _mode_names[ipsec_conf['mode']], str(peer_addr), str(my_addr))
 
-def create_child_sa(src, dst, ipsec_protocol, spi, enc_algorith, sk_e,
+def create_child_sa(src, dst, src_sel, dst_sel, ipsec_protocol, spi, enc_algorith, sk_e,
         auth_algorithm, sk_a, mode):
     _ip_xfrm_add_state(
         str(src), str(dst), _ipsec_proto_names[ipsec_protocol],
+        src_sel.get_network(), src_sel.get_port(), dst_sel.get_network(),
+        dst_sel.get_port(), _ip_proto_names[src_sel.ip_proto],
         '0x{}'.format(hexstring(spi)), _cipher_names[enc_algorith],
         '0x{}'.format(hexstring(sk_e)), _auth_names[auth_algorithm],
         '0x{}'.format(hexstring(sk_a)), _mode_names[mode]
