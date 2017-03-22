@@ -266,19 +266,20 @@ class IkeSa(object):
             return (True, None)
 
         # process the message
+        try:
+            handler = _handler_dict[(message.exchange_type, message.is_request)]
+        except KeyError:
+            logging.error('I don\'t know how to handle this message. '
+                'Please, implement a handler!')
         status = False
         reply = None
         try:
-            handler = _handler_dict[(message.exchange_type, message.is_request)]
             reply = handler(message)
             status = True
             # if the message was processed succesfully, we record it for future reference
             self.last_received_message_data = data
             self.last_received_message = message
             self.peer_msg_id = self.peer_msg_id + 1
-        except KeyError:
-            logging.error('I don\'t know how to handle this message. '
-                'Please, implement a handler!')
         except NoProposalChosen as ex:
             logging.error('IKE_SA: {}. {}'.format(
                 hexstring(pack('>Q', self.my_spi)),str(ex)))
