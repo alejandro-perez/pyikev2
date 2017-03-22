@@ -9,13 +9,15 @@ import unittest
 from message import (
     PayloadNONCE, PayloadKE, PayloadVENDOR, PayloadSK, InvalidSyntax, Transform,
     Proposal, PayloadSA, Message, UnsupportedCriticalPayload, PayloadNOTIFY,
-    PayloadID, TrafficSelector, PayloadTS, PayloadAUTH, PayloadNOTIFY
+    PayloadID, TrafficSelector, PayloadTS, PayloadAUTH, PayloadNOTIFY,
+    PayloadDELETE
 )
 from protocol import Keyring
 from crypto import Prf, Cipher, Integrity, DiffieHellman, ESN, Crypto
 from ipaddress import ip_address
 from helpers import hexstring
 import json
+from ipaddress import ip_network
 
 class TestPayloadMixin(object):
     def setUp(self):
@@ -184,6 +186,17 @@ class TestTrafficSelector(TestPayloadMixin, unittest.TestCase):
         result = ts2.intersection(self.object)
         self.assertIsNone(result)
 
+    def test_from_network(self):
+        ts = TrafficSelector.from_network(ip_network('192.168.2.0/22', strict=False), 0, 0)
+        self.assertEqual(ts.end_addr, ip_address('192.168.3.255'))
+
+    def test_get_network(self):
+        ts2 = TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
+            TrafficSelector.IpProtocol.TCP, 0, 10, ip_address('192.168.1.1'),
+            ip_address('192.168.10.10'))
+        self.assertEqual(ts2.get_network(), ip_network('192.168.0.0/20'))
+
+
 class TestPayloadTS(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
         super(TestPayloadTS, self).setUp()
@@ -210,6 +223,11 @@ class TestPayloadNOTIFY(TestPayloadMixin, unittest.TestCase):
         super(TestPayloadNOTIFY, self).setUp()
         self.object = PayloadNOTIFY(Proposal.Protocol.AH,
             PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN, b'spi', b'data')
+
+class TestPayloadDELETE(TestPayloadMixin, unittest.TestCase):
+    def setUp(self):
+        super(TestPayloadDELETE, self).setUp()
+        self.object = PayloadDELETE(Proposal.Protocol.AH, [b'1234', b'1235'])
 
 class TestMessage(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
