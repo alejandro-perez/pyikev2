@@ -280,28 +280,40 @@ class IkeSa(object):
             logging.error('I don\'t know how to handle this message. '
                 'Please, implement a handler!')
         except NoProposalChosen as ex:
+            logging.error('IKE_SA: {}. {}'.format(
+                hexstring(pack('>Q', self.my_spi)),str(ex)))
             reply = self._generate_ike_error_response(
                 message, PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN)
         except UnsupportedCriticalPayload as ex:
+            logging.error('IKE_SA: {}. {}'.format(
+                hexstring(pack('>Q', self.my_spi)),str(ex)))
             reply = self._generate_ike_error_response(
                 message, PayloadNOTIFY.Type.UNSUPPORTED_CRITICAL_PAYLOAD)
         except InvalidSyntax as ex:
+            logging.error('IKE_SA: {}. {}'.format(
+                hexstring(pack('>Q', self.my_spi)),str(ex)))
             reply = self._generate_ike_error_response(
                 message, PayloadNOTIFY.Type.INVALID_SYNTAX)
         except AuthenticationFailed as ex:
+            logging.error('IKE_SA: {}. {}'.format(
+                hexstring(pack('>Q', self.my_spi)),str(ex)))
             reply = self._generate_ike_error_response(
                 message, PayloadNOTIFY.Type.AUTHENTICATION_FAILED)
         except InvalidSelectors as ex:
+            logging.error('IKE_SA: {}. {}'.format(
+                hexstring(pack('>Q', self.my_spi)),str(ex)))
             reply = self._generate_ike_error_response(
                 message, PayloadNOTIFY.Type.INVALID_SELECTORS)
         except InvalidKePayload as ex:
+            logging.error('IKE_SA: {}. {}'.format(
+                hexstring(pack('>Q', self.my_spi)),str(ex)))
             reply = self._generate_ike_error_response(
                 message,
                 PayloadNOTIFY.Type.INVALID_KE_PAYLOAD,
                 notification_data=pack('>H', ex.group))
         except IkeSaError as ex:
-            # TODO: Some errors are non-aborting (and send NOTIFY or such)
-            logging.error(ex)
+            logging.error('IKE_SA: {}. {}'.format(
+                hexstring(pack('>Q', self.my_spi)),str(ex)))
             reply = self._generate_ike_error_response(
                 message, PayloadNOTIFY.Type.INVALID_SYNTAX)
 
