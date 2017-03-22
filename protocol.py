@@ -9,7 +9,7 @@ from message import (Message, Payload, PayloadNONCE, PayloadVENDOR, PayloadKE,
     Proposal, Transform, NoProposalChosen, PayloadSA, InvalidKePayload,
     InvalidSyntax, PayloadAUTH, AuthenticationFailed, PayloadIDi, PayloadIDr,
     IkeSaError, PayloadTSi, PayloadTSr, TrafficSelector, InvalidSelectors,
-    PayloadNOTIFY, PayloadNotFound, PayloadDELETE)
+    PayloadNOTIFY, PayloadNotFound, PayloadDELETE, UnsupportedCriticalPayload)
 from helpers import SafeEnum, SafeIntEnum, hexstring
 from random import SystemRandom
 from crypto import DiffieHellman, Prf, Integrity, Cipher, Crypto
@@ -217,6 +217,23 @@ class IkeSa(object):
             addr))
         logging.debug(json.dumps(message.to_dict(), indent=logging.indent_spaces))
 
+    def _generate_ike_error_response(self, request, notification_type, notification_data=b''):
+        notify_error = PayloadNOTIFY(Proposal.Protocol.NONE, notification_type,
+                                     b'', notification_data)
+        return  Message(
+            spi_i=request.spi_i,
+            spi_r=request.spi_r,
+            major=2,
+            minor=0,
+            exchange_type=request.exchange_type,
+            is_response=True,
+            can_use_higher_version=False,
+            is_initiator=self.is_initiator,
+            message_id=self.peer_msg_id,
+            payloads=[notify_error] if request.exchange_type == Message.Exchange.IKE_SA_INIT else [],
+            encrypted_payloads=[notify_error] if request.exchange_type != Message.Exchange.IKE_SA_INIT else []
+        )
+
     def process_message(self, data, addr):
         """ Performs the common tasks for IKE message handling,
             including logging for the message and the reply (if any), check of
@@ -238,7 +255,7 @@ class IkeSa(object):
         if (message.message_id == self.peer_msg_id - 1 and
                 data == self.last_received_message_data):
             logging.warning('Retransmission detected. Sending last sent message')
-            return self.last_sent_message_data
+            return True, self.last_sent_message_data
         elif message.message_id != self.peer_msg_id:
             logging.error(
                 'Message with invalid ID. Expecting {}. Omitting.'
@@ -246,17 +263,40 @@ class IkeSa(object):
             return True, None
 
         # process the message
+        status = False
+        reply = None
         try:
             handler = _handler_dict[(message.exchange_type, message.is_request)]
             reply = handler(message)
+            status = True
         except KeyError:
             logging.error('I don\'t know how to handle this message. '
                 'Please, implement a handler!')
-            return False, None
+        except NoProposalChosen as ex:
+            reply = self._generate_ike_error_response(
+                message, PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN)
+        except UnsupportedCriticalPayload as ex:
+            reply = self._generate_ike_error_response(
+                message, PayloadNOTIFY.Type.UNSUPPORTED_CRITICAL_PAYLOAD)
+        except InvalidSyntax as ex:
+            reply = self._generate_ike_error_response(
+                message, PayloadNOTIFY.Type.INVALID_SYNTAX)
+        except AuthenticationFailed as ex:
+            reply = self._generate_ike_error_response(
+                message, PayloadNOTIFY.Type.AUTHENTICATION_FAILED)
+        except InvalidSelectors as ex:
+            reply = self._generate_ike_error_response(
+                message, PayloadNOTIFY.Type.INVALID_SELECTORS)
+        except InvalidKePayload as ex:
+            reply = self._generate_ike_error_response(
+                message,
+                PayloadNOTIFY.Type.INVALID_KE_PAYLOAD,
+                notification_data=pack('>H', ex.group))
         except IkeSaError as ex:
             # TODO: Some errors are non-aborting (and send NOTIFY or such)
             logging.error(ex)
-            return False, None
+            reply = self._generate_ike_error_response(
+                message, PayloadNOTIFY.Type.INVALID_SYNTAX)
 
         # if the message was processed succesfully, we record it for future reference
         self.last_received_message_data = data
@@ -300,7 +340,7 @@ class IkeSa(object):
         my_dh_group = self.chosen_proposal.get_transform(Transform.Type.DH).id
         if my_dh_group != payload_ke.dh_group:
             raise InvalidKePayload('Invalid DH group used. I requested {}'
-                                   ''.format(my_dh_group))
+                                   ''.format(my_dh_group), group=my_dh_group)
 
         # generate the response payload KE
         dh = DiffieHellman(payload_ke.dh_group)
@@ -508,8 +548,7 @@ class IkeSa(object):
             is_initiator=False,
             message_id=self.peer_msg_id,
             payloads=[],
-            encrypted_payloads=response_payloads,
-        )
+            encrypted_payloads=response_payloads)
 
         # increase msg_id and transition
         self.state = IkeSa.State.ESTABLISHED
@@ -559,8 +598,7 @@ class IkeSa(object):
             is_initiator=self.is_initiator,
             message_id=self.peer_msg_id,
             payloads=[],
-            encrypted_payloads=response_payloads,
-        )
+            encrypted_payloads=response_payloads)
         return response
 
     def process_create_child_sa_request(self, request):
@@ -578,12 +616,14 @@ class IkeSa(object):
         # if this is a IKE_REKEY
         if proposal.protocol_id == Proposal.Protocol.IKE:
             logging.info('Received request for rekeying current IKE_SA')
-            self.new_ike_sa = IkeSa(self.is_initiator, int.from_bytes(proposal.spi, 'big'),
-                                    self.configuration, self.myaddr, self.peeraddr)
+            self.new_ike_sa = IkeSa(
+                self.is_initiator, int.from_bytes(proposal.spi, 'big'),
+                self.configuration, self.myaddr, self.peeraddr)
             # take over the existing child sas
             self.new_ike_sa.child_sas = self.child_sas
             self.child_sas = []
-            response_payloads = self.new_ike_sa._process_ike_sa_negotiation_request(request, True, self.ike_sa_keyring.sk_d)
+            response_payloads = self.new_ike_sa._process_ike_sa_negotiation_request(
+                request, True, self.ike_sa_keyring.sk_d)
             self.new_ike_sa.state = IkeSa.State.ESTABLISHED
             self.state = IkeSa.State.REKEYED
 
@@ -669,6 +709,9 @@ class IkeSaController:
         # if rekeyed, add the new IkeSa
         if ike_sa.state == IkeSa.State.REKEYED:
             self.ike_sas[ike_sa.new_ike_sa.my_spi] = ike_sa.new_ike_sa
+            logging.info('IKE SA with SPI={} created by rekey.'
+                'Count={}'.format(hexstring(
+                    pack('>Q', ike_sa.my_spi)), len(self.ike_sas)))
 
         # if the IKE_SA needs to be closed
         if not status or ike_sa.state in (IkeSa.State.DELETED,):
