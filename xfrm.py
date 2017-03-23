@@ -450,22 +450,24 @@ def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
 #     dst = ip_address('155.54.1.2')
 # )
 
-# xfrm_create_ipsec_sa(
-#     src_selector=ip_network('192.168.1.0/24'),
-#     dst_selector=ip_network('192.168.2.0/24'),
-#     src_port=0,
-#     dst_port=0,
-#     spi=b'1234',
-#     ip_proto=socket.IPPROTO_TCP,
-#     mode = XFRM_MODE_TRANSPORT,
-#     ipsec_proto = Proposal.Protocol.ESP,
-#     src = ip_address('155.54.1.1'),
-#     dst = ip_address('155.54.1.2')
-# )
+xfrm_create_ipsec_sa(
+    src_selector=ip_network('192.168.1.0/24'),
+    dst_selector=ip_network('192.168.2.0/24'),
+    src_port=0,
+    dst_port=0,
+    spi=b'1234',
+    ip_proto=socket.IPPROTO_TCP,
+    mode = XFRM_MODE_TRANSPORT,
+    ipsec_proto = Proposal.Protocol.ESP,
+    src = ip_address('155.54.1.1'),
+    dst = ip_address('155.54.1.2')
+)
 # xfrm_print_policies()
 
-xfrm_flush_policies()
-xfrm_flush_sa()
+
+
+# xfrm_flush_policies()
+# xfrm_flush_sa()
 
 
 
