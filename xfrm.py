@@ -11,32 +11,40 @@ import pprint
 import os
 from collections import defaultdict
 
-NLM_F_REQUEST    = 1
-NLM_F_MULTI      = 2
-NLM_F_ACK        = 4
-
+NLM_F_REQUEST    = 0x0001
+NLM_F_MULTI      = 0x0002
+NLM_F_ACK        = 0x0004
 NLM_F_ROOT       = 0x0100
 NLM_F_MATCH      = 0x0200
 NLM_F_ATOMIC     = 0x0400
-NLM_F_DUMP       = (NLM_F_ROOT|NLM_F_MATCH)
+
+NLM_F_DUMP       = (NLM_F_REQUEST|NLM_F_ROOT|NLM_F_MATCH)
 
 NLMSG_ERROR      = 0x0002
 NLMSG_DONE       = 0x0003
 
-XFRM_MSG_NEWSA = 0x10
-XFRM_MSG_DELSA = 0x11
-XFRM_MSG_GETSA = 0x12
-XFRM_MSG_NEWPOLICY = 0x13
-XFRM_MSG_DELPOLICY = 0x14
-XFRM_MSG_GETPOLICY = 0x15
-XFRM_MSG_ALLOCSPI = 0x16
-XFRM_MSG_ACQUIRE = 0x17
-XFRM_MSG_EXPIRE = 0x18
-XFRM_MSG_UPDPOLICY = 0x19
-XFRM_MSG_UPDSA = 0x1A
-XFRM_MSG_POLEXPIRE = 0x1B
-XFRM_MSG_FLUSHSA = 0x1C
-XFRM_MSG_FLUSHPOLICY = 0x1D
+XFRM_MSG_NEWSA      = 0x10
+XFRM_MSG_DELSA      = 0x11
+XFRM_MSG_GETSA      = 0x12
+XFRM_MSG_NEWPOLICY  = 0x13
+XFRM_MSG_DELPOLICY  = 0x14
+XFRM_MSG_GETPOLICY  = 0x15
+XFRM_MSG_ALLOCSPI   = 0x16
+XFRM_MSG_ACQUIRE    = 0x17
+XFRM_MSG_EXPIRE     = 0x18
+XFRM_MSG_UPDPOLICY  = 0x19
+XFRM_MSG_UPDSA      = 0x1A
+XFRM_MSG_POLEXPIRE  = 0x1B
+XFRM_MSG_FLUSHSA    = 0x1C
+XFRM_MSG_FLUSHPOLICY= 0x1D
+
+XFRM_POLICY_TYPE_MAIN   = 0
+XFRM_POLICY_TYPE_SUB    = 1
+XFRM_POLICY_TYPE_MAX    = 2
+XFRM_POLICY_TYPE_ANY    = 255
+
+XFRM_MODE_TRANSPORT = 0
+XFRM_MODE_TUNNEL = 1
 
 class NetlinkError(Exception):
     pass
@@ -69,6 +77,7 @@ class NetlinkObject(object):
                 offset += calcsize(format_)
             else:
                 args[name] = format_.parse(data[offset:])
+                offset += format_.size()
         return cls(**args)
 
     @classmethod
@@ -106,7 +115,7 @@ class NetlinkHeader(NetlinkObject):
 
 class NetlinkErrorMsg(NetlinkObject):
     _members = (
-        ('error', 'I', 0),
+        ('error', 'i', 0),
         ('msg', NetlinkHeader, NetlinkHeader()),
     )
 
@@ -140,14 +149,14 @@ class XfrmUserPolicyId(NetlinkObject):
 
 class XfrmLifetimeCfg(NetlinkObject):
     _members = (
-        ('soft_byte_limit', 'L', 0),
-        ('hard_byte_limit', 'L', 0),
-        ('soft_packed_limit', 'L', 0),
-        ('hard_packet_limit', 'L', 0),
-        ('soft_add_expires_seconds', 'L', 0),
-        ('hard_add_expires_seconds', 'L', 0),
-        ('soft_use_expires_seconds', 'L', 0),
-        ('hard_use_expires_seconds', 'L', 0),
+        ('soft_byte_limit', 'L', 2000),
+        ('hard_byte_limit', 'L', 2000),
+        ('soft_packed_limit', 'L', 2000),
+        ('hard_packet_limit', 'L', 2000),
+        ('soft_add_expires_seconds', 'L', 2000),
+        ('hard_add_expires_seconds', 'L', 2000),
+        ('soft_use_expires_seconds', 'L', 2000),
+        ('hard_use_expires_seconds', 'L', 2000),
     )
 
 class XfrmLifetimeCur(NetlinkObject):
@@ -171,14 +180,39 @@ class XfrmUserPolicyInfo(NetlinkObject):
         ('share', 'B', 0),
     )
 
+class XfrmUserPolicyType(NetlinkObject):
+    _members = (
+        ('type', 'B', 0),
+        ('reserved1', 'I', 0),
+        ('reserved2', 'B', 0),
+    )
 
 class XfrmUserSaFlush(NetlinkObject):
     _members = (
         ('proto', 'B', 255),
     )
 
+class XfrmId(NetlinkObject):
+    _members = (
+        ('daddr', XfrmAddress, XfrmAddress()),
+        ('spi', '>I', 0),
+        ('proto', 'B', 0),
+    )
+class XfrmUserTmpl(NetlinkObject):
+    _members = (
+        ('id', XfrmId, XfrmId()),
+        ('family', 'H', 0),
+        ('saddr', XfrmAddress, XfrmAddress()),
+        ('reqid', 'I', 0),
+        ('mode', 'B', 0),
+        ('share', 'B', 0),
+        ('optional', 'B', 0),
+        ('aalgos', 'I', 0),
+        ('ealgos', 'I', 0),
+        ('calgos', 'I', 0),
+    )
 
-def nl_sendrecv(command, flags, attribute_data):
+def xfrm_send(command, flags, attribute_data):
     sock = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, socket.NETLINK_XFRM)
     sock.bind((0, 0),)
     seq = int(time.time())
@@ -193,76 +227,54 @@ def nl_sendrecv(command, flags, attribute_data):
             error_msg = NetlinkErrorMsg.parse(data[16:])
             if error_msg.error == 0:
                 break
-            raise NetlinkError('Received error header!')
+            raise NetlinkError(
+                'Received error header!: {}'.format(error_msg.error))
         elif header.type == NLMSG_DONE:
             break
-        response_attribute_data[header.type].append(data[16:])
+        response_attribute_data[header.type].append(data[16:header.length])
         data = data[header.length:]
     sock.close()
     return response_attribute_data
 
+def xfrm_flush_policies():
+    xfrm_send(command=XFRM_MSG_FLUSHPOLICY, flags=NLM_F_REQUEST | NLM_F_ACK,
+                attribute_data=XfrmUserSaFlush(proto=255).to_bytes())
 
-response = nl_sendrecv(command=XFRM_MSG_GETPOLICY, flags=(NLM_F_REQUEST | NLM_F_DUMP),
-                       attribute_data=XfrmUserPolicyId().to_bytes())
-
-# read policies
-for policy_data in response[XFRM_MSG_NEWPOLICY]:
-    policy = XfrmUserPolicyInfo.parse(policy_data)
-    pprint.pprint(policy.to_dict())
-
-response = nl_sendrecv(command=XFRM_MSG_FLUSHPOLICY, flags=NLM_F_REQUEST | NLM_F_ACK,
-                        attribute_data=XfrmUserSaFlush(proto=255).to_bytes())
-
-
-# print("BB")
-# pprint.pprint(response)
-# sock = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, socket.NETLINK_XFRM)
-# sock.bind((0, 0),)
-
-# header = NetlinkHeader(length=NetlinkHeader.size() + XfrmUserPolicyId.size(),
-#                        type=XFRM_MSG_GETPOLICY, seq=100, pid=0,
-#                        flags=(NLM_F_REQUEST | NLM_F_DUMP))
-
-# nlmsg = header.to_bytes() + XfrmUserPolicyId().to_bytes()
-# sock.send(nlmsg)
-# data = sock.recv(4096)
-# done = False
-# print("AAA", len(nlmsg))
-# while not done and len(data) > 0:
-#     header = NetlinkHeader.parse(data)
-#     if header.type == NLMSG_ERROR:
-#         print("ERROR")
-#     elif header.type == XFRM_MSG_NEWPOLICY:
-#         print("POLICY")
-#         policy = XfrmUserPolicyInfo.parse(data[header.size():])
-#         pprint.pprint(policy.to_dict())
-#     else:
-#         print("UNKNOWN HEADER")
-#     if len(data) - header.length <= 0 or header.type in (NLMSG_DONE, NLMSG_ERROR):
-#         done = True
-#     else:
-#         data = data[header.length:]
+def xfrm_print_policies():
+    response = xfrm_send(command=XFRM_MSG_GETPOLICY, flags=(NLM_F_REQUEST | NLM_F_DUMP),
+                           attribute_data=XfrmUserPolicyId().to_bytes())
+    # read policies
+    for policy_data in response[XFRM_MSG_NEWPOLICY]:
+        print("DATA", len(policy_data), "ASSUMED", XfrmUserPolicyInfo.size())
+        policy = XfrmUserPolicyInfo.parse(policy_data)
+        pprint.pprint(policy.to_dict())
+        offset = XfrmUserPolicyInfo.size()
+        while offset < len(policy_data):
+            l, t = unpack_from('HH', policy_data, offset)
+            print("T:", t, "L:", l)
+            if l == 0 and t == 0:
+                print("AA")
+                offset += 4
+                continue
+            tmpl = XfrmUserTmpl.parse(policy_data[offset+4:offset+l])
+            pprint.pprint(tmpl.to_dict())
+            print(ip_address(tmpl.id.daddr.addr[:4]))
+            print(ip_address(policy.sel.saddr.addr[:4]))
+            break
+            offset += l
 
 
+xfrm_print_policies()
 
-# print(response)
+# policy = XfrmUserPolicyInfo(
+#     sel = XfrmSelector(
+#         daddr=XfrmAddress(addr=ip_address('192.168.1.1').packed + b'0'*12),
+#         saddr=XfrmAddress(addr=ip_address('192.168.1.2').packed + b'0'*12),
+#         family=socket.AF_INET, prefixlen_s=32, prefixlen_d=32),
+# )
 
 
-# response = nl_sendrecv(command=XFRM_MSG_FLUSHPOLICY, flags=NLM_F_REQUEST,
-#                        attribute_data=XfrmUserSaFlush(proto=255).to_bytes())
+# data = XfrmUserPolicyInfo().to_bytes() + XfrmUserPolicyType().to_bytes()
+# xfrm_send(command=XFRM_MSG_NEWPOLICY, flags=NLM_F_REQUEST | NLM_F_ACK,
+#                 attribute_data=data)
 
-
-
-
-
-# responses = []
-# response = cstruct_unpack(NLMSGHDR, sfd.read(ctypes.sizeof(NLMSGHDR)))
-# while response.type != NLMSG_DONE:
-#     if response.type == NLMSG_ERROR:
-#         break
-#     response_data = sfd.read(response.len - 16)
-#     responses.append(response_data)
-#     response = cstruct_unpack(NLMSGHDR, sfd.read(ctypes.sizeof(NLMSGHDR)))
-# sfd.close()
-# sock.close()
-# return responses
