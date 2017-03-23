@@ -5,9 +5,7 @@
 import socket
 from ipaddress import ip_address, ip_network
 from struct import pack, unpack, unpack_from, calcsize
-from helpers import hexstring
 import time
-import pprint
 import os
 from collections import defaultdict
 from message import Proposal
@@ -68,12 +66,6 @@ XFRMA_SA_EXTRA_FLAGS= 24
 XFRMA_PROTO         = 25
 XFRMA_ADDRESS_FILTER= 26
 XFRMA_PAD           = 27
-
-# XFRM policy type
-XFRM_POLICY_TYPE_MAIN   = 0
-XFRM_POLICY_TYPE_SUB    = 1
-XFRM_POLICY_TYPE_MAX    = 2
-XFRM_POLICY_TYPE_ANY    = 255
 
 XFRM_POLICY_IN  = 0
 XFRM_POLICY_OUT = 1
@@ -200,22 +192,22 @@ class XfrmUserPolicyId(NetlinkObject):
 
 class XfrmLifetimeCfg(NetlinkObject):
     _members = (
-        ('soft_byte_limit', 'L', 2000),
-        ('hard_byte_limit', 'L', 2000),
-        ('soft_packed_limit', 'L', 2000),
-        ('hard_packet_limit', 'L', 2000),
-        ('soft_add_expires_seconds', 'L', 2000),
-        ('hard_add_expires_seconds', 'L', 2000),
-        ('soft_use_expires_seconds', 'L', 2000),
-        ('hard_use_expires_seconds', 'L', 2000),
+        ('soft_byte_limit', 'Q', 0xFFFFFFFFFFFFFFFF),
+        ('hard_byte_limit', 'Q', 0xFFFFFFFFFFFFFFFF),
+        ('soft_packed_limit', 'Q', 0xFFFFFFFFFFFFFFFF),
+        ('hard_packet_limit', 'Q', 0xFFFFFFFFFFFFFFFF),
+        ('soft_add_expires_seconds', 'Q', 0),
+        ('hard_add_expires_seconds', 'Q', 0),
+        ('soft_use_expires_seconds', 'Q', 0),
+        ('hard_use_expires_seconds', 'Q', 0),
     )
 
 class XfrmLifetimeCur(NetlinkObject):
     _members = (
-        ('bytes', 'L', 0),
-        ('packets', 'L', 0),
-        ('add_time', 'L', 0),
-        ('use_time', 'L', 0),
+        ('bytes', 'Q', 0),
+        ('packets', 'Q', 0),
+        ('add_time', 'Q', 0),
+        ('use_time', 'Q', 0),
     )
 
 class XfrmUserPolicyInfo(NetlinkObject):
@@ -231,13 +223,6 @@ class XfrmUserPolicyInfo(NetlinkObject):
         ('share', 'B', 0),
     )
 
-class XfrmUserPolicyType(NetlinkObject):
-    _members = (
-        ('type', 'B', 0),
-        ('reserved1', 'I', 0),
-        ('reserved2', 'B', 0),
-    )
-
 class XfrmUserSaFlush(NetlinkObject):
     _members = (
         ('proto', 'B', 255),
@@ -246,7 +231,7 @@ class XfrmUserSaFlush(NetlinkObject):
 class XfrmId(NetlinkObject):
     _members = (
         ('daddr', XfrmAddress, XfrmAddress()),
-        ('spi', '>4s', 0),
+        ('spi', '>4s', b''),
         ('proto', 'B', 0),
     )
 class XfrmUserTmpl(NetlinkObject):
@@ -348,20 +333,6 @@ def xfrm_flush_sa():
     payloads = xfrm_send(XFRM_MSG_FLUSHSA, (NLM_F_REQUEST | NLM_F_ACK),
                          usersaflush.to_bytes())
 
-def xfrm_print_policies():
-    payloads = xfrm_send(XFRM_MSG_GETPOLICY, (NLM_F_REQUEST | NLM_F_DUMP),
-                         XfrmUserPolicyId().to_bytes())
-
-    # read policies
-    for policy_data in payloads[XFRM_MSG_NEWPOLICY]:
-        policy = XfrmUserPolicyInfo.parse(policy_data)
-        pprint.pprint(policy.to_dict())
-        attributes = parse_attributes(policy_data[policy.SIZEOF():])
-        for tmpl_data in attributes[XFRMA_TMPL]:
-            for offset in range(0, len(tmpl_data), XfrmUserTmpl.SIZEOF()):
-                tmpl = XfrmUserTmpl.parse(tmpl_data[offset:])
-                pprint.pprint(tmpl.to_dict())
-
 def xfrm_create_policy(src_selector, dst_selector, src_port, dst_port,
                        ip_proto, dir, ipsec_proto, mode, src, dst):
     policy = XfrmUserPolicyInfo(
@@ -442,47 +413,46 @@ def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
             + encralgo.to_attr_bytes(XFRMA_ALG_CRYPT)
             + integalgo.to_attr_bytes(XFRMA_ALG_AUTH)))
 
-# create policy
-# xfrm_create_policy(
-#     src_selector=ip_network('192.168.1.0/24'),
-#     dst_selector=ip_network('192.168.2.0/24'),
-#     src_port=0,
-#     dst_port=0,
-#     ip_proto=socket.IPPROTO_TCP,
-#     dir = XFRM_POLICY_IN,
-#     mode = XFRM_MODE_TRANSPORT,
-#     ipsec_proto = Proposal.Protocol.ESP,
-#     src = ip_address('155.54.1.1'),
-#     dst = ip_address('155.54.1.2')
-# )
-
-def xfrm_delete_ipsec_sa(dst, proto, spi):
-    said = XfrmUserSaId(
-        daddr = XfrmAddress(addr=dst.packed),
-        family = socket.AF_INET,
-        proto = proto,
-        spi = spi
-    )
-    xfrm_send(XFRM_MSG_DELSA, (NLM_F_REQUEST | NLM_F_ACK), said.to_bytes())
-
-xfrm_create_ipsec_sa(
+xfrm_create_policy(
     src_selector=ip_network('192.168.1.0/24'),
     dst_selector=ip_network('192.168.2.0/24'),
     src_port=0,
     dst_port=0,
-    spi=b'1234',
     ip_proto=socket.IPPROTO_TCP,
+    dir = XFRM_POLICY_IN,
     mode = XFRM_MODE_TRANSPORT,
     ipsec_proto = Proposal.Protocol.ESP,
     src = ip_address('155.54.1.1'),
     dst = ip_address('155.54.1.2')
 )
-# xfrm_print_policies()
-xfrm_delete_ipsec_sa(ip_address('155.54.1.2'), socket.IPPROTO_ESP, b'1234')
+
+# def xfrm_delete_ipsec_sa(dst, proto, spi):
+#     said = XfrmUserSaId(
+#         daddr = XfrmAddress(addr=dst.packed),
+#         family = socket.AF_INET,
+#         proto = proto,
+#         spi = spi
+#     )
+#     xfrm_send(XFRM_MSG_DELSA, (NLM_F_REQUEST | NLM_F_ACK), said.to_bytes())
+
+# xfrm_create_ipsec_sa(
+#     src_selector=ip_network('192.168.1.0/24'),
+#     dst_selector=ip_network('192.168.2.0/24'),
+#     src_port=0,
+#     dst_port=0,
+#     spi=b'1234',
+#     ip_proto=socket.IPPROTO_TCP,
+#     mode = XFRM_MODE_TRANSPORT,
+#     ipsec_proto = Proposal.Protocol.ESP,
+#     src = ip_address('155.54.1.1'),
+#     dst = ip_address('155.54.1.2')
+# )
+# # xfrm_print_policies()
+# xfrm_delete_ipsec_sa(ip_address('155.54.1.2'), socket.IPPROTO_ESP, b'1234')
 
 
 # xfrm_flush_policies()
-xfrm_flush_sa()
+# xfrm_flush_sa()
 
 
 
