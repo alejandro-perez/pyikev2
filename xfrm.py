@@ -3,26 +3,27 @@
 # list policies
 
 import socket
-from ipaddress import ip_address
+from ipaddress import ip_address, ip_network
 from struct import pack, unpack, unpack_from, calcsize
 from helpers import hexstring
 import time
 import pprint
 import os
 from collections import defaultdict
+from message import Proposal
 
+# netlink flags
 NLM_F_REQUEST    = 0x0001
 NLM_F_MULTI      = 0x0002
 NLM_F_ACK        = 0x0004
 NLM_F_ROOT       = 0x0100
 NLM_F_MATCH      = 0x0200
 NLM_F_ATOMIC     = 0x0400
-
 NLM_F_DUMP       = (NLM_F_REQUEST|NLM_F_ROOT|NLM_F_MATCH)
 
-NLMSG_ERROR      = 0x0002
-NLMSG_DONE       = 0x0003
-
+# netlink/protocol payload type
+NLMSG_ERROR         = 0x02
+NLMSG_DONE          = 0x03
 XFRM_MSG_NEWSA      = 0x10
 XFRM_MSG_DELSA      = 0x11
 XFRM_MSG_GETSA      = 0x12
@@ -38,13 +39,59 @@ XFRM_MSG_POLEXPIRE  = 0x1B
 XFRM_MSG_FLUSHSA    = 0x1C
 XFRM_MSG_FLUSHPOLICY= 0x1D
 
+# XFRM attributes
+XFRMA_UNSPEC        = 0
+XFRMA_ALG_AUTH      = 1
+XFRMA_ALG_CRYPT     = 2
+XFRMA_ALG_COMP      = 3
+XFRMA_ENCAP         = 4
+XFRMA_TMPL          = 5
+XFRMA_SA            = 6
+XFRMA_POLICY        = 7
+XFRMA_SEC_CTX       = 8
+XFRMA_LTIME_VAL     = 9
+XFRMA_REPLAY_VAL    = 10
+XFRMA_REPLAY_THRESH = 11
+XFRMA_ETIMER_THRESH = 12
+XFRMA_SRCADDR       = 13
+XFRMA_COADDR        = 14
+XFRMA_LASTUSED      = 15
+XFRMA_POLICY_TYPE   = 16
+XFRMA_MIGRATE       = 17
+XFRMA_ALG_AEAD      = 18
+XFRMA_KMADDRESS     = 19
+XFRMA_ALG_AUTH_TRUNC= 20
+XFRMA_MARK          = 21
+XFRMA_TFCPAD        = 22
+XFRMA_REPLAY_ESN_VAL= 23
+XFRMA_SA_EXTRA_FLAGS= 24
+XFRMA_PROTO         = 25
+XFRMA_ADDRESS_FILTER= 26
+XFRMA_PAD           = 27
+
+# XFRM policy type
 XFRM_POLICY_TYPE_MAIN   = 0
 XFRM_POLICY_TYPE_SUB    = 1
 XFRM_POLICY_TYPE_MAX    = 2
 XFRM_POLICY_TYPE_ANY    = 255
 
+XFRM_POLICY_IN  = 0
+XFRM_POLICY_OUT = 1
+XFRM_POLICY_FWD = 2
+XFRM_POLICY_MASK = 3
+
+# XFRM mode
 XFRM_MODE_TRANSPORT = 0
 XFRM_MODE_TUNNEL = 1
+
+# XFRM groups
+XFRMGRP_ACQUIRE     = 1
+XFRMGRP_EXPIRE      = 2
+XFRMGRP_SA          = 4
+XFRMGRP_POLICY      = 8
+
+XFRM_POLICY_ALLOW  = 0
+XFRM_POLICY_BLOCK  = 1
 
 class NetlinkError(Exception):
     pass
@@ -77,17 +124,17 @@ class NetlinkObject(object):
                 offset += calcsize(format_)
             else:
                 args[name] = format_.parse(data[offset:])
-                offset += format_.size()
+                offset += format_.SIZEOF()
         return cls(**args)
 
     @classmethod
-    def size(cls):
+    def SIZEOF(cls):
         count = 0
         for name, format_, default in cls._members:
             if type(format_) is str:
                 count += calcsize(format_)
             else:
-                count += format_.size()
+                count += format_.SIZEOF()
         if count % 4 > 0:
             count += 4 - count % 4
         return count
@@ -103,6 +150,10 @@ class NetlinkObject(object):
             else:
                 result[name] = self._attributes.get(name, default).to_dict()
         return result
+
+    def to_attr_bytes(self, attribute_type):
+        data = self.to_bytes()
+        return pack('HH', len(data) + 4, attribute_type) + data
 
 class NetlinkHeader(NetlinkObject):
     _members = (
@@ -195,7 +246,7 @@ class XfrmUserSaFlush(NetlinkObject):
 class XfrmId(NetlinkObject):
     _members = (
         ('daddr', XfrmAddress, XfrmAddress()),
-        ('spi', '>I', 0),
+        ('spi', '>4s', 0),
         ('proto', 'B', 0),
     )
 class XfrmUserTmpl(NetlinkObject):
@@ -212,69 +263,205 @@ class XfrmUserTmpl(NetlinkObject):
         ('calgos', 'I', 0),
     )
 
-def xfrm_send(command, flags, attribute_data):
-    sock = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, socket.NETLINK_XFRM)
-    sock.bind((0, 0),)
-    seq = int(time.time())
-    header = NetlinkHeader(length=16 + len(attribute_data),
-                       type=command, seq=seq, pid=os.getpid(), flags=flags)
-    sock.send(header.to_bytes() + attribute_data)
-    data = sock.recv(4096)
-    response_attribute_data = defaultdict(list)
+class XfrmStats(NetlinkObject):
+    _members = (
+        ('replay_window', 'I', 0),
+        ('replay', 'I', 0),
+        ('integrity_failed', 'I', 0),
+    )
+
+class XfrmUserSaInfo(NetlinkObject):
+    _members = (
+        ('sel', XfrmSelector, XfrmSelector()),
+        ('id', XfrmId, XfrmId()),
+        ('saddr', XfrmAddress, XfrmAddress()),
+        ('lft', XfrmLifetimeCfg, XfrmLifetimeCfg()),
+        ('cur', XfrmLifetimeCur, XfrmLifetimeCur()),
+        ('stats', XfrmStats, XfrmStats()),
+        ('seq', 'I', 0),
+        ('reqid', 'I', 0),
+        ('family', 'H', 0),
+        ('mode', 'B', 0),
+        ('replay_window', 'B', 0),
+        ('flags', 'B', 0),
+    )
+
+class XfrmAlgo(NetlinkObject):
+    _members = (
+        ('alg_name', '64s', b''),
+        ('alg_key_len', 'I', 0),
+        ('key', '64s', b'')
+    )
+
+def parse_attributes(data):
+    attributes = defaultdict(list)
     while len(data) > 0:
-        header = NetlinkHeader.parse(data)
+        length, type = unpack_from('HH', data)
+        # if 0,0, jump this one
+        if length == 0 and type == 0:
+            data = data[4:]
+            continue
+        attributes[type].append(data[4:length])
+        data = data[length:]
+    return attributes
+
+def xfrm_send(command, flags, data):
+    sock = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW,
+                         socket.NETLINK_XFRM)
+    sock.bind((0, 0),)
+    header = NetlinkHeader(length=NetlinkHeader.SIZEOF() + len(data),
+                           type=command, seq=int(time.time()), pid=os.getpid(),
+                           flags=flags)
+
+    sock.send(header.to_bytes() + data)
+    data = sock.recv(4096)
+    result = defaultdict(list)
+    while len(data) > 0:
+        header = NetlinkHeader.parse(data[:header.SIZEOF()])
         if header.type == NLMSG_ERROR:
             error_msg = NetlinkErrorMsg.parse(data[16:])
-            if error_msg.error == 0:
-                break
-            raise NetlinkError(
-                'Received error header!: {}'.format(error_msg.error))
-        elif header.type == NLMSG_DONE:
-            break
-        response_attribute_data[header.type].append(data[16:header.length])
+            if error_msg.error != 0:
+                sock.close()
+                raise NetlinkError(
+                    'Received error header!: {}'.format(error_msg.error))
+        result[header.type].append(data[header.SIZEOF():header.length])
         data = data[header.length:]
     sock.close()
-    return response_attribute_data
+    return result
+
 
 def xfrm_flush_policies():
-    xfrm_send(command=XFRM_MSG_FLUSHPOLICY, flags=NLM_F_REQUEST | NLM_F_ACK,
-                attribute_data=XfrmUserSaFlush(proto=255).to_bytes())
+    payloads = xfrm_send(XFRM_MSG_FLUSHPOLICY, (NLM_F_REQUEST | NLM_F_ACK), b'')
 
 def xfrm_print_policies():
-    response = xfrm_send(command=XFRM_MSG_GETPOLICY, flags=(NLM_F_REQUEST | NLM_F_DUMP),
-                           attribute_data=XfrmUserPolicyId().to_bytes())
+    payloads = xfrm_send(XFRM_MSG_GETPOLICY, (NLM_F_REQUEST | NLM_F_DUMP),
+                         XfrmUserPolicyId().to_bytes())
+
     # read policies
-    for policy_data in response[XFRM_MSG_NEWPOLICY]:
-        print("DATA", len(policy_data), "ASSUMED", XfrmUserPolicyInfo.size())
+    for policy_data in payloads[XFRM_MSG_NEWPOLICY]:
         policy = XfrmUserPolicyInfo.parse(policy_data)
         pprint.pprint(policy.to_dict())
-        offset = XfrmUserPolicyInfo.size()
-        while offset < len(policy_data):
-            l, t = unpack_from('HH', policy_data, offset)
-            print("T:", t, "L:", l)
-            if l == 0 and t == 0:
-                print("AA")
-                offset += 4
-                continue
-            tmpl = XfrmUserTmpl.parse(policy_data[offset+4:offset+l])
-            pprint.pprint(tmpl.to_dict())
-            print(ip_address(tmpl.id.daddr.addr[:4]))
-            print(ip_address(policy.sel.saddr.addr[:4]))
-            break
-            offset += l
+        attributes = parse_attributes(policy_data[policy.SIZEOF():])
+        for tmpl_data in attributes[XFRMA_TMPL]:
+            for offset in range(0, len(tmpl_data), XfrmUserTmpl.SIZEOF()):
+                tmpl = XfrmUserTmpl.parse(tmpl_data[offset:])
+                pprint.pprint(tmpl.to_dict())
+
+def xfrm_create_policy(src_selector, dst_selector, src_port, dst_port,
+                       ip_proto, dir, ipsec_proto, mode, src, dst):
+    policy = XfrmUserPolicyInfo(
+        sel = XfrmSelector(
+            family = socket.AF_INET,
+            daddr = XfrmAddress(addr=dst_selector[0].packed),
+            saddr = XfrmAddress(addr=src_selector[0].packed),
+            dport = dst_port,
+            sport = src_port,
+            dmask = 0 if dst_port else 255,
+            smask = 0 if src_port else 255,
+            prefixlen_d = dst_selector.prefixlen,
+            prefixlen_s = src_selector.prefixlen,
+            proto = ip_proto
+        ),
+        dir = dir,
+        action = XFRM_POLICY_ALLOW,
+    )
+
+    tmpl = XfrmUserTmpl(
+        id = XfrmId(
+            daddr = XfrmAddress(addr=dst.packed),
+            proto = (socket.IPPROTO_ESP if ipsec_proto == Proposal.Protocol.ESP
+                     else socket.IPPROTO_AH)
+        ),
+        family = socket.AF_INET,
+        saddr = XfrmAddress(addr=src.packed),
+        mode = mode,
+    )
+
+    xfrm_send(XFRM_MSG_NEWPOLICY,
+             (NLM_F_REQUEST | NLM_F_ACK),
+             policy.to_bytes() + pack('HH', 0, 0)
+                + tmpl.to_attr_bytes(XFRMA_TMPL))
 
 
-xfrm_print_policies()
+def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
+                         ip_proto, ipsec_proto, mode, src, dst):
+    state = XfrmUserSaInfo(
+        sel = XfrmSelector(
+            family = socket.AF_INET,
+            daddr = XfrmAddress(addr=dst_selector[0].packed),
+            saddr = XfrmAddress(addr=src_selector[0].packed),
+            dport = dst_port,
+            sport = src_port,
+            dmask = 0 if dst_port else 255,
+            smask = 0 if src_port else 255,
+            prefixlen_d = dst_selector.prefixlen,
+            prefixlen_s = src_selector.prefixlen,
+            proto = ip_proto
+        ),
+        id = XfrmId(
+            daddr = XfrmAddress(addr=dst.packed),
+            proto = (socket.IPPROTO_ESP if ipsec_proto == Proposal.Protocol.ESP
+                     else socket.IPPROTO_AH),
+            spi = spi
+        ),
+        family = socket.AF_INET,
+        saddr = XfrmAddress(addr=src.packed),
+        mode = mode,
+    )
 
-# policy = XfrmUserPolicyInfo(
-#     sel = XfrmSelector(
-#         daddr=XfrmAddress(addr=ip_address('192.168.1.1').packed + b'0'*12),
-#         saddr=XfrmAddress(addr=ip_address('192.168.1.2').packed + b'0'*12),
-#         family=socket.AF_INET, prefixlen_s=32, prefixlen_d=32),
+    encralgo = XfrmAlgo(
+        alg_name = b'aes',
+        alg_key_len = 256,
+        key = b'1' * 32
+    )
+
+    integalgo = XfrmAlgo(
+        alg_name = b'sha1',
+        alg_key_len = 128,
+        key = b'1' * 16
+    )
+
+    print(hexstring(integalgo.to_attr_bytes(XFRMA_ALG_AUTH)))
+
+    xfrm_send(XFRM_MSG_NEWSA,
+         (NLM_F_REQUEST | NLM_F_ACK),
+         (state.to_bytes() + pack('HH', 0, 0)
+            + encralgo.to_attr_bytes(XFRMA_ALG_CRYPT)
+            + integalgo.to_attr_bytes(XFRMA_ALG_AUTH)))
+
+# create policy
+# xfrm_create_policy(
+#     src_selector=ip_network('192.168.1.0/24'),
+#     dst_selector=ip_network('192.168.2.0/24'),
+#     src_port=0,
+#     dst_port=0,
+#     ip_proto=socket.IPPROTO_TCP,
+#     dir = XFRM_POLICY_IN,
+#     mode = XFRM_MODE_TRANSPORT,
+#     ipsec_proto = Proposal.Protocol.ESP,
+#     src = ip_address('155.54.1.1'),
+#     dst = ip_address('155.54.1.2')
 # )
 
+xfrm_create_ipsec_sa(
+    src_selector=ip_network('192.168.1.0/24'),
+    dst_selector=ip_network('192.168.2.0/24'),
+    src_port=0,
+    dst_port=0,
+    spi=b'1234',
+    ip_proto=socket.IPPROTO_TCP,
+    mode = XFRM_MODE_TRANSPORT,
+    ipsec_proto = Proposal.Protocol.ESP,
+    src = ip_address('155.54.1.1'),
+    dst = ip_address('155.54.1.2')
+)
+xfrm_print_policies()
 
-# data = XfrmUserPolicyInfo().to_bytes() + XfrmUserPolicyType().to_bytes()
-# xfrm_send(command=XFRM_MSG_NEWPOLICY, flags=NLM_F_REQUEST | NLM_F_ACK,
-#                 attribute_data=data)
 
+
+
+# sock = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW,
+#                      socket.NETLINK_XFRM)
+# sock.bind((0, XFRMGRP_ACQUIRE | XFRMGRP_EXPIRE),)
+# data = sock.recv(4096)
+# print(data)
