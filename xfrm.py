@@ -293,6 +293,14 @@ class XfrmAlgo(NetlinkObject):
         ('key', '64s', b'')
     )
 
+class XfrmUserSaId(NetlinkObject):
+    _members = (
+        ('daddr', XfrmAddress, XfrmAddress()),
+        ('spi', '>4s', b''),
+        ('family', 'H', 0),
+        ('proto', 'B', 0),
+    )
+
 def parse_attributes(data):
     attributes = defaultdict(list)
     while len(data) > 0:
@@ -331,12 +339,12 @@ def xfrm_send(command, flags, data):
 
 
 def xfrm_flush_policies():
-    usersaflush = XfrmUserSaFlush(proto=255)
+    usersaflush = XfrmUserSaFlush(proto=0)
     payloads = xfrm_send(XFRM_MSG_FLUSHPOLICY, (NLM_F_REQUEST | NLM_F_ACK),
                          usersaflush.to_bytes())
 
 def xfrm_flush_sa():
-    usersaflush = XfrmUserSaFlush(proto=255)
+    usersaflush = XfrmUserSaFlush(proto=0)
     payloads = xfrm_send(XFRM_MSG_FLUSHSA, (NLM_F_REQUEST | NLM_F_ACK),
                          usersaflush.to_bytes())
 
@@ -428,8 +436,6 @@ def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
         key = b'1' * 16
     )
 
-    print(hexstring(integalgo.to_attr_bytes(XFRMA_ALG_AUTH)))
-
     xfrm_send(XFRM_MSG_NEWSA,
          (NLM_F_REQUEST | NLM_F_ACK),
          (state.to_bytes() + pack('HH', 0, 0)
@@ -450,6 +456,15 @@ def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
 #     dst = ip_address('155.54.1.2')
 # )
 
+def xfrm_delete_ipsec_sa(dst, proto, spi):
+    said = XfrmUserSaId(
+        daddr = XfrmAddress(addr=dst.packed),
+        family = socket.AF_INET,
+        proto = proto,
+        spi = spi
+    )
+    xfrm_send(XFRM_MSG_DELSA, (NLM_F_REQUEST | NLM_F_ACK), said.to_bytes())
+
 xfrm_create_ipsec_sa(
     src_selector=ip_network('192.168.1.0/24'),
     dst_selector=ip_network('192.168.2.0/24'),
@@ -463,11 +478,11 @@ xfrm_create_ipsec_sa(
     dst = ip_address('155.54.1.2')
 )
 # xfrm_print_policies()
-
+xfrm_delete_ipsec_sa(ip_address('155.54.1.2'), socket.IPPROTO_ESP, b'1234')
 
 
 # xfrm_flush_policies()
-# xfrm_flush_sa()
+xfrm_flush_sa()
 
 
 
