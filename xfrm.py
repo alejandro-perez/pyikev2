@@ -322,7 +322,6 @@ def xfrm_send(command, flags, data):
     sock.close()
     return result
 
-
 def xfrm_flush_policies():
     usersaflush = XfrmUserSaFlush(proto=0)
     payloads = xfrm_send(XFRM_MSG_FLUSHPOLICY, (NLM_F_REQUEST | NLM_F_ACK),
@@ -342,8 +341,8 @@ def xfrm_create_policy(src_selector, dst_selector, src_port, dst_port,
             saddr = XfrmAddress(addr=src_selector[0].packed),
             dport = dst_port,
             sport = src_port,
-            dmask = 0 if dst_port else 255,
-            smask = 0 if src_port else 255,
+            dport_mask = 0 if dst_port else 255,
+            sport_mask = 0 if src_port else 255,
             prefixlen_d = dst_selector.prefixlen,
             prefixlen_s = src_selector.prefixlen,
             proto = ip_proto
@@ -367,7 +366,6 @@ def xfrm_create_policy(src_selector, dst_selector, src_port, dst_port,
              (NLM_F_REQUEST | NLM_F_ACK),
              policy.to_bytes() + pack('HH', 0, 0)
                 + tmpl.to_attr_bytes(XFRMA_TMPL))
-
 
 def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
                          ip_proto, ipsec_proto, mode, src, dst):
@@ -425,39 +423,3 @@ xfrm_create_policy(
     src = ip_address('155.54.1.1'),
     dst = ip_address('155.54.1.2')
 )
-
-# def xfrm_delete_ipsec_sa(dst, proto, spi):
-#     said = XfrmUserSaId(
-#         daddr = XfrmAddress(addr=dst.packed),
-#         family = socket.AF_INET,
-#         proto = proto,
-#         spi = spi
-#     )
-#     xfrm_send(XFRM_MSG_DELSA, (NLM_F_REQUEST | NLM_F_ACK), said.to_bytes())
-
-# xfrm_create_ipsec_sa(
-#     src_selector=ip_network('192.168.1.0/24'),
-#     dst_selector=ip_network('192.168.2.0/24'),
-#     src_port=0,
-#     dst_port=0,
-#     spi=b'1234',
-#     ip_proto=socket.IPPROTO_TCP,
-#     mode = XFRM_MODE_TRANSPORT,
-#     ipsec_proto = Proposal.Protocol.ESP,
-#     src = ip_address('155.54.1.1'),
-#     dst = ip_address('155.54.1.2')
-# )
-# # xfrm_print_policies()
-# xfrm_delete_ipsec_sa(ip_address('155.54.1.2'), socket.IPPROTO_ESP, b'1234')
-
-
-# xfrm_flush_policies()
-# xfrm_flush_sa()
-
-
-
-# sock = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW,
-#                      socket.NETLINK_XFRM)
-# sock.bind((0, XFRMGRP_ACQUIRE | XFRMGRP_EXPIRE),)
-# data = sock.recv(4096)
-# print(data)
