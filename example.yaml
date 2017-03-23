@@ -1,27 +1,21 @@
 # IKE SA definitions
-10.0.5.17:
+10.0.5.107:
   id: bob@openikev2
-  peer_id: alice@openikev2
   psk: testing
-  encr: [aes256, aes128]
-  prf: [sha1, md5]
-  integ: [sha1, md5]
-  dh: [5, 2]
-
+  dh: [5]
   protect:
-    - my_subnet: 192.168.1.0/24
-      my_port: 0
-      peer_subnet: 192.168.1.0/24
-      peer_port: 23
-      ip_proto: tcp
+    - ip_proto: tcp
       mode: tunnel
       ipsec_proto: esp
       encr: [aes256, aes128]
-      integ: [sha1, md5]
 
-    # - my_port: 23
-    #   peer_port: 0
-    #   mode: transport
-    #   proto: esp
-
+10.0.5.20:
+  id: bob@openikev2
+  psk: testing
+  dh: [5]
+  protect:
+    - ip_proto: tcp
+      mode: transport
+      ipsec_proto: esp
+      encr: [aes256, aes128]
 

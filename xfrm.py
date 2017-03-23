@@ -38,6 +38,9 @@ XFRM_MSG_POLEXPIRE = 0x1B
 XFRM_MSG_FLUSHSA = 0x1C
 XFRM_MSG_FLUSHPOLICY = 0x1D
 
+class NetlinkError(Exception):
+    pass
+
 class NetlinkObject(object):
     """ Generic object representing a NetworkObject
     """
@@ -101,6 +104,12 @@ class NetlinkHeader(NetlinkObject):
         ('pid', 'I', 0),
     )
 
+class NetlinkErrorMsg(NetlinkObject):
+    _members = (
+        ('error', 'I', 0),
+        ('msg', NetlinkHeader, NetlinkHeader()),
+    )
+
 class XfrmAddress(NetlinkObject):
     _members = (
         ('addr', '16s', b''),
@@ -162,6 +171,7 @@ class XfrmUserPolicyInfo(NetlinkObject):
         ('share', 'B', 0),
     )
 
+
 class XfrmUserSaFlush(NetlinkObject):
     _members = (
         ('proto', 'B', 255),
@@ -173,14 +183,16 @@ def nl_sendrecv(command, flags, attribute_data):
     sock.bind((0, 0),)
     seq = int(time.time())
     header = NetlinkHeader(length=16 + len(attribute_data),
-                       type=command, seq=seq, pid=0, flags=flags)
+                       type=command, seq=seq, pid=os.getpid(), flags=flags)
     sock.send(header.to_bytes() + attribute_data)
     data = sock.recv(4096)
-    print("AA", len(data))
     response_attribute_data = defaultdict(list)
     while len(data) > 0:
         header = NetlinkHeader.parse(data)
         if header.type == NLMSG_ERROR:
+            error_msg = NetlinkErrorMsg.parse(data[16:])
+            if error_msg.error == 0:
+                break
             raise NetlinkError('Received error header!')
         elif header.type == NLMSG_DONE:
             break
@@ -197,6 +209,10 @@ response = nl_sendrecv(command=XFRM_MSG_GETPOLICY, flags=(NLM_F_REQUEST | NLM_F_
 for policy_data in response[XFRM_MSG_NEWPOLICY]:
     policy = XfrmUserPolicyInfo.parse(policy_data)
     pprint.pprint(policy.to_dict())
+
+response = nl_sendrecv(command=XFRM_MSG_FLUSHPOLICY, flags=NLM_F_REQUEST | NLM_F_ACK,
+                        attribute_data=XfrmUserSaFlush(proto=255).to_bytes())
+
 
 # print("BB")
 # pprint.pprint(response)
