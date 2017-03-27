@@ -9,6 +9,7 @@ import time
 import os
 from collections import defaultdict
 from message import Proposal
+from crypto import Cipher, Integrity
 
 # netlink flags
 NLM_F_REQUEST    = 0x0001
@@ -364,11 +365,22 @@ def xfrm_create_policy(src_selector, dst_selector, src_port, dst_port,
 
     xfrm_send(XFRM_MSG_NEWPOLICY,
              (NLM_F_REQUEST | NLM_F_ACK),
-             policy.to_bytes() + pack('HH', 0, 0)
+             policy.to_bytes()
+                + pack('HH', 0, 0)
                 + tmpl.to_attr_bytes(XFRMA_TMPL))
 
+_cipher_names = {
+    None: b'none',
+    Cipher.Id.ENCR_AES_CBC: b'aes'
+}
+_auth_names = {
+    Integrity.Id.AUTH_HMAC_MD5_96: b'md5',
+    Integrity.Id.AUTH_HMAC_SHA1_96: b'sha1'
+}
+
 def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
-                         ip_proto, ipsec_proto, mode, src, dst):
+                         ip_proto, ipsec_proto, mode, src, dst, enc_algorith,
+                         sk_e, auth_algorithm, sk_a):
     state = XfrmUserSaInfo(
         sel = XfrmSelector(
             family = socket.AF_INET,
@@ -393,23 +405,26 @@ def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
         mode = mode,
     )
 
-    encralgo = XfrmAlgo(
-        alg_name = b'aes',
-        alg_key_len = 256,
-        key = b'1' * 32
-    )
+    attribute_data = bytes()
 
-    integalgo = XfrmAlgo(
-        alg_name = b'sha1',
-        alg_key_len = 128,
-        key = b'1' * 16
-    )
+    if ipsec_proto == Proposal.Protocol.ESP:
+        attribute_data += XfrmAlgo(
+                alg_name=_cipher_names[enc_algorith],
+                alg_key_len=len(sk_e) * 8, key=sk_e
+           ).to_attr_bytes(XFRMA_ALG_CRYPT)
+
+    attribute_data += XfrmAlgo(
+            alg_name=_auth_names[auth_algorithm],
+            alg_key_len=len(sk_a) * 8, key=sk_a
+        ).to_attr_bytes(XFRMA_ALG_AUTH)
+
 
     xfrm_send(XFRM_MSG_NEWSA,
          (NLM_F_REQUEST | NLM_F_ACK),
-         (state.to_bytes() + pack('HH', 0, 0)
-            + encralgo.to_attr_bytes(XFRMA_ALG_CRYPT)
-            + integalgo.to_attr_bytes(XFRMA_ALG_AUTH)))
+         (state.to_bytes()
+            + pack('HH', 0, 0)
+            + attribute_data))
+
 
 xfrm_create_policy(
     src_selector=ip_network('192.168.1.0/24'),
