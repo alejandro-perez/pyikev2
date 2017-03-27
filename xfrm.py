@@ -419,6 +419,7 @@ def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
         ).to_attr_bytes(XFRMA_ALG_AUTH)
 
 
+    print(state.SIZEOF())
     xfrm_send(XFRM_MSG_NEWSA,
          (NLM_F_REQUEST | NLM_F_ACK),
          (state.to_bytes()
@@ -426,15 +427,19 @@ def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
             + attribute_data))
 
 
-xfrm_create_policy(
+xfrm_create_ipsec_sa(
     src_selector=ip_network('192.168.1.0/24'),
-    dst_selector=ip_network('192.168.2.0/24'),
-    src_port=0,
+    dst_selector=ip_network('10.0.0.0/24'),
+    src_port=100,
     dst_port=0,
+    spi=b'1234',
     ip_proto=socket.IPPROTO_TCP,
-    dir = XFRM_POLICY_IN,
-    mode = XFRM_MODE_TRANSPORT,
-    ipsec_proto = Proposal.Protocol.ESP,
-    src = ip_address('155.54.1.1'),
-    dst = ip_address('155.54.1.2')
+    ipsec_proto=Proposal.Protocol.AH,
+    mode=XFRM_MODE_TRANSPORT,
+    src=ip_address('19.1.1.1'),
+    dst=ip_address('20.1.2.3'),
+    enc_algorith=Cipher.Id.ENCR_AES_CBC,
+    sk_e=b'1' * 16,
+    auth_algorithm=Integrity.Id.AUTH_HMAC_SHA1_96,
+    sk_a=b'2' * 16
 )
