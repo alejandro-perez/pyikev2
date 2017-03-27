@@ -59,7 +59,7 @@ logging.no_indent = args.no_indent
 # create socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((ip, 500))
-logging.info('Listening from {}'.format(sock.getsockname()))
+logging.info('Listening from {}:{}'.format(sock.getsockname()[0], sock.getsockname()[1]))
 
 # load configuration
 try:
