@@ -102,12 +102,10 @@ class IkeSa(object):
 
     def delete_child_sas(self):
         for child_sa in self.child_sas:
-            ipsec.delete_child_sa(ip_address(self.peeraddr[0]),
-                                  child_sa.protocol,
-                                  child_sa.outbound_spi)
-            ipsec.delete_child_sa(ip_address(self.myaddr[0]),
-                                  child_sa.protocol,
-                                  child_sa.inbound_spi)
+            ipsec.delete_sa(ip_address(self.peeraddr[0]), child_sa.protocol,
+                            child_sa.outbound_spi)
+            ipsec.delete_sa(ip_address(self.myaddr[0]), child_sa.protocol,
+                            child_sa.inbound_spi)
 
     def _generate_child_sa_key_material(self, ike_proposal, child_proposal,
             nonce_i, nonce_r, sk_d):
@@ -490,10 +488,11 @@ class IkeSa(object):
                            protocol=chosen_child_proposal.protocol_id)
         self.child_sas.append(child_sa)
         if ipsec_conf['ipsec_proto'] == Proposal.Protocol.ESP:
-            encr_transform = chosen_child_proposal.get_transform(Transform.Type.ENCR).id
+            encr_transform = chosen_child_proposal.get_transform(
+                Transform.Type.ENCR).id
         else:
             encr_transform = None
-        ipsec.create_child_sa(
+        ipsec.create_sa(
             ip_address(self.myaddr[0]), ip_address(self.peeraddr[0]),
             chosen_tsr, chosen_tsi,
             chosen_child_proposal.protocol_id,
@@ -503,7 +502,7 @@ class IkeSa(object):
             chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
             child_sa_keyring.sk_ar,
             mode)
-        ipsec.create_child_sa(
+        ipsec.create_sa(
             ip_address(self.peeraddr[0]), ip_address(self.myaddr[0]),
             chosen_tsi, chosen_tsr,
             chosen_child_proposal.protocol_id,
@@ -604,10 +603,10 @@ class IkeSa(object):
                                     if x.outbound_spi == delete_payload.spis[0])
                 except StopIteration:
                     raise ChildSaNotFound(delete_payload.spis[0])
-                ipsec.delete_child_sa(ip_address(self.peeraddr[0]),
-                                      child_sa.protocol, child_sa.outbound_spi)
-                ipsec.delete_child_sa(ip_address(self.myaddr[0]),
-                                      child_sa.protocol, child_sa.inbound_spi)
+                ipsec.delete_sa(ip_address(self.peeraddr[0]),
+                                child_sa.protocol, child_sa.outbound_spi)
+                ipsec.delete_sa(ip_address(self.myaddr[0]),
+                                child_sa.protocol, child_sa.inbound_spi)
                 self.child_sas.remove(child_sa)
                 response_payloads.append(
                     PayloadDELETE(delete_payload.protocol_id,
@@ -694,7 +693,7 @@ class IkeSaController:
 
         # establish policies
         ipsec.flush_policies()
-        ipsec.flush_ipsec_sa()
+        ipsec.flush_sas()
         for peer_addr, ike_conf in configuration.items():
             ipsec.create_policies(myaddr, peer_addr, ike_conf)
 
