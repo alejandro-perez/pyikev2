@@ -78,7 +78,7 @@ except yaml.YAMLError as ex:
 configuration = Configuration(sock.getsockname()[0], conf_dict)
 
 # create IkeSaController
-ike_sa_controller = IkeSaController(sock.getsockname()[0],
+ike_sa_controller = IkeSaController(ip_address(sock.getsockname()[0]),
                                     configuration=configuration)
 
 # do server

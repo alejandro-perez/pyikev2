@@ -4,12 +4,14 @@
 
 import socket
 from ipaddress import ip_address, ip_network
-from struct import pack, unpack, unpack_from, calcsize
+from ctypes import *
+from struct import pack, unpack_from
 import time
 import os
 from collections import defaultdict
 from message import Proposal
 from crypto import Cipher, Integrity
+from helpers import hexstring
 
 # netlink flags
 NLM_F_REQUEST    = 0x0001
@@ -89,285 +91,156 @@ XFRM_POLICY_BLOCK  = 1
 class NetlinkError(Exception):
     pass
 
-class NetlinkObject(object):
-    """ Generic object representing a NetworkObject
-    """
-    def __init__(self, **kwargs):
-        self._attributes = kwargs
-
-    def to_bytes(self):
-        result = bytes()
-        for name, format_, default in self._members:
-            if type(format_) is str:
-                result += pack(format_, self._attributes.get(name, default))
-            else:
-                result += self._attributes.get(name, default).to_bytes()
-        pad =  len(result) % 4
-        if pad > 0:
-            result += b'\0' * (4 - pad)
+class NetlinkStructure(Structure):
+    @classmethod
+    def parse(cls, bytes):
+        result = cls()
+        memmove(addressof(result), bytes, sizeof(cls))
         return result
 
+class NetlinkHeader(NetlinkStructure):
+    _fields_ = (
+        ('length', c_uint32),
+        ('type', c_uint16),
+        ('flags', c_uint16),
+        ('seq', c_uint32),
+        ('pid', c_uint32),
+    )
+
+class NetlinkErrorMsg(NetlinkStructure):
+    _fields_ = (
+        ('error', c_int),
+        ('msg', NetlinkHeader),
+    )
+
+class XfrmAddress(Structure):
+    _fields_ = (
+        ('addr', c_uint32.__ctype_be__ * 4),
+    )
     @classmethod
-    def parse(cls, data):
-        args = {}
-        offset = 0
-        for name, format_, default in cls._members:
-            if type(format_) is str:
-                args[name] = unpack_from(format_, data, offset)[0]
-                offset += calcsize(format_)
-            else:
-                args[name] = format_.parse(data[offset:])
-                offset += format_.SIZEOF()
-        return cls(**args)
-
-    @classmethod
-    def SIZEOF(cls):
-        count = 0
-        for name, format_, default in cls._members:
-            if type(format_) is str:
-                count += calcsize(format_)
-            else:
-                count += format_.SIZEOF()
-        if count % 4 > 0:
-            count += 4 - count % 4
-        return count
-
-    def __getattr__(self, key):
-        return self._attributes[key]
-
-    def to_dict(self):
-        result = {}
-        for name, format_, default in self._members:
-            if type(format_) is str:
-                result[name] = self._attributes.get(name, default)
-            else:
-                result[name] = self._attributes.get(name, default).to_dict()
+    def from_ipaddr(cls, ip_addr):
+        result = XfrmAddress()
+        result.addr[0] = int(ip_addr)
         return result
 
-    def to_attr_bytes(self, attribute_type):
-        data = self.to_bytes()
-        return pack('HH', len(data) + 4, attribute_type) + data
-
-class NetlinkHeader(NetlinkObject):
-    _members = (
-        ('length', 'I', 0),
-        ('type', 'H', 0),
-        ('flags', 'H', 0),
-        ('seq', 'I', 0),
-        ('pid', 'I', 0),
+class XfrmSelector(Structure):
+    _fields_ = (
+        ('daddr', XfrmAddress),
+        ('saddr', XfrmAddress),
+        ('dport', c_uint16.__ctype_be__),
+        ('dport_mask', c_uint16),
+        ('sport', c_uint16.__ctype_be__),
+        ('sport_mask', c_uint16),
+        ('family', c_uint16),
+        ('prefixlen_d', c_ubyte),
+        ('prefixlen_s', c_ubyte),
+        ('proto', c_ubyte),
+        ('ifindex', c_uint32),
+        ('user', c_uint32),
     )
 
-class NetlinkErrorMsg(NetlinkObject):
-    _members = (
-        ('error', 'i', 0),
-        ('msg', NetlinkHeader, NetlinkHeader()),
+class XfrmUserPolicyId(Structure):
+    _fields_ = (
+        ('selector', XfrmSelector),
+        ('index', c_uint32),
+        ('dir', c_ubyte),
     )
 
-class XfrmAddress(NetlinkObject):
-    _members = (
-        ('addr', '16s', b''),
+class XfrmLifetimeCfg(Structure):
+    _fields_ = (
+        ('soft_byte_limit', c_uint64),
+        ('hard_byte_limit', c_uint64),
+        ('soft_packed_limit', c_uint64),
+        ('hard_packet_limit', c_uint64),
+        ('soft_add_expires_seconds', c_uint64),
+        ('hard_add_expires_seconds', c_uint64),
+        ('soft_use_expires_seconds', c_uint64),
+        ('hard_use_expires_seconds', c_uint64),
     )
 
-class XfrmSelector(NetlinkObject):
-    _members = (
-        ('daddr', XfrmAddress, XfrmAddress()),
-        ('saddr', XfrmAddress, XfrmAddress()),
-        ('dport', '>H', 0),
-        ('dport_mask', '>H', 0),
-        ('sport', '>H', 0),
-        ('sport_mask', '>H', 0),
-        ('family', 'H', 0),
-        ('prefixlen_d', 'B', 0),
-        ('prefixlen_s', 'B', 0),
-        ('proto', 'B', 0),
-        ('ifindex', 'I', 0),
-        ('user', 'I', 0),
+class XfrmLifetimeCur(Structure):
+    _fields_ = (
+        ('bytes', c_uint64),
+        ('packets', c_uint64),
+        ('add_time', c_uint64),
+        ('use_time', c_uint64),
     )
 
-class XfrmUserPolicyId(NetlinkObject):
-    _members = (
-        ('selector', XfrmSelector, XfrmSelector()),
-        ('index', 'I', 0),
-        ('dir', 'B', 0),
+class XfrmUserPolicyInfo(Structure):
+    _fields_ = (
+        ('sel', XfrmSelector),
+        ('lft', XfrmLifetimeCfg),
+        ('curlft', XfrmLifetimeCur),
+        ('priority', c_uint32),
+        ('index', c_uint32),
+        ('dir', c_ubyte),
+        ('action', c_ubyte),
+        ('flags', c_ubyte),
+        ('share', c_ubyte),
     )
 
-class XfrmLifetimeCfg(NetlinkObject):
-    _members = (
-        ('soft_byte_limit', 'Q', 0xFFFFFFFFFFFFFFFF),
-        ('hard_byte_limit', 'Q', 0xFFFFFFFFFFFFFFFF),
-        ('soft_packed_limit', 'Q', 0xFFFFFFFFFFFFFFFF),
-        ('hard_packet_limit', 'Q', 0xFFFFFFFFFFFFFFFF),
-        ('soft_add_expires_seconds', 'Q', 0),
-        ('hard_add_expires_seconds', 'Q', 0),
-        ('soft_use_expires_seconds', 'Q', 0),
-        ('hard_use_expires_seconds', 'Q', 0),
+class XfrmUserSaFlush(Structure):
+    _fields_ = (
+        ('proto', c_ubyte),
     )
 
-class XfrmLifetimeCur(NetlinkObject):
-    _members = (
-        ('bytes', 'Q', 0),
-        ('packets', 'Q', 0),
-        ('add_time', 'Q', 0),
-        ('use_time', 'Q', 0),
+class XfrmId(Structure):
+    _fields_ = (
+        ('daddr', XfrmAddress),
+        ('spi', c_ubyte * 4),
+        ('proto', c_ubyte),
+    )
+class XfrmUserTmpl(Structure):
+    _fields_ = (
+        ('id', XfrmId),
+        ('family', c_uint16),
+        ('saddr', XfrmAddress),
+        ('reqid', c_uint32),
+        ('mode', c_ubyte),
+        ('share', c_ubyte),
+        ('optional', c_ubyte),
+        ('aalgos', c_uint32),
+        ('ealgos', c_uint32),
+        ('calgos', c_uint32),
     )
 
-class XfrmUserPolicyInfo(NetlinkObject):
-    _members = (
-        ('sel', XfrmSelector, XfrmSelector()),
-        ('lft', XfrmLifetimeCfg, XfrmLifetimeCfg()),
-        ('curlft', XfrmLifetimeCur, XfrmLifetimeCur()),
-        ('priority', 'I', 0),
-        ('index', 'I', 0),
-        ('dir', 'B', 0),
-        ('action', 'B', 0),
-        ('flags', 'B', 0),
-        ('share', 'B', 0),
+class XfrmStats(Structure):
+    _fields_ = (
+        ('replay_window', c_uint32),
+        ('replay', c_uint32),
+        ('integrity_failed', c_uint32),
     )
 
-class XfrmUserSaFlush(NetlinkObject):
-    _members = (
-        ('proto', 'B', 255),
+class XfrmUserSaInfo(Structure):
+    _fields_ = (
+        ('sel', XfrmSelector),
+        ('id', XfrmId),
+        ('saddr', XfrmAddress),
+        ('lft', XfrmLifetimeCfg),
+        ('cur', XfrmLifetimeCur),
+        ('stats', XfrmStats),
+        ('seq', c_uint32),
+        ('reqid', c_uint32),
+        ('family', c_uint16),
+        ('mode', c_ubyte),
+        ('replay_window', c_ubyte),
+        ('flags', c_ubyte),
     )
 
-class XfrmId(NetlinkObject):
-    _members = (
-        ('daddr', XfrmAddress, XfrmAddress()),
-        ('spi', '>4s', b''),
-        ('proto', 'B', 0),
-    )
-class XfrmUserTmpl(NetlinkObject):
-    _members = (
-        ('id', XfrmId, XfrmId()),
-        ('family', 'H', 0),
-        ('saddr', XfrmAddress, XfrmAddress()),
-        ('reqid', 'I', 0),
-        ('mode', 'B', 0),
-        ('share', 'B', 0),
-        ('optional', 'B', 0),
-        ('aalgos', 'I', 0),
-        ('ealgos', 'I', 0),
-        ('calgos', 'I', 0),
+class XfrmAlgo(Structure):
+    _fields_ = (
+        ('alg_name', c_ubyte * 64),
+        ('alg_key_len', c_uint32),
+        ('key', c_ubyte * 64)
     )
 
-class XfrmStats(NetlinkObject):
-    _members = (
-        ('replay_window', 'I', 0),
-        ('replay', 'I', 0),
-        ('integrity_failed', 'I', 0),
+class XfrmUserSaId(Structure):
+    _fields_ = (
+        ('daddr', XfrmAddress),
+        ('spi', c_ubyte * 4),
+        ('family', c_uint16),
+        ('proto', c_ubyte),
     )
-
-class XfrmUserSaInfo(NetlinkObject):
-    _members = (
-        ('sel', XfrmSelector, XfrmSelector()),
-        ('id', XfrmId, XfrmId()),
-        ('saddr', XfrmAddress, XfrmAddress()),
-        ('lft', XfrmLifetimeCfg, XfrmLifetimeCfg()),
-        ('cur', XfrmLifetimeCur, XfrmLifetimeCur()),
-        ('stats', XfrmStats, XfrmStats()),
-        ('seq', 'I', 0),
-        ('reqid', 'I', 0),
-        ('family', 'H', 0),
-        ('mode', 'B', 0),
-        ('replay_window', 'B', 0),
-        ('flags', 'B', 0),
-    )
-
-class XfrmAlgo(NetlinkObject):
-    _members = (
-        ('alg_name', '64s', b''),
-        ('alg_key_len', 'I', 0),
-        ('key', '64s', b'')
-    )
-
-class XfrmUserSaId(NetlinkObject):
-    _members = (
-        ('daddr', XfrmAddress, XfrmAddress()),
-        ('spi', '>4s', b''),
-        ('family', 'H', 0),
-        ('proto', 'B', 0),
-    )
-
-def parse_attributes(data):
-    attributes = defaultdict(list)
-    while len(data) > 0:
-        length, type = unpack_from('HH', data)
-        # if 0,0, jump this one
-        if length == 0 and type == 0:
-            data = data[4:]
-            continue
-        attributes[type].append(data[4:length])
-        data = data[length:]
-    return attributes
-
-def xfrm_send(command, flags, data):
-    sock = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW,
-                         socket.NETLINK_XFRM)
-    sock.bind((0, 0),)
-    header = NetlinkHeader(length=NetlinkHeader.SIZEOF() + len(data),
-                           type=command, seq=int(time.time()), pid=os.getpid(),
-                           flags=flags)
-
-    sock.send(header.to_bytes() + data)
-    data = sock.recv(4096)
-    result = defaultdict(list)
-    while len(data) > 0:
-        header = NetlinkHeader.parse(data[:header.SIZEOF()])
-        if header.type == NLMSG_ERROR:
-            error_msg = NetlinkErrorMsg.parse(data[16:])
-            if error_msg.error != 0:
-                sock.close()
-                raise NetlinkError(
-                    'Received error header!: {}'.format(error_msg.error))
-        result[header.type].append(data[header.SIZEOF():header.length])
-        data = data[header.length:]
-    sock.close()
-    return result
-
-def xfrm_flush_policies():
-    usersaflush = XfrmUserSaFlush(proto=0)
-    payloads = xfrm_send(XFRM_MSG_FLUSHPOLICY, (NLM_F_REQUEST | NLM_F_ACK),
-                         usersaflush.to_bytes())
-
-def xfrm_flush_sa():
-    usersaflush = XfrmUserSaFlush(proto=0)
-    payloads = xfrm_send(XFRM_MSG_FLUSHSA, (NLM_F_REQUEST | NLM_F_ACK),
-                         usersaflush.to_bytes())
-
-def xfrm_create_policy(src_selector, dst_selector, src_port, dst_port,
-                       ip_proto, dir, ipsec_proto, mode, src, dst):
-    policy = XfrmUserPolicyInfo(
-        sel = XfrmSelector(
-            family = socket.AF_INET,
-            daddr = XfrmAddress(addr=dst_selector[0].packed),
-            saddr = XfrmAddress(addr=src_selector[0].packed),
-            dport = dst_port,
-            sport = src_port,
-            dport_mask = 0 if dst_port else 255,
-            sport_mask = 0 if src_port else 255,
-            prefixlen_d = dst_selector.prefixlen,
-            prefixlen_s = src_selector.prefixlen,
-            proto = ip_proto
-        ),
-        dir = dir,
-        action = XFRM_POLICY_ALLOW,
-    )
-
-    tmpl = XfrmUserTmpl(
-        id = XfrmId(
-            daddr = XfrmAddress(addr=dst.packed),
-            proto = (socket.IPPROTO_ESP if ipsec_proto == Proposal.Protocol.ESP
-                     else socket.IPPROTO_AH)
-        ),
-        family = socket.AF_INET,
-        saddr = XfrmAddress(addr=src.packed),
-        mode = mode,
-    )
-
-    xfrm_send(XFRM_MSG_NEWPOLICY,
-             (NLM_F_REQUEST | NLM_F_ACK),
-             policy.to_bytes()
-                + pack('HH', 0, 0)
-                + tmpl.to_attr_bytes(XFRMA_TMPL))
 
 _cipher_names = {
     None: b'none',
@@ -378,68 +251,192 @@ _auth_names = {
     Integrity.Id.AUTH_HMAC_SHA1_96: b'sha1'
 }
 
+def parse_attributes(data):
+    attributes = defaultdict(list)
+    while len(data) > 0:
+        length, type = unpack_from('HH', data)
+        attributes[type].append(data[4:length])
+        data = data[length:]
+    return attributes
+
+def xfrm_send(command, flags, data):
+    sock = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW,
+                         socket.NETLINK_XFRM)
+    sock.bind((0, 0),)
+    header = NetlinkHeader(length=sizeof(NetlinkHeader) + len(data),
+                           type=command, seq=int(time.time()), pid=os.getpid(),
+                           flags=flags)
+    sock.send(bytes(header) + data)
+    data = sock.recv(4096)
+    result = defaultdict(list)
+    while len(data) > 0:
+        header = NetlinkHeader.parse(data)
+        if header.type == NLMSG_ERROR:
+            error_msg = NetlinkErrorMsg.parse(data[16:])
+            if error_msg.error != 0:
+                sock.close()
+                raise NetlinkError(
+                    'Received error header!: {}'.format(error_msg.error))
+        result[header.type].append(data[sizeof(header):header.length])
+        data = data[header.length:]
+    sock.close()
+    return result
+
+def xfrm_flush_policies():
+    usersaflush = XfrmUserSaFlush(proto=0)
+    payloads = xfrm_send(XFRM_MSG_FLUSHPOLICY, (NLM_F_REQUEST | NLM_F_ACK),
+                         bytes(usersaflush))
+
+def xfrm_flush_sa():
+    usersaflush = XfrmUserSaFlush(proto=0)
+    payloads = xfrm_send(XFRM_MSG_FLUSHSA, (NLM_F_REQUEST | NLM_F_ACK),
+                         bytes(usersaflush))
+
+def create_byte_array(bytes, size=None):
+    if size is None:
+        size = len(bytes)
+    fmt = c_ubyte * size
+    return fmt(*bytes)
+
+def Attribute(code, structure):
+    class _internal(Structure):
+        _fields_ = (
+            ('len', c_uint16),
+            ('code', c_uint16),
+            ('data', type(structure))
+        )
+    return _internal(code=code, len=sizeof(_internal), data=structure)
+
+def xfrm_create_policy(src_selector, dst_selector, src_port, dst_port,
+                       ip_proto, dir, ipsec_proto, mode, src, dst):
+    policy = XfrmUserPolicyInfo(
+        sel = XfrmSelector(
+            family = socket.AF_INET,
+            daddr = XfrmAddress.from_ipaddr(dst_selector[0]),
+            saddr = XfrmAddress.from_ipaddr(src_selector[0]),
+            dport = dst_port,
+            sport = src_port,
+            dport_mask = 0 if dst_port == 0 else 0xFFFF,
+            sport_mask = 0 if src_port == 0 else 0xFFFF,
+            prefixlen_d = dst_selector.prefixlen,
+            prefixlen_s = src_selector.prefixlen,
+            proto = ip_proto),
+        dir = dir,
+        action = XFRM_POLICY_ALLOW,
+        lft = XfrmLifetimeCfg(
+            soft_byte_limit = 0xFFFFFFFFFFFFFFFF,
+            hard_byte_limit = 0xFFFFFFFFFFFFFFFF,
+            soft_packed_limit = 0xFFFFFFFFFFFFFFFF,
+            hard_packet_limit = 0xFFFFFFFFFFFFFFFF,
+            soft_add_expires_seconds = 2000,
+            hard_add_expires_seconds = 2000,
+            soft_use_expires_seconds = 2000,
+            hard_use_expires_seconds = 2000),
+    )
+    tmpl = Attribute(
+        XFRMA_TMPL,
+        XfrmUserTmpl(
+            id = XfrmId(
+                daddr = XfrmAddress.from_ipaddr(dst),
+                proto = (socket.IPPROTO_ESP if ipsec_proto == Proposal.Protocol.ESP
+                         else socket.IPPROTO_AH)),
+            family = socket.AF_INET,
+            saddr = XfrmAddress.from_ipaddr(src),
+            aalgos = 0xFFFFFFFF,
+            ealgos = 0xFFFFFFFF,
+            calgos = 0xFFFFFFFF,
+            mode = mode))
+    xfrm_send(XFRM_MSG_NEWPOLICY, (NLM_F_REQUEST | NLM_F_ACK),
+              bytes(policy) + bytes(tmpl))
+
 def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
                          ip_proto, ipsec_proto, mode, src, dst, enc_algorith,
                          sk_e, auth_algorithm, sk_a):
-    state = XfrmUserSaInfo(
+    usersa = XfrmUserSaInfo(
         sel = XfrmSelector(
             family = socket.AF_INET,
-            daddr = XfrmAddress(addr=dst_selector[0].packed),
-            saddr = XfrmAddress(addr=src_selector[0].packed),
+            daddr = XfrmAddress.from_ipaddr(dst_selector[0]),
+            saddr = XfrmAddress.from_ipaddr(src_selector[0]),
             dport = dst_port,
             sport = src_port,
-            dmask = 0 if dst_port else 255,
-            smask = 0 if src_port else 255,
+            dport_mask = 0 if dst_port == 0 else 0xFFFF,
+            sport_mask = 0 if src_port == 0 else 0xFFFF,
             prefixlen_d = dst_selector.prefixlen,
             prefixlen_s = src_selector.prefixlen,
-            proto = ip_proto
-        ),
+            proto = ip_proto),
         id = XfrmId(
-            daddr = XfrmAddress(addr=dst.packed),
+            daddr = XfrmAddress.from_ipaddr(dst),
             proto = (socket.IPPROTO_ESP if ipsec_proto == Proposal.Protocol.ESP
                      else socket.IPPROTO_AH),
-            spi = spi
-        ),
+            spi = create_byte_array(spi)),
         family = socket.AF_INET,
-        saddr = XfrmAddress(addr=src.packed),
+        saddr = XfrmAddress.from_ipaddr(src),
         mode = mode,
+        lft = XfrmLifetimeCfg(
+            soft_byte_limit = 0xFFFFFFFFFFFFFFFF,
+            hard_byte_limit = 0xFFFFFFFFFFFFFFFF,
+            soft_packed_limit = 0xFFFFFFFFFFFFFFFF,
+            hard_packet_limit = 0xFFFFFFFFFFFFFFFF,
+            soft_add_expires_seconds = 2000,
+            hard_add_expires_seconds = 2000,
+            soft_use_expires_seconds = 2000,
+            hard_use_expires_seconds = 2000),
     )
 
     attribute_data = bytes()
-
     if ipsec_proto == Proposal.Protocol.ESP:
-        attribute_data += XfrmAlgo(
-                alg_name=_cipher_names[enc_algorith],
-                alg_key_len=len(sk_e) * 8, key=sk_e
-           ).to_attr_bytes(XFRMA_ALG_CRYPT)
+        enc_attr =  Attribute(
+            XFRMA_ALG_CRYPT,
+            XfrmAlgo(alg_name=create_byte_array(_cipher_names[enc_algorith], 64),
+                     alg_key_len=len(sk_e) * 8,
+                     key=create_byte_array(sk_e, 64)))
+        attribute_data += enc_attr
 
-    attribute_data += XfrmAlgo(
-            alg_name=_auth_names[auth_algorithm],
-            alg_key_len=len(sk_a) * 8, key=sk_a
-        ).to_attr_bytes(XFRMA_ALG_AUTH)
+    attribute = Attribute(
+        XFRMA_ALG_AUTH,
+        XfrmAlgo(
+            alg_name=create_byte_array(_auth_names[auth_algorithm], 64),
+            alg_key_len=len(sk_a) * 8,
+            key=create_byte_array(sk_a, 64)))
+    attribute_data += attribute
 
-
-    print(state.SIZEOF())
     xfrm_send(XFRM_MSG_NEWSA,
          (NLM_F_REQUEST | NLM_F_ACK),
-         (state.to_bytes()
-            + pack('HH', 0, 0)
-            + attribute_data))
+         bytes(usersa) + attribute_data)
 
 
-xfrm_create_ipsec_sa(
-    src_selector=ip_network('192.168.1.0/24'),
-    dst_selector=ip_network('10.0.0.0/24'),
-    src_port=100,
-    dst_port=0,
-    spi=b'1234',
-    ip_proto=socket.IPPROTO_TCP,
-    ipsec_proto=Proposal.Protocol.AH,
-    mode=XFRM_MODE_TRANSPORT,
-    src=ip_address('19.1.1.1'),
-    dst=ip_address('20.1.2.3'),
-    enc_algorith=Cipher.Id.ENCR_AES_CBC,
-    sk_e=b'1' * 16,
-    auth_algorithm=Integrity.Id.AUTH_HMAC_SHA1_96,
-    sk_a=b'2' * 16
-)
+# xfrm_flush_policies()
+# xfrm_flush_sa()
+
+# xfrm_create_ipsec_sa(
+#     src_selector=ip_network('192.168.1.0/24'),
+#     dst_selector=ip_network('10.0.0.0/24'),
+#     src_port=100,
+#     dst_port=0,
+#     spi=b'AAAA',
+#     ip_proto=socket.IPPROTO_TCP,
+#     ipsec_proto=Proposal.Protocol.AH,
+#     mode=XFRM_MODE_TRANSPORT,
+#     src=ip_address('19.1.1.1'),
+#     dst=ip_address('20.1.2.3'),
+#     enc_algorith=Cipher.Id.ENCR_AES_CBC,
+#     sk_e=b'1' * 16,
+#     auth_algorithm=Integrity.Id.AUTH_HMAC_SHA1_96,
+#     sk_a=b'2' * 16
+# )
+
+
+# xfrm_create_policy(
+#     src_selector=ip_network('192.168.1.0/24'),
+#     dst_selector=ip_network('10.0.0.0/24'),
+#     src_port=0,
+#     dst_port=2000,
+#     ip_proto=socket.IPPROTO_TCP,
+#     dir=XFRM_POLICY_IN,
+#     ipsec_proto=Proposal.Protocol.AH,
+#     mode=XFRM_MODE_TUNNEL,
+#     src=ip_address('19.1.1.1'),
+#     dst=ip_address('20.1.2.3'),
+# )
+
+

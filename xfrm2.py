@@ -5,7 +5,7 @@
 import socket
 from ipaddress import ip_address, ip_network
 from ctypes import *
-from struct import pack
+from struct import pack, unpack_from
 import time
 import os
 from collections import defaultdict
@@ -323,6 +323,15 @@ def xfrm_create_policy(src_selector, dst_selector, src_port, dst_port,
             proto = ip_proto),
         dir = dir,
         action = XFRM_POLICY_ALLOW,
+        lft = XfrmLifetimeCfg(
+            soft_byte_limit = 0xFFFFFFFFFFFFFFFF,
+            hard_byte_limit = 0xFFFFFFFFFFFFFFFF,
+            soft_packed_limit = 0xFFFFFFFFFFFFFFFF,
+            hard_packet_limit = 0xFFFFFFFFFFFFFFFF,
+            soft_add_expires_seconds = 2000,
+            hard_add_expires_seconds = 2000,
+            soft_use_expires_seconds = 2000,
+            hard_use_expires_seconds = 2000),
     )
     tmpl = Attribute(
         XFRMA_TMPL,
@@ -333,6 +342,9 @@ def xfrm_create_policy(src_selector, dst_selector, src_port, dst_port,
                          else socket.IPPROTO_AH)),
             family = socket.AF_INET,
             saddr = XfrmAddress.from_ipaddr(src),
+            aalgos = 0xFFFFFFFF,
+            ealgos = 0xFFFFFFFF,
+            calgos = 0xFFFFFFFF,
             mode = mode))
     xfrm_send(XFRM_MSG_NEWPOLICY, (NLM_F_REQUEST | NLM_F_ACK),
               bytes(policy) + bytes(tmpl))
@@ -345,8 +357,8 @@ def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
             family = socket.AF_INET,
             daddr = XfrmAddress.from_ipaddr(dst_selector[0]),
             saddr = XfrmAddress.from_ipaddr(src_selector[0]),
-            dport = socket.htons(dst_port),
-            sport = socket.htons(src_port),
+            dport = dst_port,
+            sport = src_port,
             dport_mask = 0 if dst_port == 0 else 0xFFFF,
             sport_mask = 0 if src_port == 0 else 0xFFFF,
             prefixlen_d = dst_selector.prefixlen,
@@ -364,7 +376,11 @@ def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
             soft_byte_limit = 0xFFFFFFFFFFFFFFFF,
             hard_byte_limit = 0xFFFFFFFFFFFFFFFF,
             soft_packed_limit = 0xFFFFFFFFFFFFFFFF,
-            hard_packet_limit = 0xFFFFFFFFFFFFFFFF),
+            hard_packet_limit = 0xFFFFFFFFFFFFFFFF,
+            soft_add_expires_seconds = 2000,
+            hard_add_expires_seconds = 2000,
+            soft_use_expires_seconds = 2000,
+            hard_use_expires_seconds = 2000),
     )
 
     attribute_data = bytes()
@@ -389,56 +405,38 @@ def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
          bytes(usersa) + attribute_data)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # xfrm_flush_policies()
 # xfrm_flush_sa()
 
-xfrm_create_ipsec_sa(
-    src_selector=ip_network('192.168.1.0/24'),
-    dst_selector=ip_network('10.0.0.0/24'),
-    src_port=100,
-    dst_port=0,
-    spi=b'AAAA',
-    ip_proto=socket.IPPROTO_TCP,
-    ipsec_proto=Proposal.Protocol.AH,
-    mode=XFRM_MODE_TRANSPORT,
-    src=ip_address('19.1.1.1'),
-    dst=ip_address('20.1.2.3'),
-    enc_algorith=Cipher.Id.ENCR_AES_CBC,
-    sk_e=b'1' * 16,
-    auth_algorithm=Integrity.Id.AUTH_HMAC_SHA1_96,
-    sk_a=b'2' * 16
-)
+# xfrm_create_ipsec_sa(
+#     src_selector=ip_network('192.168.1.0/24'),
+#     dst_selector=ip_network('10.0.0.0/24'),
+#     src_port=100,
+#     dst_port=0,
+#     spi=b'AAAA',
+#     ip_proto=socket.IPPROTO_TCP,
+#     ipsec_proto=Proposal.Protocol.AH,
+#     mode=XFRM_MODE_TRANSPORT,
+#     src=ip_address('19.1.1.1'),
+#     dst=ip_address('20.1.2.3'),
+#     enc_algorith=Cipher.Id.ENCR_AES_CBC,
+#     sk_e=b'1' * 16,
+#     auth_algorithm=Integrity.Id.AUTH_HMAC_SHA1_96,
+#     sk_a=b'2' * 16
+# )
 
 
-xfrm_create_policy(
-    src_selector=ip_network('192.168.1.0/24'),
-    dst_selector=ip_network('10.0.0.0/24'),
-    src_port=0,
-    dst_port=2000,
-    ip_proto=socket.IPPROTO_TCP,
-    dir=XFRM_POLICY_IN,
-    ipsec_proto=Proposal.Protocol.AH,
-    mode=XFRM_MODE_TUNNEL,
-    src=ip_address('19.1.1.1'),
-    dst=ip_address('20.1.2.3'),
-)
+# xfrm_create_policy(
+#     src_selector=ip_network('192.168.1.0/24'),
+#     dst_selector=ip_network('10.0.0.0/24'),
+#     src_port=0,
+#     dst_port=2000,
+#     ip_proto=socket.IPPROTO_TCP,
+#     dir=XFRM_POLICY_IN,
+#     ipsec_proto=Proposal.Protocol.AH,
+#     mode=XFRM_MODE_TUNNEL,
+#     src=ip_address('19.1.1.1'),
+#     dst=ip_address('20.1.2.3'),
+# )
 
 

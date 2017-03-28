@@ -489,7 +489,7 @@ class IkeSa(object):
         else:
             encr_transform = None
         ipsec.create_child_sa(
-            self.myaddr[0], self.peeraddr[0],
+            ip_address(self.myaddr[0]), ip_address(self.peeraddr[0]),
             chosen_tsr, chosen_tsi,
             chosen_child_proposal.protocol_id,
             child_sa.outbound_spi,
@@ -499,7 +499,7 @@ class IkeSa(object):
             child_sa_keyring.sk_ar,
             mode)
         ipsec.create_child_sa(
-            self.peeraddr[0], self.myaddr[0],
+            ip_address(self.peeraddr[0]), ip_address(self.myaddr[0]),
             chosen_tsi, chosen_tsr,
             chosen_child_proposal.protocol_id,
             child_sa.inbound_spi,

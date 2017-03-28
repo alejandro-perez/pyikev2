@@ -5,17 +5,8 @@
   dh: [5]
   protect:
     - ip_proto: tcp
-      mode: tunnel
-      ipsec_proto: esp
-      encr: [aes256, aes128]
-
-10.0.5.20:
-  id: bob@openikev2
-  psk: testing
-  dh: [5]
-  protect:
-    - ip_proto: tcp
       mode: transport
       ipsec_proto: esp
       encr: [aes256, aes128]
+
 
