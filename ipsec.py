@@ -11,7 +11,7 @@ from crypto import Cipher, Integrity
 from helpers import hexstring, SafeIntEnum
 from ipaddress import ip_address, ip_network
 from collections import OrderedDict
-from xfrm2 import (XFRM_MODE_TRANSPORT, XFRM_MODE_TUNNEL, XFRM_POLICY_IN,
+from xfrm import (XFRM_MODE_TRANSPORT, XFRM_MODE_TUNNEL, XFRM_POLICY_IN,
                    XFRM_POLICY_OUT, XFRM_POLICY_FWD, xfrm_create_policy,
                    xfrm_create_ipsec_sa)
 class IpsecError(Exception):
