@@ -13,7 +13,8 @@ from ipaddress import ip_address, ip_network
 from collections import OrderedDict
 from xfrm import (XFRM_MODE_TRANSPORT, XFRM_MODE_TUNNEL, XFRM_POLICY_IN,
                    XFRM_POLICY_OUT, XFRM_POLICY_FWD, xfrm_create_policy,
-                   xfrm_create_ipsec_sa)
+                   xfrm_create_ipsec_sa, xfrm_flush_policies, xfrm_flush_sas,
+                   xfrm_del_ipsec_sa)
 class IpsecError(Exception):
     pass
 
@@ -21,10 +22,7 @@ class Mode(SafeIntEnum):
     TRANSPORT = XFRM_MODE_TRANSPORT
     TUNNEL = XFRM_MODE_TUNNEL
 
-
 def create_policies(my_addr, peer_addr, ike_conf):
-    """ Creates all the IPsec policies associated to a ike_configuration
-    """
     for ipsec_conf in ike_conf['protect']:
         if ipsec_conf['mode'] == Mode.TUNNEL:
             src_selector = ipsec_conf['my_subnet']
@@ -48,18 +46,17 @@ def create_policies(my_addr, peer_addr, ike_conf):
 
 def create_child_sa(src, dst, src_sel, dst_sel, ipsec_protocol, spi, enc_algorith, sk_e,
         auth_algorithm, sk_a, mode):
-
     xfrm_create_ipsec_sa(src_sel.get_network(), dst_sel.get_network(),
                          src_sel.get_port(), dst_sel.get_port(), spi,
                          src_sel.ip_proto, ipsec_protocol, mode, src, dst,
                          enc_algorith, sk_e, auth_algorithm, sk_a)
 
-def delete_child_sa(spi):
-    _ip_xfrm_del_state('0x{}'.format(hexstring(spi)))
+def delete_child_sa(daddr, proto, spi):
+    xfrm_del_ipsec_sa(daddr, proto, spi)
 
 def flush_policies():
-    subprocess.call(['ip', 'xfrm', 'policy', 'flush'])
+    xfrm_flush_policies()
 
 def flush_ipsec_sa():
-    subprocess.call(['ip', 'xfrm', 'state', 'flush'])
+    xfrm_flush_sas()
 

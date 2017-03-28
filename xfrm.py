@@ -12,6 +12,7 @@ from collections import defaultdict
 from message import Proposal
 from crypto import Cipher, Integrity
 from helpers import hexstring
+import logging
 
 # netlink flags
 NLM_F_REQUEST    = 0x0001
@@ -287,7 +288,7 @@ def xfrm_flush_policies():
     payloads = xfrm_send(XFRM_MSG_FLUSHPOLICY, (NLM_F_REQUEST | NLM_F_ACK),
                          bytes(usersaflush))
 
-def xfrm_flush_sa():
+def xfrm_flush_sas():
     usersaflush = XfrmUserSaFlush(proto=0)
     payloads = xfrm_send(XFRM_MSG_FLUSHSA, (NLM_F_REQUEST | NLM_F_ACK),
                          bytes(usersaflush))
@@ -377,10 +378,10 @@ def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
             hard_byte_limit = 0xFFFFFFFFFFFFFFFF,
             soft_packed_limit = 0xFFFFFFFFFFFFFFFF,
             hard_packet_limit = 0xFFFFFFFFFFFFFFFF,
-            soft_add_expires_seconds = 2000,
-            hard_add_expires_seconds = 2000,
-            soft_use_expires_seconds = 2000,
-            hard_use_expires_seconds = 2000),
+            soft_add_expires_seconds = 0,
+            hard_add_expires_seconds = 0,
+            soft_use_expires_seconds = 0,
+            hard_use_expires_seconds = 0),
     )
 
     attribute_data = bytes()
@@ -404,39 +405,18 @@ def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
          (NLM_F_REQUEST | NLM_F_ACK),
          bytes(usersa) + attribute_data)
 
+def xfrm_del_ipsec_sa(daddr, proto, spi):
+    xfrm_id = XfrmUserSaId(
+        daddr = XfrmAddress.from_ipaddr(daddr),
+        family = socket.AF_INET,
+        proto = (socket.IPPROTO_ESP if proto == Proposal.Protocol.ESP
+                 else socket.IPPROTO_AH),
+        spi = create_byte_array(spi))
+    try:
+        xfrm_send(XFRM_MSG_DELSA, (NLM_F_REQUEST | NLM_F_ACK), bytes(xfrm_id))
+    except NetlinkError as ex:
+        logging.error('Could not delete IPsec SA with SPI: {}. {}'
+                      ''.format(hexstring(spi), ex))
 
-# xfrm_flush_policies()
-# xfrm_flush_sa()
-
-# xfrm_create_ipsec_sa(
-#     src_selector=ip_network('192.168.1.0/24'),
-#     dst_selector=ip_network('10.0.0.0/24'),
-#     src_port=100,
-#     dst_port=0,
-#     spi=b'AAAA',
-#     ip_proto=socket.IPPROTO_TCP,
-#     ipsec_proto=Proposal.Protocol.AH,
-#     mode=XFRM_MODE_TRANSPORT,
-#     src=ip_address('19.1.1.1'),
-#     dst=ip_address('20.1.2.3'),
-#     enc_algorith=Cipher.Id.ENCR_AES_CBC,
-#     sk_e=b'1' * 16,
-#     auth_algorithm=Integrity.Id.AUTH_HMAC_SHA1_96,
-#     sk_a=b'2' * 16
-# )
-
-
-# xfrm_create_policy(
-#     src_selector=ip_network('192.168.1.0/24'),
-#     dst_selector=ip_network('10.0.0.0/24'),
-#     src_port=0,
-#     dst_port=2000,
-#     ip_proto=socket.IPPROTO_TCP,
-#     dir=XFRM_POLICY_IN,
-#     ipsec_proto=Proposal.Protocol.AH,
-#     mode=XFRM_MODE_TUNNEL,
-#     src=ip_address('19.1.1.1'),
-#     dst=ip_address('20.1.2.3'),
-# )
 
 
