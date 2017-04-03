@@ -104,149 +104,154 @@ class NetlinkStructure(Structure):
         memmove(addressof(result), bytes, sizeof(cls))
         return result
 
+    def to_dict(self):
+        result = {}
+        for name, _ in self._fields_:
+            object = getattr(self, name)
+            if hasattr(object, 'to_dict'):
+                result[name] = object.to_dict()
+            else:
+                result[name] = getattr(self, name)
+        return result
+
 class NetlinkHeader(NetlinkStructure):
-    _fields_ = (
-        ('length', c_uint32),
-        ('type', c_uint16),
-        ('flags', c_uint16),
-        ('seq', c_uint32),
-        ('pid', c_uint32),
-    )
+    _fields_ = (('length', c_uint32),
+                ('type', c_uint16),
+                ('flags', c_uint16),
+                ('seq', c_uint32),
+                ('pid', c_uint32))
 
 class NetlinkErrorMsg(NetlinkStructure):
-    _fields_ = (
-        ('error', c_int),
-        ('msg', NetlinkHeader),
-    )
+    _fields_ = (('error', c_int),
+                ('msg', NetlinkHeader))
 
-class XfrmAddress(Structure):
-    _fields_ = (
-        ('addr', c_uint32.__ctype_be__ * 4),
-    )
+class XfrmAddress(NetlinkStructure):
+    _fields_ = (('addr', c_uint32.__ctype_be__ * 4),)
+
     @classmethod
     def from_ipaddr(cls, ip_addr):
         result = XfrmAddress()
         result.addr[0] = int(ip_addr)
         return result
 
-class XfrmSelector(Structure):
-    _fields_ = (
-        ('daddr', XfrmAddress),
-        ('saddr', XfrmAddress),
-        ('dport', c_uint16.__ctype_be__),
-        ('dport_mask', c_uint16),
-        ('sport', c_uint16.__ctype_be__),
-        ('sport_mask', c_uint16),
-        ('family', c_uint16),
-        ('prefixlen_d', c_ubyte),
-        ('prefixlen_s', c_ubyte),
-        ('proto', c_ubyte),
-        ('ifindex', c_uint32),
-        ('user', c_uint32),
-    )
+class XfrmSelector(NetlinkStructure):
+    _fields_ = (('daddr', XfrmAddress),
+                ('saddr', XfrmAddress),
+                ('dport', c_uint16.__ctype_be__),
+                ('dport_mask', c_uint16),
+                ('sport', c_uint16.__ctype_be__),
+                ('sport_mask', c_uint16),
+                ('family', c_uint16),
+                ('prefixlen_d', c_ubyte),
+                ('prefixlen_s', c_ubyte),
+                ('proto', c_ubyte),
+                ('ifindex', c_uint32),
+                ('user', c_uint32))
 
-class XfrmUserPolicyId(Structure):
-    _fields_ = (
-        ('selector', XfrmSelector),
-        ('index', c_uint32),
-        ('dir', c_ubyte),
-    )
+class XfrmUserPolicyId(NetlinkStructure):
+    _fields_ = (('selector', XfrmSelector),
+                ('index', c_uint32),
+                ('dir', c_ubyte))
 
-class XfrmLifetimeCfg(Structure):
-    _fields_ = (
-        ('soft_byte_limit', c_uint64),
-        ('hard_byte_limit', c_uint64),
-        ('soft_packed_limit', c_uint64),
-        ('hard_packet_limit', c_uint64),
-        ('soft_add_expires_seconds', c_uint64),
-        ('hard_add_expires_seconds', c_uint64),
-        ('soft_use_expires_seconds', c_uint64),
-        ('hard_use_expires_seconds', c_uint64),
-    )
+class XfrmLifetimeCfg(NetlinkStructure):
+    _fields_ = (('soft_byte_limit', c_uint64),
+                ('hard_byte_limit', c_uint64),
+                ('soft_packed_limit', c_uint64),
+                ('hard_packet_limit', c_uint64),
+                ('soft_add_expires_seconds', c_uint64),
+                ('hard_add_expires_seconds', c_uint64),
+                ('soft_use_expires_seconds', c_uint64),
+                ('hard_use_expires_seconds', c_uint64))
+    @classmethod
+    def infinite(cls):
+        return XfrmLifetimeCfg(soft_byte_limit = 0xFFFFFFFFFFFFFFFF,
+                               hard_byte_limit = 0xFFFFFFFFFFFFFFFF,
+                               soft_packed_limit = 0xFFFFFFFFFFFFFFFF,
+                               hard_packet_limit = 0xFFFFFFFFFFFFFFFF,
+                               soft_add_expires_seconds = 0,
+                               hard_add_expires_seconds = 0,
+                               soft_use_expires_seconds = 0,
+                               hard_use_expires_seconds = 0)
 
-class XfrmLifetimeCur(Structure):
-    _fields_ = (
-        ('bytes', c_uint64),
-        ('packets', c_uint64),
-        ('add_time', c_uint64),
-        ('use_time', c_uint64),
-    )
+class XfrmLifetimeCur(NetlinkStructure):
+    _fields_ = (('bytes', c_uint64),
+                ('packets', c_uint64),
+                ('add_time', c_uint64),
+                ('use_time', c_uint64))
 
-class XfrmUserPolicyInfo(Structure):
-    _fields_ = (
-        ('sel', XfrmSelector),
-        ('lft', XfrmLifetimeCfg),
-        ('curlft', XfrmLifetimeCur),
-        ('priority', c_uint32),
-        ('index', c_uint32),
-        ('dir', c_ubyte),
-        ('action', c_ubyte),
-        ('flags', c_ubyte),
-        ('share', c_ubyte),
-    )
+class XfrmUserPolicyInfo(NetlinkStructure):
+    _fields_ = (('sel', XfrmSelector),
+                ('lft', XfrmLifetimeCfg),
+                ('curlft', XfrmLifetimeCur),
+                ('priority', c_uint32),
+                ('index', c_uint32),
+                ('dir', c_ubyte),
+                ('action', c_ubyte),
+                ('flags', c_ubyte),
+                ('share', c_ubyte))
 
-class XfrmUserSaFlush(Structure):
-    _fields_ = (
-        ('proto', c_ubyte),
-    )
+class XfrmUserSaFlush(NetlinkStructure):
+    _fields_ = (('proto', c_ubyte),)
 
-class XfrmId(Structure):
-    _fields_ = (
-        ('daddr', XfrmAddress),
-        ('spi', c_ubyte * 4),
-        ('proto', c_ubyte),
-    )
-class XfrmUserTmpl(Structure):
-    _fields_ = (
-        ('id', XfrmId),
-        ('family', c_uint16),
-        ('saddr', XfrmAddress),
-        ('reqid', c_uint32),
-        ('mode', c_ubyte),
-        ('share', c_ubyte),
-        ('optional', c_ubyte),
-        ('aalgos', c_uint32),
-        ('ealgos', c_uint32),
-        ('calgos', c_uint32),
-    )
+class XfrmId(NetlinkStructure):
+    _fields_ = (('daddr', XfrmAddress),
+                ('spi', c_ubyte * 4),
+                ('proto', c_ubyte))
+class XfrmUserTmpl(NetlinkStructure):
+    _fields_ = (('id', XfrmId),
+                ('family', c_uint16),
+                ('saddr', XfrmAddress),
+                ('reqid', c_uint32),
+                ('mode', c_ubyte),
+                ('share', c_ubyte),
+                ('optional', c_ubyte),
+                ('aalgos', c_uint32),
+                ('ealgos', c_uint32),
+                ('calgos', c_uint32))
 
-class XfrmStats(Structure):
-    _fields_ = (
-        ('replay_window', c_uint32),
-        ('replay', c_uint32),
-        ('integrity_failed', c_uint32),
-    )
+class XfrmStats(NetlinkStructure):
+    _fields_ = (('replay_window', c_uint32),
+                ('replay', c_uint32),
+                ('integrity_failed', c_uint32))
 
-class XfrmUserSaInfo(Structure):
-    _fields_ = (
-        ('sel', XfrmSelector),
-        ('id', XfrmId),
-        ('saddr', XfrmAddress),
-        ('lft', XfrmLifetimeCfg),
-        ('cur', XfrmLifetimeCur),
-        ('stats', XfrmStats),
-        ('seq', c_uint32),
-        ('reqid', c_uint32),
-        ('family', c_uint16),
-        ('mode', c_ubyte),
-        ('replay_window', c_ubyte),
-        ('flags', c_ubyte),
-    )
+class XfrmUserSaInfo(NetlinkStructure):
+    _fields_ = (('sel', XfrmSelector),
+                ('id', XfrmId),
+                ('saddr', XfrmAddress),
+                ('lft', XfrmLifetimeCfg),
+                ('cur', XfrmLifetimeCur),
+                ('stats', XfrmStats),
+                ('seq', c_uint32),
+                ('reqid', c_uint32),
+                ('family', c_uint16),
+                ('mode', c_ubyte),
+                ('replay_window', c_ubyte),
+                ('flags', c_ubyte))
 
-class XfrmAlgo(Structure):
-    _fields_ = (
-        ('alg_name', c_ubyte * 64),
-        ('alg_key_len', c_uint32),
-        ('key', c_ubyte * 64)
-    )
+class XfrmAlgo(NetlinkStructure):
+    _fields_ = (('alg_name', c_ubyte * 64),
+                ('alg_key_len', c_uint32))
+                # ('key', c_ubyte * 0))
 
-class XfrmUserSaId(Structure):
-    _fields_ = (
-        ('daddr', XfrmAddress),
-        ('spi', c_ubyte * 4),
-        ('family', c_uint16),
-        ('proto', c_ubyte),
-    )
+class XfrmUserSaId(NetlinkStructure):
+    _fields_ = (('daddr', XfrmAddress),
+                ('spi', c_ubyte * 4),
+                ('family', c_uint16),
+                ('proto', c_ubyte))
+
+class XfrmUserAcquire(NetlinkStructure):
+    _fields_ = (('id', XfrmId),
+                ('saddr', XfrmAddress),
+                ('sel', XfrmSelector),
+                ('policy', XfrmUserPolicyInfo),
+                ('aalgos', c_uint32),
+                ('ealgos', c_uint32),
+                ('calgos', c_uint32),
+                ('seq', c_uint32))
+
+class XfrmUserExpire(NetlinkStructure):
+    _fields_ = (('state', XfrmUserSaInfo),
+                ('hard', c_ubyte))
 
 _cipher_names = {
     None: b'none',
@@ -257,13 +262,34 @@ _auth_names = {
     Integrity.Id.AUTH_HMAC_SHA1_96: b'sha1'
 }
 
+_msg_to_struct = {
+    XFRM_MSG_ACQUIRE: XfrmUserAcquire,
+    XFRM_MSG_EXPIRE: XfrmUserExpire,
+    NLMSG_ERROR: NetlinkErrorMsg,
+}
+_attr_to_struct = {
+    XFRMA_TMPL: XfrmUserTmpl
+}
+
 def parse_attributes(data):
-    attributes = defaultdict(list)
+    attributes = {}
     while len(data) > 0:
         length, type = unpack_from('HH', data)
-        attributes[type].append(data[4:length])
+        attr_struct = _attr_to_struct.get(type, None)
+        if attr_struct:
+            attributes[type] = attr_struct.parse(data[4:length])
         data = data[length:]
     return attributes
+
+def parse_message(data):
+    """ Returns a tuple XfrmHeader, Msg, AttributeMap
+    """
+    header = NetlinkHeader.parse(data)
+    msg_struct = _msg_to_struct.get(header.type, None)
+    if msg_struct:
+        msg = msg_struct.parse(data[sizeof(header):])
+        attributes = parse_attributes(data[sizeof(header) + sizeof(msg):header.length])
+    return header,  msg, attributes
 
 def xfrm_send(command, flags, data):
     sock = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW,
@@ -274,19 +300,12 @@ def xfrm_send(command, flags, data):
                            flags=flags)
     sock.send(bytes(header) + data)
     data = sock.recv(4096)
-    result = defaultdict(list)
-    while len(data) > 0:
-        header = NetlinkHeader.parse(data)
-        if header.type == NLMSG_ERROR:
-            error_msg = NetlinkErrorMsg.parse(data[16:])
-            if error_msg.error != 0:
-                sock.close()
-                raise NetlinkError(
-                    'Received error header!: {}'.format(error_msg.error))
-        result[header.type].append(data[sizeof(header):header.length])
-        data = data[header.length:]
     sock.close()
-    return result
+    header, msg, attributes = parse_message(data)
+    if header.type == NLMSG_ERROR and msg.error != 0:
+        raise NetlinkError(
+            'Received error header!: {}'.format(error_msg.error))
+    return header, msg, attributes
 
 def flush_policies():
     usersaflush = XfrmUserSaFlush(proto=0)
@@ -329,15 +348,7 @@ def xfrm_create_policy(src_selector, dst_selector, src_port, dst_port,
             proto = ip_proto),
         dir = dir,
         action = XFRM_POLICY_ALLOW,
-        lft = XfrmLifetimeCfg(
-            soft_byte_limit = 0xFFFFFFFFFFFFFFFF,
-            hard_byte_limit = 0xFFFFFFFFFFFFFFFF,
-            soft_packed_limit = 0xFFFFFFFFFFFFFFFF,
-            hard_packet_limit = 0xFFFFFFFFFFFFFFFF,
-            soft_add_expires_seconds = 2000,
-            hard_add_expires_seconds = 2000,
-            soft_use_expires_seconds = 2000,
-            hard_use_expires_seconds = 2000),
+        lft = XfrmLifetimeCfg.infinite(),
     )
     tmpl = Attribute(
         XFRMA_TMPL,
@@ -378,15 +389,7 @@ def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
         family = socket.AF_INET,
         saddr = XfrmAddress.from_ipaddr(src),
         mode = mode,
-        lft = XfrmLifetimeCfg(
-            soft_byte_limit = 0xFFFFFFFFFFFFFFFF,
-            hard_byte_limit = 0xFFFFFFFFFFFFFFFF,
-            soft_packed_limit = 0xFFFFFFFFFFFFFFFF,
-            hard_packet_limit = 0xFFFFFFFFFFFFFFFF,
-            soft_add_expires_seconds = 0,
-            hard_add_expires_seconds = 0,
-            soft_use_expires_seconds = 0,
-            hard_use_expires_seconds = 0),
+        lft = XfrmLifetimeCfg.infinite(),
     )
 
     attribute_data = bytes()
@@ -394,17 +397,19 @@ def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
         enc_attr =  Attribute(
             XFRMA_ALG_CRYPT,
             XfrmAlgo(alg_name=create_byte_array(_cipher_names[enc_algorith], 64),
-                     alg_key_len=len(sk_e) * 8,
-                     key=create_byte_array(sk_e, 64)))
+                     alg_key_len=len(sk_e) * 8))
+        enc_attr.len += len(sk_e)
         attribute_data += enc_attr
+        attribute_data += sk_e
 
-    attribute = Attribute(
+    auth_attr = Attribute(
         XFRMA_ALG_AUTH,
         XfrmAlgo(
             alg_name=create_byte_array(_auth_names[auth_algorithm], 64),
-            alg_key_len=len(sk_a) * 8,
-            key=create_byte_array(sk_a, 64)))
-    attribute_data += attribute
+            alg_key_len=len(sk_a) * 8))
+    auth_attr.len += len(sk_a)
+    attribute_data += auth_attr
+    attribute_data += sk_a
 
     xfrm_send(XFRM_MSG_NEWSA,
          (NLM_F_REQUEST | NLM_F_ACK),
