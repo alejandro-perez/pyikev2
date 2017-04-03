@@ -456,3 +456,20 @@ def create_sa(src, dst, src_sel, dst_sel, ipsec_protocol, spi,
                          src_sel.get_port(), dst_sel.get_port(), spi,
                          src_sel.ip_proto, ipsec_protocol, mode, src, dst,
                          enc_algorith, sk_e, auth_algorithm, sk_a)
+
+
+if __name__ == '__main__':
+    from pprint import pprint
+    sock = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW,
+                             socket.NETLINK_XFRM)
+    sock.bind((0, XFRMGRP_ACQUIRE | XFRMGRP_EXPIRE),)
+    while True:
+        data = sock.recv(4096)
+        header, msg, attributes = parse_message(data)
+        pprint(header.to_dict())
+        pprint(msg.to_dict())
+        if header.type == XFRM_MSG_ACQUIRE:
+            print("ACQUIRE")
+            pprint(attributes[XFRMA_TMPL].to_dict())
+        elif header.type == XFRM_MSG_EXPIRE:
+            print("EXPIRE")
