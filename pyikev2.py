@@ -7,12 +7,10 @@ __version__ = "0.1"
 import socket
 import argparse
 import logging
-from message import Message, PayloadID, TrafficSelector, Proposal
 from protocol import IkeSaController
 from ipaddress import ip_address
 from configuration import Configuration
 import ipsec
-import json
 import netifaces
 import sys
 import yaml
