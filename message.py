@@ -830,7 +830,7 @@ class Message:
     @classmethod
     def parse(cls, data, header_only=False, crypto=None):
         try:
-            header = unpack_from('>2Q4B2L', data)
+            header = unpack_from('>8s8s4B2L', data)
         except struct_error as ex:
             raise InvalidSyntax(ex)
 
@@ -906,7 +906,7 @@ class Message:
         first_payload_type = (self.payloads[0].type if self.payloads 
                                                     else Payload.Type.NONE)
         header_data = bytearray(pack(
-            '>2Q4B2L', self.spi_i, self.spi_r, first_payload_type,
+            '>8s8s4B2L', self.spi_i, self.spi_r, first_payload_type,
             (self.major << 4 | self.minor & 0x0F), self.exchange_type,
             (self.is_response << 5 | self.can_use_higher_version << 4 |
                 self.is_initiator << 3),
@@ -934,8 +934,8 @@ class Message:
 
     def to_dict(self):
         return OrderedDict([
-            ('spi_i', hexstring(pack('>Q', self.spi_i))),
-            ('spi_r', hexstring(pack('>Q', self.spi_r))),
+            ('spi_i', hexstring(self.spi_i)),
+            ('spi_r', hexstring(self.spi_r)),
             ('major', self.major),
             ('minor', self.minor),
             ('exchange_type', Message.Exchange.safe_name(self.exchange_type)),

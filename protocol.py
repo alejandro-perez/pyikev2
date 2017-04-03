@@ -42,7 +42,7 @@ class IkeSa(object):
 
     def __init__(self, is_initiator, peer_spi, configuration, myaddr, peeraddr):
         self.state = IkeSa.State.INITIAL
-        self.my_spi = SystemRandom().randint(0, 0xFFFFFFFFFFFFFFFF)
+        self.my_spi = os.urandom(8)
         self.peer_spi = peer_spi
         self.my_msg_id = 0
         self.peer_msg_id = 0
@@ -74,7 +74,7 @@ class IkeSa(object):
 
         keymat = prf.prfplus(
             SKEYSEED,
-            nonce_i + nonce_r + pack('>Q', spi_i) + pack('>Q', spi_r),
+            nonce_i + nonce_r + spi_i + spi_r,
             prf.key_size * 3 + integ.key_size * 2 + cipher.key_size * 2)
         ike_sa_keyring = Keyring._make(
             unpack('>{0}s{1}s{1}s{2}s{2}s{0}s{0}s'.format(prf.key_size,
@@ -207,7 +207,7 @@ class IkeSa(object):
     def log_message(self, message, addr, data, send=True):
         logging.info(
             'IKE_SA: {}. {} {} {} ({} bytes) {} {}:{}'.format(
-                hexstring(pack('>Q', self.my_spi)),
+                hexstring(self.my_spi),
                 'Sent' if send else 'Received',
                 Message.Exchange.safe_name(message.exchange_type),
                 'response' if message.is_response else 'request',
@@ -284,39 +284,39 @@ class IkeSa(object):
             self.peer_msg_id = self.peer_msg_id + 1
         except NoProposalChosen as ex:
             logging.error('IKE_SA: {}. {}'.format(
-                hexstring(pack('>Q', self.my_spi)),str(ex)))
+                hexstring(self.my_spi)),str(ex))
             reply = self._generate_ike_error_response(
                 message, PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN)
         except UnsupportedCriticalPayload as ex:
             logging.error('IKE_SA: {}. {}'.format(
-                hexstring(pack('>Q', self.my_spi)),str(ex)))
+                hexstring(self.my_spi)),str(ex))
             reply = self._generate_ike_error_response(
                 message, PayloadNOTIFY.Type.UNSUPPORTED_CRITICAL_PAYLOAD)
         except InvalidSyntax as ex:
             logging.error('IKE_SA: {}. {}'.format(
-                hexstring(pack('>Q', self.my_spi)),str(ex)))
+                hexstring(self.my_spi)),str(ex))
             reply = self._generate_ike_error_response(
                 message, PayloadNOTIFY.Type.INVALID_SYNTAX)
         except AuthenticationFailed as ex:
             logging.error('IKE_SA: {}. {}'.format(
-                hexstring(pack('>Q', self.my_spi)),str(ex)))
+                hexstring(self.my_spi)),str(ex))
             reply = self._generate_ike_error_response(
                 message, PayloadNOTIFY.Type.AUTHENTICATION_FAILED)
         except InvalidSelectors as ex:
             logging.error('IKE_SA: {}. {}'.format(
-                hexstring(pack('>Q', self.my_spi)),str(ex)))
+                hexstring(self.my_spi)),str(ex))
             reply = self._generate_ike_error_response(
                 message, PayloadNOTIFY.Type.INVALID_SELECTORS)
         except InvalidKePayload as ex:
             logging.error('IKE_SA: {}. {}'.format(
-                hexstring(pack('>Q', self.my_spi)),str(ex)))
+                hexstring(self.my_spi)),str(ex))
             reply = self._generate_ike_error_response(
                 message,
                 PayloadNOTIFY.Type.INVALID_KE_PAYLOAD,
                 notification_data=pack('>H', ex.group))
         except IkeSaError as ex:
             logging.error('IKE_SA: {}. {}'.format(
-                hexstring(pack('>Q', self.my_spi)),str(ex)))
+                hexstring(self.my_spi)),str(ex))
             reply = self._generate_ike_error_response(
                 message, PayloadNOTIFY.Type.INVALID_SYNTAX)
 
@@ -348,7 +348,7 @@ class IkeSa(object):
         self.chosen_proposal = self._select_best_ike_sa_proposal(payload_sa)
         # if this is a rekey, hence spi is not empty, send ours
         if self.chosen_proposal.spi:
-            self.chosen_proposal.spi = pack('>Q', self.my_spi)
+            self.chosen_proposal.spi = self.my_spi
         response_payload_sa = PayloadSA([self.chosen_proposal])
 
         # generate payload NONCE
@@ -711,7 +711,7 @@ class IkeSaController:
                            myaddr=myaddr, peeraddr=peeraddr)
             self.ike_sas[ike_sa.my_spi] = ike_sa
             logging.info('Starting the creation of IKE SA with SPI={}. '
-                         'Count={}'.format(hexstring(pack('>Q', ike_sa.my_spi)),
+                         'Count={}'.format(hexstring(ike_sa.my_spi),
                                            len(self.ike_sas)))
         # else, look for the IkeSa in the dict
         else:
@@ -720,7 +720,7 @@ class IkeSaController:
                 ike_sa = self.ike_sas[my_spi]
             except KeyError:
                 logging.warning('Received message for unknown SPI={}. Omitting.'
-                                ''.format(hexstring(pack('>Q', my_spi))))
+                                ''.format(hexstring(my_spi)))
                 logging.debug(json.dumps(header.to_dict(),
                               indent=None if logging.no_indent else 2))
                 return None
@@ -732,14 +732,14 @@ class IkeSaController:
         if ike_sa.state == IkeSa.State.REKEYED:
             self.ike_sas[ike_sa.new_ike_sa.my_spi] = ike_sa.new_ike_sa
             logging.info('IKE SA with SPI={} created by rekey.'
-                         'Count={}'.format(hexstring(pack('>Q', ike_sa.my_spi)),
-                                           len(self.ike_sas)))
+                         'Count={}'.format(hexstring(ike_sa.my_spi)),
+                                           len(self.ike_sas))
 
         # if the IKE_SA needs to be closed
         if not status or ike_sa.state in (IkeSa.State.DELETED,):
             ike_sa.delete_child_sas()
             del self.ike_sas[ike_sa.my_spi]
             logging.info('Deleted IKE_SA with SPI={}. Count={}'
-                         ''.format(hexstring(pack('>Q', ike_sa.my_spi)),
-                                   len(self.ike_sas)))
+                         ''.format(hexstring(ike_sa.my_spi)),
+                                   len(self.ike_sas))
         return reply
