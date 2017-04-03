@@ -57,7 +57,8 @@ class IkeSa(object):
         self.child_sas = []
 
     def _generate_ike_sa_key_material(self, ike_proposal, nonce_i, nonce_r,
-                spi_i, spi_r, shared_secret, old_sk_d=None):
+                                      spi_i, spi_r, shared_secret,
+                                      old_sk_d=None):
         """ Generates IKE_SA key material based on the proposal and DH
         """
         prf = Prf(ike_proposal.get_transform(Transform.Type.PRF).id)
@@ -108,7 +109,7 @@ class IkeSa(object):
                             child_sa.inbound_spi)
 
     def _generate_child_sa_key_material(self, ike_proposal, child_proposal,
-            nonce_i, nonce_r, sk_d):
+                                        nonce_i, nonce_r, sk_d):
         """ Generates CHILD_SA key material
         """
         prf = Prf(ike_proposal.get_transform(Transform.Type.PRF).id)
