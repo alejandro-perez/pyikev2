@@ -248,8 +248,8 @@ class TestMessage(TestPayloadMixin, unittest.TestCase):
         payload_sk = PayloadSK(b'pyikev2-test-0.1')
 
         self.object = Message(
-            spi_i=0,
-            spi_r=0,
+            spi_i=b'12345678',
+            spi_r=b'12345678',
             major=2,
             minor=0,
             exchange_type=Message.Exchange.IKE_SA_INIT,
@@ -279,8 +279,8 @@ class TestMessage(TestPayloadMixin, unittest.TestCase):
         payload_nonce = PayloadNONCE()
 
         message = Message(
-            spi_i=0,
-            spi_r=0,
+            spi_i=b'12345678',
+            spi_r=b'12345678',
             major=2,
             minor=0,
             exchange_type=Message.Exchange.IKE_SA_INIT,
