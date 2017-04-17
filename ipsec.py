@@ -3,8 +3,6 @@
 
 """ This module defines a simple SPI to access to IPsec features of the kernel
 """
-
-# TODO: Split into netlink.py and ipsec.py
 from message import TrafficSelector, Proposal, Transform
 from crypto import Cipher, Integrity
 from helpers import hexstring, SafeIntEnum
@@ -238,7 +236,15 @@ class XfrmUserSaInfo(NetlinkStructure):
 class XfrmAlgo(NetlinkStructure):
     _fields_ = (('alg_name', c_ubyte * 64),
                 ('alg_key_len', c_uint32))
-                # ('key', c_ubyte * 0))
+
+def xfrm_algo_factory(alg_name, key):
+    class _internal(NetlinkStructure):
+        _fields_ = (('xfrm_algo', XfrmAlgo),
+                    ('key', c_ubyte * len(key)))
+    return _internal(
+        xfrm_algo=XfrmAlgo(alg_name=create_byte_array(alg_name, 64),
+                           alg_key_len=len(key) * 8),
+        key=create_byte_array(key))
 
 class XfrmUserSaId(NetlinkStructure):
     _fields_ = (('daddr', XfrmAddress),
@@ -298,15 +304,19 @@ def parse_xfrm_message(data):
     msg_struct = _msg_to_struct.get(header.type, None)
     if msg_struct:
         msg = msg_struct.parse(data[sizeof(header):])
-        attributes = parse_xfrm_attributes(data[sizeof(header) + sizeof(msg):header.length])
+        attributes = parse_xfrm_attributes(
+            data[sizeof(header) + sizeof(msg):header.length])
     return header,  msg, attributes
 
 def xfrm_send(command, flags, data):
-    sock = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW,
+    sock = socket.socket(socket.AF_NETLINK,
+                         socket.SOCK_RAW,
                          socket.NETLINK_XFRM)
     sock.bind((0, 0),)
     header = NetlinkHeader(length=sizeof(NetlinkHeader) + len(data),
-                           type=command, seq=int(time.time()), pid=os.getpid(),
+                           type=command,
+                           seq=int(time.time()),
+                           pid=os.getpid(),
                            flags=flags)
     sock.send(bytes(header) + data)
     data = sock.recv(4096)
@@ -319,12 +329,14 @@ def xfrm_send(command, flags, data):
 
 def flush_policies():
     usersaflush = XfrmUserSaFlush(proto=0)
-    payloads = xfrm_send(XFRM_MSG_FLUSHPOLICY, (NLM_F_REQUEST | NLM_F_ACK),
+    payloads = xfrm_send(XFRM_MSG_FLUSHPOLICY,
+                         (NLM_F_REQUEST | NLM_F_ACK),
                          bytes(usersaflush))
 
 def flush_sas():
     usersaflush = XfrmUserSaFlush(proto=0)
-    payloads = xfrm_send(XFRM_MSG_FLUSHSA, (NLM_F_REQUEST | NLM_F_ACK),
+    payloads = xfrm_send(XFRM_MSG_FLUSHSA,
+                         (NLM_F_REQUEST | NLM_F_ACK),
                          bytes(usersaflush))
 
 def create_byte_array(bytes, size=None):
@@ -333,14 +345,14 @@ def create_byte_array(bytes, size=None):
     fmt = c_ubyte * size
     return fmt(*bytes)
 
-def Attribute(code, structure):
-    class _internal(Structure):
+def attribute_factory(code, data):
+    class _internal(NetlinkStructure):
         _fields_ = (
             ('len', c_uint16),
             ('code', c_uint16),
-            ('data', type(structure))
+            ('data', type(data))
         )
-    return _internal(code=code, len=sizeof(_internal), data=structure)
+    return _internal(code=code, len=sizeof(_internal), data=data)
 
 def xfrm_create_policy(src_selector, dst_selector, src_port, dst_port,
                        ip_proto, dir, ipsec_proto, mode, src, dst, index=0):
@@ -361,21 +373,23 @@ def xfrm_create_policy(src_selector, dst_selector, src_port, dst_port,
         action = XFRM_POLICY_ALLOW,
         lft = XfrmLifetimeCfg.infinite(),
     )
-    tmpl = Attribute(
+    tmpl = attribute_factory(
         XFRMA_TMPL,
         XfrmUserTmpl(
             id = XfrmId(
                 daddr = XfrmAddress.from_ipaddr(dst),
-                proto = (socket.IPPROTO_ESP if ipsec_proto == Proposal.Protocol.ESP
-                         else socket.IPPROTO_AH)),
+                proto = (socket.IPPROTO_ESP
+                            if ipsec_proto == Proposal.Protocol.ESP
+                            else socket.IPPROTO_AH)),
             family = socket.AF_INET,
             saddr = XfrmAddress.from_ipaddr(src),
             aalgos = 0xFFFFFFFF,
             ealgos = 0xFFFFFFFF,
             calgos = 0xFFFFFFFF,
             mode = mode))
-    header, msg, attr = xfrm_send(XFRM_MSG_NEWPOLICY, (NLM_F_REQUEST | NLM_F_ACK),
-              bytes(policy) + bytes(tmpl))
+    header, msg, attr = xfrm_send(XFRM_MSG_NEWPOLICY,
+                                  (NLM_F_REQUEST | NLM_F_ACK),
+                                  bytes(policy) + bytes(tmpl))
 
 def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
                          ip_proto, ipsec_proto, mode, src, dst, enc_algorith,
@@ -394,8 +408,9 @@ def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
             proto = ip_proto),
         id = XfrmId(
             daddr = XfrmAddress.from_ipaddr(dst),
-            proto = (socket.IPPROTO_ESP if ipsec_proto == Proposal.Protocol.ESP
-                     else socket.IPPROTO_AH),
+            proto = (socket.IPPROTO_ESP
+                        if ipsec_proto == Proposal.Protocol.ESP
+                        else socket.IPPROTO_AH),
             spi = create_byte_array(spi)),
         family = socket.AF_INET,
         saddr = XfrmAddress.from_ipaddr(src),
@@ -405,22 +420,15 @@ def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
 
     attribute_data = bytes()
     if ipsec_proto == Proposal.Protocol.ESP:
-        enc_attr =  Attribute(
+        enc_attr =  attribute_factory(
             XFRMA_ALG_CRYPT,
-            XfrmAlgo(alg_name=create_byte_array(_cipher_names[enc_algorith], 64),
-                     alg_key_len=len(sk_e) * 8))
-        enc_attr.len += len(sk_e)
-        attribute_data += enc_attr
-        attribute_data += sk_e
+            xfrm_algo_factory(alg_name=_cipher_names[enc_algorith], key=sk_e))
+        attribute_data += bytes(enc_attr)
 
-    auth_attr = Attribute(
+    auth_attr = attribute_factory(
         XFRMA_ALG_AUTH,
-        XfrmAlgo(
-            alg_name=create_byte_array(_auth_names[auth_algorithm], 64),
-            alg_key_len=len(sk_a) * 8))
-    auth_attr.len += len(sk_a)
-    attribute_data += auth_attr
-    attribute_data += sk_a
+        xfrm_algo_factory(alg_name=_auth_names[auth_algorithm], key=sk_a))
+    attribute_data += bytes(auth_attr)
 
     xfrm_send(XFRM_MSG_NEWSA,
          (NLM_F_REQUEST | NLM_F_ACK),
