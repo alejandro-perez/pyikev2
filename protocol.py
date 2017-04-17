@@ -205,18 +205,20 @@ class IkeSa(object):
         raise InvalidSelectors(
             'TS could not be matched with any IPsec configuration')
 
+    # TODO: Logging should be done per exchange, instead of having a generic
+    # call, to make it more specific (e.g. CHILD_SA_REKEY,
+    # IKE_SA_REKEY, IKE_SA_DELETE, etc.)
     def log_message(self, message, addr, data, send=True):
         logging.info(
-            'IKE_SA: {}. {} {} {} ({} bytes) {} {}:{}'.format(
+            'IKE_SA: {}. {} {} {} ({} bytes) {} {}'.format(
                 hexstring(self.my_spi),
                 'Sent' if send else 'Received',
                 Message.Exchange.safe_name(message.exchange_type),
                 'response' if message.is_response else 'request',
                 len(data),
                 'to' if send else 'from',
-                addr[0], addr[1]))
-        logging.debug(json.dumps(message.to_dict(),
-                                 indent=None if logging.no_indent else 2))
+                addr))
+        logging.debug(json.dumps(message.to_dict(), indent=logging.indent))
 
     def _generate_ike_error_response(self, request, notification_type,
                                      notification_data=b''):
@@ -722,8 +724,7 @@ class IkeSaController:
             except KeyError:
                 logging.warning('Received message for unknown SPI={}. Omitting.'
                                 ''.format(hexstring(my_spi)))
-                logging.debug(json.dumps(header.to_dict(),
-                              indent=None if logging.no_indent else 2))
+                logging.debug(json.dumps(header.to_dict(), indent=logging.indent))
                 return None
 
         # generate the reply (if any)

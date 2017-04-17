@@ -52,7 +52,7 @@ except KeyError:
 logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
     format='[%(asctime)s.%(msecs)03d] [%(levelname)-6s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S')
-logging.no_indent = args.no_indent
+logging.indent = None if args.no_indent else 2
 
 # create socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
