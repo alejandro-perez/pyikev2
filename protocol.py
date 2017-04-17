@@ -380,10 +380,8 @@ class IkeSa(object):
         else:
             return self._process_response(message, data, addr)
 
-    # TODO: This interface should be using a non-XFRM interface
-    # TODO: Use a Acquire object which includes (tsi, tsr, index of configuration)
-    # The acquire object must be stored in the ike_sa. It is mandatory for
-    # every creation
+    # TODO: This interface should be using a non-XFRM interface. Acquire should
+    # come from the ipsec.py module
     def process_acquire(self, xfrm_acquire, xfrm_tmpl):
         small_tsi = TrafficSelector.from_network(
             ip_network(xfrm_acquire.sel.saddr.to_ipaddr()),
@@ -806,6 +804,7 @@ class IkeSa(object):
 
         return response
 
+    # TODO: Initial exchange can be inferred from the response.exchange_type
     def _process_create_child_sa_negotiation_res(self, response,
                                                  initial_exchange=True):
         # get some relevant payloads from the message
@@ -817,9 +816,10 @@ class IkeSa(object):
 
         # recover some relevant payloads from the request
         request_payload_sa = self.request.get_payload(Payload.Type.SA, True)
+        request_payload_tsi = self.request.get_payload(Payload.Type.TSi, True)
+        request_payload_tsr = self.request.get_payload(Payload.Type.TSr, True)
         request_transport_mode = self.request.get_notifies(
             PayloadNOTIFY.Type.USE_TRANSPORT_MODE, True)
-
 
         # source of nonces is different for the initial exchange
         if initial_exchange:
@@ -836,13 +836,14 @@ class IkeSa(object):
             response_payload_nonce = response.get_payload(Payload.Type.NONCE,
                                                           True)
 
-        # check mode is consistent
+        # check mode is consistent (TODO: REVIEW THIS CODE)
         request_mode = (ipsec.Mode.TRANSPORT if request_transport_mode
                                              else ipsec.Mode.TUNNEL)
         response_mode = (ipsec.Mode.TRANSPORT if response_transport_mode
                                               else ipsec.Mode.TUNNEL)
         if request_mode != response_mode:
-            raise InvalidSelectors('Invalid mode requested {} vs {}'.format(request_mode, response_mode))
+            raise InvalidSelectors('Invalid mode requested {} vs {}'
+                                   ''.format(request_mode, response_mode))
 
         # TODO: actually verify the chosen proposal is a subset
         chosen_child_proposal = response_payload_sa.proposals[0]
@@ -855,9 +856,16 @@ class IkeSa(object):
             nonce_r=response_payload_nonce.nonce,
             sk_d=self.ike_sa_keyring.sk_d)
 
-        # TODO: Check TSi and TSr
+        # Check TSi and TSr are subsets of what we sent
         chosen_tsi = response_payload_tsi.traffic_selectors[0]
         chosen_tsr = response_payload_tsr.traffic_selectors[0]
+        matches_tsi = [x for x in request_payload_tsi.traffic_selectors
+                        if chosen_tsi.is_subset(x)]
+        matches_tsr = [x for x in request_payload_tsr.traffic_selectors
+                        if chosen_tsr.is_subset(x)]
+        if not matches_tsi or not matches_tsr:
+            raise InvalidSelectors(
+                'Responder did not select a subset of our proposed TS.')
 
         # create the IPsec SAs according to the negotiated CHILD SA
         child_sa = ChildSa(outbound_spi=chosen_child_proposal.spi,
@@ -865,11 +873,10 @@ class IkeSa(object):
                            protocol=chosen_child_proposal.protocol_id)
         self.child_sas.append(child_sa)
 
+        encr_transform = None
         if chosen_child_proposal.protocol_id == Proposal.Protocol.ESP:
             encr_transform = chosen_child_proposal.get_transform(
                 Transform.Type.ENCR).id
-        else:
-            encr_transform = None
         ipsec.create_sa(
             self.my_addr, self.peer_addr, chosen_tsi, chosen_tsr,
             chosen_child_proposal.protocol_id, child_sa.outbound_spi,

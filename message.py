@@ -574,8 +574,6 @@ class TrafficSelector(object):
         ])
         return result
 
-    # TODO: I really need to replace this with a simpler "common_subset"
-    # and have a is_subset for later checking
     def intersection(self, other):
         """ Generates the intersection of two TS payloads
         """
@@ -604,6 +602,10 @@ class TrafficSelector(object):
 
         return TrafficSelector(ts_type, ip_proto, start_port,
                                end_port, start_addr, end_addr)
+
+    def is_subset(self, other):
+        intersection = self.intersection(other)
+        return intersection == self
 
     def __eq__(self, other):
         return (

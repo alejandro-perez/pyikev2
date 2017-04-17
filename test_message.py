@@ -196,6 +196,15 @@ class TestTrafficSelector(TestPayloadMixin, unittest.TestCase):
             ip_address('192.168.10.10'))
         self.assertEqual(ts2.get_network(), ip_network('192.168.0.0/21'))
 
+    def test_is_subset(self):
+        ts2 = TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
+            TrafficSelector.IpProtocol.ANY, 4, 15, ip_address('192.167.1.5'),
+            ip_address('193.168.10.10'))
+        result1 = ts2.intersection(self.object)
+        self.assertTrue(result1.is_subset(self.object))
+        self.assertTrue(result1.is_subset(ts2))
+        self.assertTrue(ts2.is_subset(ts2))
+        self.assertTrue(self.object.is_subset(self.object))
 
 class TestPayloadTS(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
