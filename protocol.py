@@ -653,8 +653,7 @@ class IkeSa(object):
         keypad = prf(self.configuration['psk'], b'Key Pad for IKEv2')
         return prf(keypad, data_to_be_signed)
 
-    def _process_create_child_sa_negotiation_req(self, request,
-                                                 initial_exchange=True):
+    def _process_create_child_sa_negotiation_req(self, request):
         """ This method process a CREATE CHILD SA negotiation request
         """
         # get some relevant payloads from the message
@@ -665,8 +664,7 @@ class IkeSa(object):
 
 
         # source of nonces is different for the initial exchange
-        if initial_exchange:
-            # parse IKE_SA_INIT req and response
+        if request.exchange_type == Message.Exchange.IKE_AUTH:
             ike_sa_init_req = Message.parse(self.ike_sa_init_req_data)
             ike_sa_init_res = Message.parse(self.ike_sa_init_res_data)
             request_payload_nonce = ike_sa_init_req.get_payload(
@@ -675,7 +673,7 @@ class IkeSa(object):
                 Payload.Type.NONCE)
         else:
             request_payload_nonce = request.get_payload(Payload.Type.NONCE,
-                                                        True)
+                                                        encrypted=True)
             response_payload_nonce = PayloadNONCE()
             response_payloads.append(response_payload_nonce)
 
@@ -770,7 +768,7 @@ class IkeSa(object):
 
         # process the CHILD_SA creation negotiation
         response_payloads = self._process_create_child_sa_negotiation_req(
-            request, initial_exchange=True)
+            request)
 
         # generate IDr
         response_payload_idr = PayloadIDr(self.configuration['id'].id_type,
@@ -804,9 +802,7 @@ class IkeSa(object):
 
         return response
 
-    # TODO: Initial exchange can be inferred from the response.exchange_type
-    def _process_create_child_sa_negotiation_res(self, response,
-                                                 initial_exchange=True):
+    def _process_create_child_sa_negotiation_res(self, response):
         # get some relevant payloads from the message
         response_payload_sa = response.get_payload(Payload.Type.SA, True)
         response_payload_tsi = response.get_payload(Payload.Type.TSi, True)
@@ -822,7 +818,7 @@ class IkeSa(object):
             PayloadNOTIFY.Type.USE_TRANSPORT_MODE, True)
 
         # source of nonces is different for the initial exchange
-        if initial_exchange:
+        if response.exchange_type == Message.Exchange.IKE_AUTH:
             # parse IKE_SA_INIT req and response
             ike_sa_init_req = Message.parse(self.ike_sa_init_req_data)
             ike_sa_init_res = Message.parse(self.ike_sa_init_res_data)
@@ -913,8 +909,7 @@ class IkeSa(object):
             raise AuthenticationFailed('Invalid AUTH data received')
 
         # process the CHILD_SA creation negotiation
-        self._process_create_child_sa_negotiation_res(response,
-                                                      initial_exchange=True)
+        self._process_create_child_sa_negotiation_res(response)
 
         self.state = IkeSa.State.ESTABLISHED
         return None
@@ -1015,8 +1010,8 @@ class IkeSa(object):
                                   PayloadNOTIFY.Type.REKEY_SA,
                                   rekeyed_child_sa.inbound_spi, b''))
 
-            response_payloads += self._process_create_child_sa_negotiation_req(
-                    request, initial_exchange=False)
+            response_payloads += (
+                self._process_create_child_sa_negotiation_req(request))
 
         return Message(
             spi_i=request.spi_i,
