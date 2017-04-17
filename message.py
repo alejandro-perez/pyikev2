@@ -853,10 +853,11 @@ class Message:
             message.payloads = cls._parse_payloads(data[28:], header[2])
 
             # if there is a Payload SK
-            if (message.payloads and
-                    message.payloads[-1].type == Payload.Type.SK and
-                    crypto is not None):
-                payload_sk = message.payloads[-1]
+            if (message.payloads
+                    and message.payloads[-1].type == Payload.Type.SK
+                    and crypto is not None):
+                # read the payload SK and remove it from the list
+                payload_sk = message.payloads.pop()
 
                 # check integrity
                 checksum = crypto.integrity.compute(
@@ -864,12 +865,10 @@ class Message:
                 if checksum != data[-crypto.integrity.hash_size:]:
                     raise InvalidSyntax('CHECKSUM ERROR')
 
-                # parse decrypted payloads
+                # parse decrypted payloads and remove Payload SK
                 decrypted_data = payload_sk.decrypt(crypto)
-                message.encrypted_payloads += cls._parse_payloads(
+                message.encrypted_payloads = cls._parse_payloads(
                     decrypted_data, payload_sk.next_payload_type)
-
-                message.payloads.remove(payload_sk)
 
         return message
 
@@ -893,17 +892,21 @@ class Message:
 
 
     def to_bytes(self, crypto=None):
-        # if keyring is provided, encrypt everything into a SK payload
-        if crypto is not None:
+        # create a temporary copy of payloads list
+        _payloads = self.payloads[:]
+
+        # if crypto is provided, encrypt everything into a SK payload
+        if (crypto is not None
+                and self.exchange_type != Message.Exchange.IKE_SA_INIT):
             cleartext = self._payloads_to_bytes(self.encrypted_payloads)
             payload_sk = PayloadSK.generate(cleartext, crypto)
             payload_sk.next_payload_type = (
-                self.encrypted_payloads[0].type if self.encrypted_payloads 
+                self.encrypted_payloads[0].type if self.encrypted_payloads
                                                 else Payload.Type.NONE)
-            self.payloads.append(payload_sk)
+            _payloads.append(payload_sk)
 
         # generate header_data
-        first_payload_type = (self.payloads[0].type if self.payloads 
+        first_payload_type = (_payloads[0].type if _payloads
                                                     else Payload.Type.NONE)
         header_data = bytearray(pack(
             '>8s8s4B2L', self.spi_i, self.spi_r, first_payload_type,
@@ -914,7 +917,7 @@ class Message:
         ))
 
         # generate payloads
-        payloads_data = self._payloads_to_bytes(self.payloads)
+        payloads_data = self._payloads_to_bytes(_payloads)
 
         # generate final data
         data = header_data + payloads_data
@@ -922,8 +925,8 @@ class Message:
         # update length once we know it
         pack_into('>L', data, 24, len(data))
 
-        # calculate checksum
-        if crypto is not None:
+        # calculate checksum (if payload SK is present)
+        if crypto is not None and _payloads[-1].type == Payload.Type.SK:
             # check integrity
             checksum = crypto.integrity.compute(
                 crypto.sk_a, data[:-crypto.integrity.hash_size])
