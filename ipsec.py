@@ -3,6 +3,8 @@
 
 """ This module defines a simple SPI to access to IPsec features of the kernel
 """
+
+# TODO: Split into netlink.py and ipsec.py
 from message import TrafficSelector, Proposal, Transform
 from crypto import Cipher, Integrity
 from helpers import hexstring, SafeIntEnum
@@ -14,6 +16,7 @@ from struct import pack, unpack_from
 import time
 import os
 from collections import defaultdict
+from random import SystemRandom
 
 # netlink flags
 NLM_F_REQUEST    = 0x0001
@@ -125,6 +128,7 @@ class NetlinkErrorMsg(NetlinkStructure):
     _fields_ = (('error', c_int),
                 ('msg', NetlinkHeader))
 
+# TODO: This needs way better handling of IPv6 addresses in general
 class XfrmAddress(NetlinkStructure):
     _fields_ = (('addr', c_uint32.__ctype_be__ * 4),)
 
@@ -133,6 +137,9 @@ class XfrmAddress(NetlinkStructure):
         result = XfrmAddress()
         result.addr[0] = int(ip_addr)
         return result
+
+    def to_ipaddr(self):
+        return ip_address(self.addr[0])
 
 class XfrmSelector(NetlinkStructure):
     _fields_ = (('daddr', XfrmAddress),
@@ -271,7 +278,7 @@ _attr_to_struct = {
     XFRMA_TMPL: XfrmUserTmpl
 }
 
-def parse_attributes(data):
+def parse_xfrm_attributes(data):
     attributes = {}
     while len(data) > 0:
         length, type = unpack_from('HH', data)
@@ -284,14 +291,14 @@ def parse_attributes(data):
         data = data[length:]
     return attributes
 
-def parse_message(data):
+def parse_xfrm_message(data):
     """ Returns a tuple XfrmHeader, Msg, AttributeMap
     """
     header = NetlinkHeader.parse(data)
     msg_struct = _msg_to_struct.get(header.type, None)
     if msg_struct:
         msg = msg_struct.parse(data[sizeof(header):])
-        attributes = parse_attributes(data[sizeof(header) + sizeof(msg):header.length])
+        attributes = parse_xfrm_attributes(data[sizeof(header) + sizeof(msg):header.length])
     return header,  msg, attributes
 
 def xfrm_send(command, flags, data):
@@ -304,7 +311,7 @@ def xfrm_send(command, flags, data):
     sock.send(bytes(header) + data)
     data = sock.recv(4096)
     sock.close()
-    header, msg, attributes = parse_message(data)
+    header, msg, attributes = parse_xfrm_message(data)
     if header.type == NLMSG_ERROR and msg.error != 0:
         raise NetlinkError(
             'Received error header!: {}'.format(msg.error))
@@ -336,7 +343,7 @@ def Attribute(code, structure):
     return _internal(code=code, len=sizeof(_internal), data=structure)
 
 def xfrm_create_policy(src_selector, dst_selector, src_port, dst_port,
-                       ip_proto, dir, ipsec_proto, mode, src, dst):
+                       ip_proto, dir, ipsec_proto, mode, src, dst, index=0):
     policy = XfrmUserPolicyInfo(
         sel = XfrmSelector(
             family = socket.AF_INET,
@@ -350,6 +357,7 @@ def xfrm_create_policy(src_selector, dst_selector, src_port, dst_port,
             prefixlen_s = src_selector.prefixlen,
             proto = ip_proto),
         dir = dir,
+        index = index,
         action = XFRM_POLICY_ALLOW,
         lft = XfrmLifetimeCfg.infinite(),
     )
@@ -366,7 +374,7 @@ def xfrm_create_policy(src_selector, dst_selector, src_port, dst_port,
             ealgos = 0xFFFFFFFF,
             calgos = 0xFFFFFFFF,
             mode = mode))
-    xfrm_send(XFRM_MSG_NEWPOLICY, (NLM_F_REQUEST | NLM_F_ACK),
+    header, msg, attr = xfrm_send(XFRM_MSG_NEWPOLICY, (NLM_F_REQUEST | NLM_F_ACK),
               bytes(policy) + bytes(tmpl))
 
 def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
@@ -440,10 +448,14 @@ def create_policies(my_addr, peer_addr, ike_conf):
             src_selector = ip_network(my_addr)
             dst_selector = ip_network(peer_addr)
 
+        # generate an index for outbound policies
+        index = SystemRandom().randint(0, 10000) << 2 | XFRM_POLICY_OUT
+        ipsec_conf['index'] = index
+
         xfrm_create_policy(src_selector, dst_selector, ipsec_conf['my_port'],
                            ipsec_conf['peer_port'], ipsec_conf['ip_proto'],
                            XFRM_POLICY_OUT, ipsec_conf['ipsec_proto'],
-                           ipsec_conf['mode'], my_addr, peer_addr)
+                           ipsec_conf['mode'], my_addr, peer_addr, index=index)
         xfrm_create_policy(dst_selector, src_selector, ipsec_conf['peer_port'],
                            ipsec_conf['my_port'], ipsec_conf['ip_proto'],
                            XFRM_POLICY_IN, ipsec_conf['ipsec_proto'],
@@ -460,19 +472,9 @@ def create_sa(src, dst, src_sel, dst_sel, ipsec_protocol, spi,
                          src_sel.ip_proto, ipsec_protocol, mode, src, dst,
                          enc_algorith, sk_e, auth_algorithm, sk_a)
 
-
-if __name__ == '__main__':
-    from pprint import pprint
+def get_socket():
     sock = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW,
                              socket.NETLINK_XFRM)
     sock.bind((0, XFRMGRP_ACQUIRE | XFRMGRP_EXPIRE),)
-    while True:
-        data = sock.recv(4096)
-        header, msg, attributes = parse_message(data)
-        pprint(header.to_dict())
-        pprint(msg.to_dict())
-        if header.type == XFRM_MSG_ACQUIRE:
-            print("ACQUIRE")
-            pprint(attributes[XFRMA_TMPL].to_dict())
-        elif header.type == XFRM_MSG_EXPIRE:
-            print("EXPIRE")
+    return sock
+
