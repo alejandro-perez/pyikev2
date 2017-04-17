@@ -275,6 +275,9 @@ def parse_attributes(data):
     attributes = {}
     while len(data) > 0:
         length, type = unpack_from('HH', data)
+        # sometimes we just receive a lot of 0s and need to ignore them
+        if length == 0:
+            break;
         attr_struct = _attr_to_struct.get(type, None)
         if attr_struct:
             attributes[type] = attr_struct.parse(data[4:length])
