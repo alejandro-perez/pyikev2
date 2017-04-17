@@ -194,7 +194,7 @@ class TestTrafficSelector(TestPayloadMixin, unittest.TestCase):
         ts2 = TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
             TrafficSelector.IpProtocol.TCP, 0, 10, ip_address('192.168.1.1'),
             ip_address('192.168.10.10'))
-        self.assertEqual(ts2.get_network(), ip_network('192.168.0.0/20'))
+        self.assertEqual(ts2.get_network(), ip_network('192.168.0.0/21'))
 
 
 class TestPayloadTS(TestPayloadMixin, unittest.TestCase):
@@ -283,7 +283,7 @@ class TestMessage(TestPayloadMixin, unittest.TestCase):
             spi_r=b'12345678',
             major=2,
             minor=0,
-            exchange_type=Message.Exchange.IKE_SA_INIT,
+            exchange_type=Message.Exchange.IKE_AUTH,
             is_response=False,
             can_use_higher_version=False,
             is_initiator=False,

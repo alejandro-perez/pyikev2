@@ -534,7 +534,7 @@ class TrafficSelector(object):
 
     def get_network(self):
         network = ip_network(self.start_addr)
-        while self.end_addr not in network:
+        while self.end_addr not in network.supernet():
             network = network.supernet()
         return network
 
