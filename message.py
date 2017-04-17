@@ -246,6 +246,31 @@ class Proposal:
     def get_transforms(self, type):
         return [x for x in self.transforms if x.type == type]
 
+    def intersection(self, other):
+        """ Returns the intersection between this Proposal and other Proposal
+            It contains one Transform per type (e.g. ENCR, AUTH, DH...)
+            The Proposal num and SPI values are taken from "other"
+        """
+        if self.protocol_id == other.protocol_id:
+            selected = {}
+            for my_transform in self.transforms:
+                for peer_transform in other.transforms:
+                    if my_transform == peer_transform:
+                        if my_transform.type not in selected:
+                            selected[my_transform.type] = my_transform
+            # If we have a transform of each type => success
+            if set(selected) == set(x.type for x in self.transforms):
+                return Proposal(other.num, self.protocol_id, other.spi,
+                                list(selected.values()))
+        return None
+
+    def __eq__(self, other):
+        return ((self.num, self.protocol_id, self.spi, self.transforms)
+            == (other.num, other.protocol_id, other.spi, other.transforms))
+
+    def is_subset(self, other):
+        return (self.intersection(other) == self)
+
 class PayloadSA(Payload):
     type = Payload.Type.SA
 

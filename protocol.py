@@ -21,13 +21,9 @@ from collections import namedtuple, OrderedDict
 import json
 from ipaddress import ip_address, ip_network
 import ipsec
-from pprint import pprint, pformat
 
-
-Keyring = namedtuple('Keyring',
-    ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er', 'sk_pi', 'sk_pr']
-)
-
+Keyring = namedtuple('Keyring', ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er',
+                                 'sk_pi', 'sk_pr'])
 ChildSa = namedtuple('ChildSa', ['inbound_spi', 'outbound_spi', 'protocol'])
 Acquire = namedtuple('Acquire', ['tsi', 'tsr', 'index'])
 
@@ -42,7 +38,7 @@ class IkeSa(object):
         REKEYED = 3
         DELETED = 4
         INIT_REQ_SENT = 5
-        AUTH_REQ_SENT = 5
+        AUTH_REQ_SENT = 6
 
     def __init__(self, is_initiator, peer_spi, configuration, my_addr, peer_addr):
         self.state = IkeSa.State.INITIAL
@@ -150,22 +146,12 @@ class IkeSa(object):
         return child_sa_keyring
 
     def _select_best_sa_proposal(self, my_proposal, peer_payload_sa):
-        """ Selects a received Payload SA wit our own suite
+        """ Selects a received Payload SA with our own suite
         """
         for peer_proposal in peer_payload_sa.proposals:
-            if peer_proposal.protocol_id == my_proposal.protocol_id:
-                selected_transforms = {}
-                for my_transform in my_proposal.transforms:
-                    for peer_transform in peer_proposal.transforms:
-                        if my_transform == peer_transform:
-                            if my_transform.type not in selected_transforms:
-                                selected_transforms[my_transform.type] = my_transform
-                # If we have a transform of each type => success
-                if (set(selected_transforms)
-                        == set(x.type for x in my_proposal.transforms)):
-                    return Proposal(1, my_proposal.protocol_id,
-                                    peer_proposal.spi,
-                                    list(selected_transforms.values()))
+            intersection = my_proposal.intersection(peer_proposal)
+            if intersection is not None:
+                return intersection
         raise NoProposalChosen('Could not find a suitable matching Proposal')
 
     def _ike_conf_2_proposal(self):
@@ -366,7 +352,8 @@ class IkeSa(object):
             request_data = request.to_bytes(self.my_crypto)
             self.log_message(request, addr, request_data, send=True)
             return True, request_data
-
+        # TODO: Closing the IKE_SA can be done by "tricking" the state machine
+        # rather than having this confusing return interface
         return True, None
 
     def process_message(self, data, addr):
@@ -775,6 +762,7 @@ class IkeSa(object):
                                           self.configuration['id'].id_data)
 
         # generate AUTH payload
+        # TODO: Use a function for generating/validating AUTH payloads
         auth_data = self._generate_psk_auth_payload(
             self.ike_sa_init_res_data,
             ike_sa_init_req.get_payload(Payload.Type.NONCE).nonce,
@@ -841,8 +829,10 @@ class IkeSa(object):
             raise InvalidSelectors('Invalid mode requested {} vs {}'
                                    ''.format(request_mode, response_mode))
 
-        # TODO: actually verify the chosen proposal is a subset
+        # Check responder provided a valid proposal
         chosen_child_proposal = response_payload_sa.proposals[0]
+        if request_payload_sa.proposals[0].intersection(chosen_child_proposal) != chosen_child_proposal:
+            raise NoProposalChosen('Responder did not choose a valid proposal')
 
         # generate CHILD key material
         child_sa_keyring = self._generate_child_sa_key_material(
