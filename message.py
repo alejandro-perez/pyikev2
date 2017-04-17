@@ -166,7 +166,7 @@ class Transform:
         return result
 
     def __eq__(self, other):
-        return ((self.type, self.id, self.keylen) 
+        return ((self.type, self.id, self.keylen)
                  == (other.type, other.id, other.keylen))
 
 class Proposal:
@@ -218,7 +218,7 @@ class Proposal:
         return Proposal(num, protocol_id, spi, transforms)
 
     def to_bytes(self):
-        data = bytearray(pack('>BBBB', self.num, self.protocol_id, 
+        data = bytearray(pack('>BBBB', self.num, self.protocol_id,
                                        len(self.spi), len(self.transforms)))
         if len(self.spi):
             data += self.spi
@@ -369,7 +369,7 @@ class PayloadNOTIFY(Payload):
         ESP_TFC_PADDING_NOT_SUPPORTED = 16394
         NON_FIRST_FRAGMENTS_ALSO = 16395
 
-    def __init__(self, protocol_id, notification_type, spi, notification_data, 
+    def __init__(self, protocol_id, notification_type, spi, notification_data,
                  critical=False):
         super(PayloadNOTIFY, self).__init__(critical)
         self.protocol_id = protocol_id
@@ -388,11 +388,11 @@ class PayloadNOTIFY(Payload):
         else:
             spi = b''
         notification_data = data[4 + spi_size:]
-        return PayloadNOTIFY(protocol_id, notification_type, spi, 
+        return PayloadNOTIFY(protocol_id, notification_type, spi,
                              notification_data)
 
     def to_bytes(self):
-        data = bytearray(pack('>BBH', self.protocol_id, len(self.spi), 
+        data = bytearray(pack('>BBH', self.protocol_id, len(self.spi),
                                       self.notification_type))
         if len(self.spi) > 0:
             data += self.spi
@@ -547,11 +547,11 @@ class TrafficSelector(object):
     @classmethod
     def parse(cls, data, critical=False):
         try:
-            (ts_type, ip_proto, 
+            (ts_type, ip_proto,
                 _, start_port, end_port) = unpack_from('>BBHHH', data)
-            addr_len = (4 if ts_type == TrafficSelector.Type.TS_IPV4_ADDR_RANGE 
+            addr_len = (4 if ts_type == TrafficSelector.Type.TS_IPV4_ADDR_RANGE
                           else 16)
-            start_addr, end_addr = unpack_from('>{0}s{0}s'.format(addr_len), 
+            start_addr, end_addr = unpack_from('>{0}s{0}s'.format(addr_len),
                                                data, 8)
         except struct_error:
             raise InvalidSyntax('Error parsing Traffic selector.')
@@ -561,7 +561,7 @@ class TrafficSelector(object):
     def to_bytes(self):
         addr_len = (4 if self.ts_type == TrafficSelector.Type.TS_IPV4_ADDR_RANGE
                       else 16)
-        return pack('>BBHHH{0}s{0}s'.format(addr_len), self.ts_type, 
+        return pack('>BBHHH{0}s{0}s'.format(addr_len), self.ts_type,
                     self.ip_proto, 8 + addr_len * 2, self.start_port,
                     self.end_port, self.start_addr.packed, self.end_addr.packed)
 
@@ -574,6 +574,8 @@ class TrafficSelector(object):
         ])
         return result
 
+    # TODO: I really need to replace this with a simpler "common_subset"
+    # and have a is_subset for later checking
     def intersection(self, other):
         """ Generates the intersection of two TS payloads
         """
@@ -587,7 +589,7 @@ class TrafficSelector(object):
                 and other.ip_proto != TrafficSelector.IpProtocol.ANY):
             return None
 
-        ip_proto = (self.ip_proto if self.ip_proto 
+        ip_proto = (self.ip_proto if self.ip_proto
                         != TrafficSelector.IpProtocol.ANY else other.ip_proto)
 
         start_port = max(self.start_port, other.start_port)
@@ -677,7 +679,7 @@ class PayloadSK(Payload):
         iv = self.ciphertext[:crypto.cipher.block_size]
         ciphertext = self.ciphertext[
             crypto.cipher.block_size:-crypto.integrity.hash_size]
-        decrypted = crypto.cipher.decrypt(crypto.sk_e, bytes(iv), 
+        decrypted = crypto.cipher.decrypt(crypto.sk_e, bytes(iv),
                                           bytes(ciphertext))
         padlen = decrypted[-1]
         return decrypted[:-1-padlen]
@@ -685,10 +687,10 @@ class PayloadSK(Payload):
     @classmethod
     def generate(cls, cleartext, crypto):
         iv = crypto.cipher.generate_iv()
-        padlen = (crypto.cipher.block_size 
+        padlen = (crypto.cipher.block_size
                   - (len(cleartext) % crypto.cipher.block_size) - 1)
         cleartext += b'\x00' * padlen + pack('>B', padlen)
-        encrypted = crypto.cipher.encrypt(crypto.sk_e, bytes(iv), 
+        encrypted = crypto.cipher.encrypt(crypto.sk_e, bytes(iv),
                                           bytes(cleartext))
         return PayloadSK(iv + encrypted + b'\x00' * crypto.integrity.hash_size)
 
@@ -766,6 +768,9 @@ class PayloadFactory:
                 'Unrecognized payload with type '
                 '{}'.format(Payload.Type.safe_name(payload_type)))
 
+# TODO: Message should have the crypto object from the beggining, in such a
+# way that to_bytes do not require providing it. In relation with this,
+# the IV for the SK should probably be generated here to ensure consistency
 class Message:
     class Exchange(SafeIntEnum):
         IKE_SA_INIT = 34
@@ -853,10 +858,11 @@ class Message:
             message.payloads = cls._parse_payloads(data[28:], header[2])
 
             # if there is a Payload SK
-            if (message.payloads and
-                    message.payloads[-1].type == Payload.Type.SK and
-                    crypto is not None):
-                payload_sk = message.payloads[-1]
+            if (message.payloads
+                    and message.payloads[-1].type == Payload.Type.SK
+                    and crypto is not None):
+                # read the payload SK and remove it from the list
+                payload_sk = message.payloads.pop()
 
                 # check integrity
                 checksum = crypto.integrity.compute(
@@ -864,12 +870,10 @@ class Message:
                 if checksum != data[-crypto.integrity.hash_size:]:
                     raise InvalidSyntax('CHECKSUM ERROR')
 
-                # parse decrypted payloads
+                # parse decrypted payloads and remove Payload SK
                 decrypted_data = payload_sk.decrypt(crypto)
-                message.encrypted_payloads += cls._parse_payloads(
+                message.encrypted_payloads = cls._parse_payloads(
                     decrypted_data, payload_sk.next_payload_type)
-
-                message.payloads.remove(payload_sk)
 
         return message
 
@@ -886,24 +890,28 @@ class Message:
             else:
                 next_payload_type = Payload.Type.NONE
 
-            payloads_data += pack('>BBH', next_payload_type, 0, 
+            payloads_data += pack('>BBH', next_payload_type, 0,
                                           len(payload_data) + 4)
             payloads_data += payload_data
         return payloads_data
 
 
     def to_bytes(self, crypto=None):
-        # if keyring is provided, encrypt everything into a SK payload
-        if crypto is not None:
+        # create a temporary copy of payloads list
+        _payloads = self.payloads[:]
+
+        # if crypto is provided, encrypt everything into a SK payload
+        if (crypto is not None
+                and self.exchange_type != Message.Exchange.IKE_SA_INIT):
             cleartext = self._payloads_to_bytes(self.encrypted_payloads)
             payload_sk = PayloadSK.generate(cleartext, crypto)
             payload_sk.next_payload_type = (
-                self.encrypted_payloads[0].type if self.encrypted_payloads 
+                self.encrypted_payloads[0].type if self.encrypted_payloads
                                                 else Payload.Type.NONE)
-            self.payloads.append(payload_sk)
+            _payloads.append(payload_sk)
 
         # generate header_data
-        first_payload_type = (self.payloads[0].type if self.payloads 
+        first_payload_type = (_payloads[0].type if _payloads
                                                     else Payload.Type.NONE)
         header_data = bytearray(pack(
             '>8s8s4B2L', self.spi_i, self.spi_r, first_payload_type,
@@ -914,7 +922,7 @@ class Message:
         ))
 
         # generate payloads
-        payloads_data = self._payloads_to_bytes(self.payloads)
+        payloads_data = self._payloads_to_bytes(_payloads)
 
         # generate final data
         data = header_data + payloads_data
@@ -922,8 +930,8 @@ class Message:
         # update length once we know it
         pack_into('>L', data, 24, len(data))
 
-        # calculate checksum
-        if crypto is not None:
+        # calculate checksum (if payload SK is present)
+        if crypto is not None and _payloads[-1].type == Payload.Type.SK:
             # check integrity
             checksum = crypto.integrity.compute(
                 crypto.sk_a, data[:-crypto.integrity.hash_size])
