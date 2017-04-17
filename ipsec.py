@@ -307,7 +307,7 @@ def xfrm_send(command, flags, data):
     header, msg, attributes = parse_message(data)
     if header.type == NLMSG_ERROR and msg.error != 0:
         raise NetlinkError(
-            'Received error header!: {}'.format(error_msg.error))
+            'Received error header!: {}'.format(msg.error))
     return header, msg, attributes
 
 def flush_policies():
