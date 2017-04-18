@@ -6,20 +6,27 @@
 
 __author__ = 'Alejandro Perez <alex@um.es>'
 
-import os
-from hmac import HMAC
 import hashlib
-from collections import namedtuple
-from helpers import SafeIntEnum
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.asymmetric import dh
-import cryptography.hazmat.backends.openssl.backend
-from cryptography.hazmat.primitives.ciphers import Cipher as cypher, algorithms, modes
+import os
 
-Crypto = namedtuple('Crypto', ['cipher', 'sk_e', 'integrity', 'sk_a', 'prf', 'sk_p'])
+from collections import namedtuple
+
+from hmac import HMAC
+
+import cryptography.hazmat.backends.openssl.backend
+from cryptography.hazmat.primitives.asymmetric import dh
+from cryptography.hazmat.primitives.ciphers import (Cipher as cypher,
+                                                    algorithms, modes)
+
+from helpers import SafeIntEnum
+
+Crypto = namedtuple('Crypto', ['cipher', 'sk_e', 'integrity', 'sk_a', 'prf',
+                               'sk_p'])
+
 
 class EncrError(Exception):
     pass
+
 
 class Prf(object):
     class Id(SafeIntEnum):
@@ -29,7 +36,7 @@ class Prf(object):
 
     _digestmod_dict = {
         Id.PRF_HMAC_MD5: hashlib.md5,
-        Id.PRF_HMAC_SHA1: hashlib.sha1
+        Id.PRF_HMAC_SHA1: hashlib.sha1,
     }
 
     def __init__(self, transform_id):
@@ -56,6 +63,7 @@ class Prf(object):
             result += temp
             i += 1
         return result[:size]
+
 
 class Cipher:
     class Id(SafeIntEnum):
@@ -92,20 +100,25 @@ class Cipher:
 
     def encrypt(self, key, iv, data):
         if len(key) != self.key_size:
-            raise EncrError('Key must be of the indicated size {}'.format(self.key_size))
-        cyph = cypher(self._algorithm(key), modes.CBC(iv), backend=self._backend)
+            raise EncrError('Key must be of the indicated size {}'
+                            ''.format(self.key_size))
+        cyph = cypher(self._algorithm(key), modes.CBC(iv),
+                      backend=self._backend)
         encryptor = cyph.encryptor()
         return encryptor.update(data) + encryptor.finalize()
 
     def decrypt(self, key, iv, data):
         if len(key) != self.key_size:
-            raise EncrError('Key must be of the indicated size {}'.format(self.key_size))
-        cyph = cypher(self._algorithm(key), modes.CBC(iv), backend=self._backend)
+            raise EncrError('Key must be of the indicated size {}'
+                            ''.format(self.key_size))
+        cyph = cypher(self._algorithm(key), modes.CBC(iv),
+                      backend=self._backend)
         decryptor = cyph.decryptor()
         return decryptor.update(data) + decryptor.finalize()
 
     def generate_iv(self):
         return os.urandom(self.block_size)
+
 
 class DiffieHellman:
     class Id(SafeIntEnum):
@@ -235,7 +248,7 @@ class DiffieHellman:
             '387FE8D76E3C0468043E8F663F4860EE12BF2D5B0B7474D6E694F91E'
             '6DCC4024FFFFFFFFFFFFFFFF',
 
-         # 18, MODP8192
+        # 18, MODP8192
         Id.DH_18:
             'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1'
             '29024E088A67CC74020BBEA63B139B22514A08798E3404DD'
@@ -279,8 +292,8 @@ class DiffieHellman:
             'B1D510BD7EE74D73FAF36BC31ECFA268359046F4EB879F92'
             '4009438B481C6CD7889A002ED5EE382BC9190DA6FC026E47'
             '9558E4475677E9AA9E3050E2765694DFC81F56E880B96E71'
-            '60C980DD98EDD3DFFFFFFFFFFFFFFFFF'
-    };
+            '60C980DD98EDD3DFFFFFFFFFFFFFFFFF',
+    }
 
     backend = cryptography.hazmat.backends.openssl.backend
 
@@ -303,6 +316,7 @@ class DiffieHellman:
         peer_public_key = peer_public_numbers.public_key(self.backend)
         self.shared_secret = self._private_key.exchange(peer_public_key)
 
+
 class Integrity:
     class Id(SafeIntEnum):
         INTEG_NONE = 0
@@ -314,7 +328,7 @@ class Integrity:
 
     _digestmod_dict = {
         Id.AUTH_HMAC_MD5_96: hashlib.md5,
-        Id.AUTH_HMAC_SHA1_96: hashlib.sha1
+        Id.AUTH_HMAC_SHA1_96: hashlib.sha1,
     }
 
     def __init__(self, transform_id):
@@ -334,6 +348,7 @@ class Integrity:
         m = HMAC(key, data, digestmod=self.hasher)
         # Hardcoded as we only support _96 algorithms
         return m.digest()[:12]
+
 
 class ESN:
     class Id(SafeIntEnum):

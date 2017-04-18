@@ -3,29 +3,36 @@
 
 """ This module defines the classes for the protocol handling.
 """
+import json
 import logging
 import os
-from message import (Message, Payload, PayloadNONCE, PayloadVENDOR, PayloadKE,
-                     Proposal, Transform, PayloadSA, PayloadAUTH, PayloadIDi,
-                     PayloadIDr, PayloadTSi, PayloadTSr, TrafficSelector,
-                     PayloadNOTIFY, PayloadDELETE)
-from message import (IkeSaError, ChildSaError, InvalidSyntax,
-                     UnsupportedCriticalPayload, NoProposalChosen,
-                     InvalidKePayload, AuthenticationFailed, InvalidSelectors,
-                     PayloadNotFound, ChildSaNotFound)
-from helpers import SafeEnum, SafeIntEnum, hexstring
-from random import SystemRandom
-from crypto import DiffieHellman, Prf, Integrity, Cipher, Crypto
-from struct import pack, unpack
-from collections import namedtuple, OrderedDict
-import json
+
+from collections import namedtuple
 from ipaddress import ip_address, ip_network
+from struct import pack, unpack
+
+from crypto import Cipher, Crypto, DiffieHellman, Integrity, Prf
+
+from helpers import SafeIntEnum, hexstring
+
 import ipsec
+
+from message import (AuthenticationFailed, ChildSaNotFound, IkeSaError,
+                     InvalidKePayload, InvalidSelectors, InvalidSyntax,
+                     NoProposalChosen, PayloadNotFound,
+                     UnsupportedCriticalPayload)
+
+from message import (Message, Payload, PayloadAUTH, PayloadDELETE, PayloadIDi,
+                     PayloadIDr, PayloadKE, PayloadNONCE, PayloadNOTIFY,
+                     PayloadSA, PayloadTSi, PayloadTSr, PayloadVENDOR,
+                     Proposal, TrafficSelector, Transform)
+
 
 Keyring = namedtuple('Keyring', ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er',
                                  'sk_pi', 'sk_pr'])
 ChildSa = namedtuple('ChildSa', ['inbound_spi', 'outbound_spi', 'protocol'])
 Acquire = namedtuple('Acquire', ['tsi', 'tsr', 'index'])
+
 
 class IkeSa(object):
     """ This class controls the state machine of a IKE SA
@@ -41,7 +48,8 @@ class IkeSa(object):
         AUTH_REQ_SENT = 6
         CHILD_REQ_SENT = 7
 
-    def __init__(self, is_initiator, peer_spi, configuration, my_addr, peer_addr):
+    def __init__(self, is_initiator, peer_spi, configuration, my_addr,
+                 peer_addr):
         self.state = IkeSa.State.INITIAL
         self.my_spi = os.urandom(8)
         self.peer_spi = peer_spi
@@ -94,13 +102,10 @@ class IkeSa(object):
         self.my_crypto = crypto_i if self.is_initiator else crypto_r
         self.peer_crypto = crypto_r if self.is_initiator else crypto_i
 
-        logging.debug('Generated sk_d: {}'.format(hexstring(ike_sa_keyring.sk_d)))
-        logging.debug('Generated sk_ai: {}'.format(hexstring(ike_sa_keyring.sk_ai)))
-        logging.debug('Generated sk_ar: {}'.format(hexstring(ike_sa_keyring.sk_ar)))
-        logging.debug('Generated sk_ei: {}'.format(hexstring(ike_sa_keyring.sk_ei)))
-        logging.debug('Generated sk_er: {}'.format(hexstring(ike_sa_keyring.sk_er)))
-        logging.debug('Generated sk_pi: {}'.format(hexstring(ike_sa_keyring.sk_pi)))
-        logging.debug('Generated sk_pr: {}'.format(hexstring(ike_sa_keyring.sk_pr)))
+        for keyname in ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei',
+                        'sk_er', 'sk_pi', 'sk_pr']:
+            hexkey = hexstring(getattr(ike_sa_keyring, keyname))
+            logging.debug('Generated {}: {}'.format(keyname, hexkey))
 
         return ike_sa_keyring
 
@@ -115,12 +120,13 @@ class IkeSa(object):
                                         nonce_i, nonce_r, sk_d):
         """ Generates CHILD_SA key material
         """
-        # TODO: Replace self.chosen_proposal for adding prf to the crypto object
-        # so we have access to the prf without the proposal)
+        # TODO: Replace self.chosen_proposal for adding prf to the crypto
+        # object so we have access to the prf without the proposal)
         prf = Prf(ike_proposal.get_transform(Transform.Type.PRF).id)
 
         # ESP and AH need integrity transform
-        integ = Integrity(child_proposal.get_transform(Transform.Type.INTEG).id)
+        integ = Integrity(
+            child_proposal.get_transform(Transform.Type.INTEG).id)
         integ_key_size = integ.key_size
         encr_key_size = 0
         if child_proposal.protocol_id == Proposal.Protocol.ESP:
@@ -178,7 +184,7 @@ class IkeSa(object):
         my_proposal = self._ipsec_conf_2_proposal(ipsec_conf)
         return self._select_best_sa_proposal(my_proposal, peer_payload_sa)
 
-    def _ipsec_conf_2_traffic_selectors(self, ipsec_conf):
+    def _ipsec_conf_2_ts(self, ipsec_conf):
         """ Generates traffic selectors based on an ipsec configuration
         """
         conf_tsi = TrafficSelector.from_network(ipsec_conf['my_subnet'],
@@ -199,7 +205,7 @@ class IkeSa(object):
             for tsr in reversed(payload_tsr.traffic_selectors):
                 for ipsec_conf in self.configuration['protect']:
                     (conf_tsi,
-                     conf_tsr) = self._ipsec_conf_2_traffic_selectors(ipsec_conf)
+                     conf_tsr) = self._ipsec_conf_2_ts(ipsec_conf)
                     narrowed_tsi = tsi.intersection(conf_tsi)
                     narrowed_tsr = tsr.intersection(conf_tsr)
                     if narrowed_tsi and narrowed_tsr:
@@ -237,9 +243,9 @@ class IkeSa(object):
             is_initiator=self.is_initiator,
             message_id=self.peer_msg_id,
             payloads=([notify_error] if request.exchange_type
-                        == Message.Exchange.IKE_SA_INIT else []),
+                      == Message.Exchange.IKE_SA_INIT else []),
             encrypted_payloads=([notify_error] if request.exchange_type
-                                    != Message.Exchange.IKE_SA_INIT else [])
+                                != Message.Exchange.IKE_SA_INIT else []),
         )
 
     def _process_request(self, message, data, addr):
@@ -269,41 +275,42 @@ class IkeSa(object):
 
         status = False
         response = None
+        hexspi = hexstring(self.my_spi)
         try:
             response = handler(message)
             status = True
         except NoProposalChosen as ex:
-            logging.error('IKE_SA: {}. {}'.format(hexstring(self.my_spi), str(ex)))
+            logging.error('IKE_SA: {}. {}'.format(hexspi, str(ex)))
             response = self._generate_ike_error_response(
                 message, PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN)
         except UnsupportedCriticalPayload as ex:
-            logging.error('IKE_SA: {}. {}'.format(hexstring(self.my_spi), str(ex)))
+            logging.error('IKE_SA: {}. {}'.format(hexspi, str(ex)))
             response = self._generate_ike_error_response(
                 message, PayloadNOTIFY.Type.UNSUPPORTED_CRITICAL_PAYLOAD)
         except InvalidSyntax as ex:
-            logging.error('IKE_SA: {}. {}'.format(hexstring(self.my_spi), str(ex)))
+            logging.error('IKE_SA: {}. {}'.format(hexspi, str(ex)))
             response = self._generate_ike_error_response(
                 message, PayloadNOTIFY.Type.INVALID_SYNTAX)
         except AuthenticationFailed as ex:
-            logging.error('IKE_SA: {}. {}'.format(hexstring(self.my_spi), str(ex)))
+            logging.error('IKE_SA: {}. {}'.format(hexspi, str(ex)))
             response = self._generate_ike_error_response(
                 message, PayloadNOTIFY.Type.AUTHENTICATION_FAILED)
         except InvalidSelectors as ex:
-            logging.error('IKE_SA: {}. {}'.format(hexstring(self.my_spi), str(ex)))
+            logging.error('IKE_SA: {}. {}'.format(hexspi, str(ex)))
             response = self._generate_ike_error_response(
                 message, PayloadNOTIFY.Type.INVALID_SELECTORS)
         except InvalidKePayload as ex:
-            logging.error('IKE_SA: {}. {}'.format(hexstring(self.my_spi), str(ex)))
+            logging.error('IKE_SA: {}. {}'.format(hexspi, str(ex)))
             response = self._generate_ike_error_response(
                 message,
                 PayloadNOTIFY.Type.INVALID_KE_PAYLOAD,
                 notification_data=pack('>H', ex.group))
         except ChildSaNotFound as ex:
-            # logging.error('IKE_SA: {}. {}'.format(hexstring(self.my_spi), str(ex)))
+            logging.error('IKE_SA: {}. {}'.format(hexspi, str(ex)))
             response = self._generate_ike_error_response(
                 message, PayloadNOTIFY.Type.CHILD_SA_NOT_FOUND)
         except IkeSaError as ex:
-            logging.error('IKE_SA: {}. {}'.format(hexstring(self.my_spi), str(ex)))
+            logging.error('IKE_SA: {}. {}'.format(hexspi, str(ex)))
             response = self._generate_ike_error_response(
                 message, PayloadNOTIFY.Type.INVALID_SYNTAX)
 
@@ -336,18 +343,16 @@ class IkeSa(object):
                           'Please, implement a handler!')
             return (True, None)
 
-        status = False
-        request = None
-
         # increment our message ID for future requests
         self.my_msg_id = self.my_msg_id + 1
+        request = None
         try:
             request = handler(message)
-            status = True
         # TODO: Process notifies and generate exceptions. These exceptions
         # may (or may not) close the IKE_SA
         except IkeSaError as ex:
-            logging.error('IKE_SA: {}. {}'.format(hexstring(self.my_spi), str(ex)))
+            hexspi = hexstring(self.my_spi)
+            logging.error('IKE_SA: {}. {}'.format(hexspi, str(ex)))
 
         # If there is a another request to be sent, serizalize it and return it
         if request:
@@ -442,7 +447,7 @@ class IkeSa(object):
         """
         # check state
         if self.state != IkeSa.State.INITIAL:
-            raise IkeSaError('IKE SA state cannot proccess IKE_SA_INIT message')
+            raise IkeSaError('IKE SA state cannot accept IKE_SA_INIT message')
 
         # process the IKE_SA negotiation payloads
         response_payloads = self._process_ike_sa_negotiation_request(request,
@@ -550,10 +555,10 @@ class IkeSa(object):
 
         # get the ipsec configuration.
         ipsec_conf = next(x for x in self.configuration['protect']
-                            if x['index'] == self.acquire.index)
+                          if x['index'] == self.acquire.index)
 
         # generate Payload TSi, TSr
-        tsi, tsr = self._ipsec_conf_2_traffic_selectors(ipsec_conf)
+        tsi, tsr = self._ipsec_conf_2_ts(ipsec_conf)
         payload_tsi = PayloadTSi([self.acquire.tsi, tsi])
         payload_tsr = PayloadTSr([self.acquire.tsr, tsr])
 
@@ -618,7 +623,8 @@ class IkeSa(object):
         # generate IKE SA key material
         self.ike_sa_keyring = self._generate_ike_sa_key_material(
             ike_proposal=self.chosen_proposal,
-            nonce_i=self.request.get_payload(Payload.Type.NONCE, encrypted).nonce,
+            nonce_i=self.request.get_payload(
+                Payload.Type.NONCE, encrypted).nonce,
             nonce_r=payload_nonce.nonce,
             spi_i=self.my_spi,
             spi_r=self.peer_spi,
@@ -642,7 +648,8 @@ class IkeSa(object):
         # return IKE_AUTH request callback
         return self.generate_ike_auth_request()
 
-    def _generate_psk_auth_payload(self, message_data, nonce, payload_id, sk_p):
+    def _generate_psk_auth_payload(self, message_data, nonce, payload_id,
+                                   sk_p):
         prf = self.peer_crypto.prf.prf
         data_to_be_signed = (message_data + nonce
                              + prf(sk_p, payload_id.to_bytes()))
@@ -657,7 +664,6 @@ class IkeSa(object):
         request_payload_sa = request.get_payload(Payload.Type.SA, True)
         request_payload_tsi = request.get_payload(Payload.Type.TSi, True)
         request_payload_tsr = request.get_payload(Payload.Type.TSr, True)
-
 
         # source of nonces is different for the initial exchange
         if request.exchange_type == Message.Exchange.IKE_AUTH:
@@ -830,17 +836,19 @@ class IkeSa(object):
                                                           True)
 
         # check mode is consistent (TODO: REVIEW THIS CODE)
-        request_mode = (ipsec.Mode.TRANSPORT if request_transport_mode
-                                             else ipsec.Mode.TUNNEL)
-        response_mode = (ipsec.Mode.TRANSPORT if response_transport_mode
-                                              else ipsec.Mode.TUNNEL)
+        request_mode = (ipsec.Mode.TRANSPORT
+                        if request_transport_mode else ipsec.Mode.TUNNEL)
+        response_mode = (ipsec.Mode.TRANSPORT
+                         if response_transport_mode else ipsec.Mode.TUNNEL)
         if request_mode != response_mode:
             raise InvalidSelectors('Invalid mode requested {} vs {}'
                                    ''.format(request_mode, response_mode))
 
         # Check responder provided a valid proposal
         chosen_child_proposal = response_payload_sa.proposals[0]
-        if request_payload_sa.proposals[0].intersection(chosen_child_proposal) != chosen_child_proposal:
+        my_proposal = request_payload_sa.proposals[0]
+        intersection = my_proposal.intersection(chosen_child_proposal)
+        if intersection != chosen_child_proposal:
             raise NoProposalChosen('Responder did not choose a valid proposal')
 
         # generate CHILD key material
@@ -855,9 +863,9 @@ class IkeSa(object):
         chosen_tsi = response_payload_tsi.traffic_selectors[0]
         chosen_tsr = response_payload_tsr.traffic_selectors[0]
         matches_tsi = [x for x in request_payload_tsi.traffic_selectors
-                        if chosen_tsi.is_subset(x)]
+                       if chosen_tsi.is_subset(x)]
         matches_tsr = [x for x in request_payload_tsr.traffic_selectors
-                        if chosen_tsr.is_subset(x)]
+                       if chosen_tsr.is_subset(x)]
         if not matches_tsi or not matches_tsr:
             raise InvalidSelectors(
                 'Responder did not select a subset of our proposed TS.')
@@ -922,10 +930,10 @@ class IkeSa(object):
 
         # get the ipsec configuration.
         ipsec_conf = next(x for x in self.configuration['protect']
-                            if x['index'] == acquire.index)
+                          if x['index'] == acquire.index)
 
         # generate Payload TSi, TSr
-        tsi, tsr = self._ipsec_conf_2_traffic_selectors(ipsec_conf)
+        tsi, tsr = self._ipsec_conf_2_ts(ipsec_conf)
         payload_tsi = PayloadTSi([acquire.tsi, tsi])
         payload_tsr = PayloadTSr([acquire.tsr, tsr])
 
@@ -980,11 +988,12 @@ class IkeSa(object):
             # if protocol is either AH or ESP, delete the Child SAs and return
             # the inbound SPI
             else:
+                del_spi = delete_payload.spis[0]
                 try:
                     child_sa = next(x for x in self.child_sas
-                                    if x.outbound_spi == delete_payload.spis[0])
+                                    if x.outbound_spi == del_spi)
                 except StopIteration:
-                    raise ChildSaNotFound(delete_payload.spis[0])
+                    raise ChildSaNotFound(del_spi)
                 ipsec.delete_sa(self.peer_addr, child_sa.protocol,
                                 child_sa.outbound_spi)
                 ipsec.delete_sa(self.my_addr, child_sa.protocol,
@@ -1005,12 +1014,12 @@ class IkeSa(object):
             is_initiator=self.is_initiator,
             message_id=self.peer_msg_id,
             payloads=[],
-            encrypted_payloads=response_payloads)
+            encrypted_payloads=response_payloads),
 
     def process_create_child_sa_request(self, request):
         """ Processes a CREATE_CHILD_SA message and returns response
         """
-        # TODO: Use different functions for CREATE_CHILD, REKEY_CHILD, REKEY_IKE.
+        # TODO: Use different functions for CREATE_CHILD, REKEY_CHILD...
         # They are very different
         if self.state != IkeSa.State.ESTABLISHED:
             raise IkeSaError(
@@ -1044,10 +1053,11 @@ class IkeSa(object):
             if rekey_notify:
                 try:
                     # use only the first notification
+                    rekey_spi = rekey_notify[0].spi
                     rekeyed_child_sa = next(x for x in self.child_sas
-                                    if x.outbound_spi == rekey_notify[0].spi)
+                                            if x.outbound_spi == rekey_spi)
                 except StopIteration:
-                    raise ChildSaNotFound(spi=rekey_notify[0].spi)
+                    raise ChildSaNotFound(spi=rekey_spi)
                 response_payloads.append(
                     PayloadNOTIFY(proposal.protocol_id,
                                   PayloadNOTIFY.Type.REKEY_SA,
@@ -1073,11 +1083,11 @@ class IkeSa(object):
     def process_create_child_sa_response(self, response):
         """ Processes a CREATE_CHILD_SA response message
         """
-        # TODO: Use different functions for CREATE_CHILD, REKEY_CHILD, REKEY_IKE.
+        # TODO: Use different functions for CREATE_CHILD, REKEY_CHILD...
         # They are very different
         if self.state != IkeSa.State.CHILD_REQ_SENT:
             raise IkeSaError(
-                'IKE SA state cannot proccess CREATE_CHILD_SA response message')
+                'IKE SA state cannot proccess CREATE_CHILD_SA resp message')
 
         self._process_create_child_sa_negotiation_res(response)
         self.state = IkeSa.State.ESTABLISHED
@@ -1122,9 +1132,10 @@ class IkeSaController:
             try:
                 ike_sa = self._get_ike_sa_by_spi(my_spi)
             except StopIteration:
-                logging.warning('Received message for unknown SPI={}. Omitting.'
-                                ''.format(hexstring(my_spi)))
-                logging.debug(json.dumps(header.to_dict(), indent=logging.indent))
+                logging.warning('Received message for unknown SPI={}. '
+                                'Omitting.'.format(hexstring(my_spi)))
+                logging.debug(json.dumps(header.to_dict(),
+                              indent=logging.indent))
                 return None
 
         # generate the reply (if any)

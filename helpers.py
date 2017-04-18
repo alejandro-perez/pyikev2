@@ -6,8 +6,10 @@
 import codecs
 from enum import Enum
 
+
 def hexstring(data):
     return codecs.encode(data, 'hex').decode()
+
 
 class SafeEnum(Enum):
     @classmethod
@@ -16,6 +18,7 @@ class SafeEnum(Enum):
             return cls(value).name
         except ValueError:
             return '{} (not registered)'.format(value)
+
 
 class SafeIntEnum(int, SafeEnum):
     pass

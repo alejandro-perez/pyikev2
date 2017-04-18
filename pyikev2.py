@@ -4,17 +4,24 @@
 __author__ = 'Alejandro Perez <alex@um.es>'
 __version__ = "0.1"
 
-import socket
 import argparse
 import logging
-from protocol import IkeSaController
-from ipaddress import ip_address
-from configuration import Configuration
-import ipsec
-import netifaces
+import signal
+import socket
 import sys
-import yaml
+
+from ipaddress import ip_address
 from select import select
+
+from configuration import Configuration
+
+import ipsec
+
+import netifaces
+
+from protocol import IkeSaController
+
+import yaml
 
 # check the available interfaces
 interfaces = netifaces.interfaces()
@@ -50,7 +57,8 @@ except KeyError:
     sys.exit(1)
 
 # set logger
-logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
+logging.basicConfig(
+    level=logging.DEBUG if args.verbose else logging.INFO,
     format='[%(asctime)s.%(msecs)03d] [%(levelname)-6s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S')
 logging.indent = None if args.no_indent else 2
@@ -81,11 +89,11 @@ ike_sa_controller = IkeSaController(ip_address(sock.getsockname()[0]),
                                     configuration=configuration)
 
 
-import signal
 def signal_handler(signal, frame):
         print('SIGINT received. Exiting.')
         # TODO: Close IKE_SA_CONTROLLER gracefully
         sys.exit(0)
+
 
 signal.signal(signal.SIGINT, signal_handler)
 
@@ -94,7 +102,8 @@ while True:
     ready_to_read, _, _ = select([sock, xfrm], [], [])
     if sock in ready_to_read:
         data, addr = sock.recvfrom(4096)
-        data = ike_sa_controller.dispatch_message(data, sock.getsockname(), addr)
+        data = ike_sa_controller.dispatch_message(data, sock.getsockname(),
+                                                  addr)
         if data:
             sock.sendto(data, addr)
     if xfrm in ready_to_read:

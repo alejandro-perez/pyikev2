@@ -3,31 +3,40 @@
 
 """ This module defines the classes for the protocol handling.
 """
-from ipaddress import ip_network, ip_address
-from message import Transform, PayloadID, TrafficSelector, Proposal
+from ipaddress import ip_address, ip_network
+
 from crypto import Cipher, DiffieHellman, Integrity, Prf
+
 import ipsec
+
+from message import PayloadID, Proposal, TrafficSelector, Transform
+
 
 class ConfigurationError(Exception):
     pass
 
+
 class ConfigurationNotFound(ConfigurationError):
     pass
+
 
 _encr_name_to_transform = {
     'aes128': Transform(Transform.Type.ENCR, Cipher.Id.ENCR_AES_CBC, 128),
     'aes256': Transform(Transform.Type.ENCR, Cipher.Id.ENCR_AES_CBC, 256),
 }
 
+
 _integ_name_to_transform = {
     'sha1': Transform(Transform.Type.INTEG, Integrity.Id.AUTH_HMAC_SHA1_96),
     'md5': Transform(Transform.Type.INTEG, Integrity.Id.AUTH_HMAC_MD5_96),
 }
 
+
 _prf_name_to_transform = {
     'sha1': Transform(Transform.Type.PRF, Prf.Id.PRF_HMAC_SHA1),
     'md5': Transform(Transform.Type.PRF, Prf.Id.PRF_HMAC_MD5),
 }
+
 
 _dh_name_to_transform = {
     '1': Transform(Transform.Type.DH, DiffieHellman.Id.DH_1),
@@ -40,6 +49,7 @@ _dh_name_to_transform = {
     '18': Transform(Transform.Type.DH, DiffieHellman.Id.DH_18),
 }
 
+
 _ip_proto_name_to_enum = {
     'tcp': TrafficSelector.IpProtocol.TCP,
     'any': TrafficSelector.IpProtocol.ANY,
@@ -47,15 +57,18 @@ _ip_proto_name_to_enum = {
     'icmp': TrafficSelector.IpProtocol.ICMP,
 }
 
+
 _mode_name_to_enum = {
     'transport': ipsec.Mode.TRANSPORT,
     'tunnel': ipsec.Mode.TUNNEL,
 }
 
+
 _ipsec_proto_name_to_enum = {
     'esp': Proposal.Protocol.ESP,
     'ah': Proposal.Protocol.AH,
 }
+
 
 class Configuration(object):
     """ Represents the daemon configuration
@@ -79,16 +92,17 @@ class Configuration(object):
 
     def _load_ike_conf(self, peer_ip, conf_dict):
         result = {}
-
+        default_id = 'https://github.com/alejandro-perez/pyikev2'
         result['psk'] = conf_dict.get('psk', 'whatever').encode()
         result['id'] = PayloadID(PayloadID.Type.ID_FQDN,
-            conf_dict.get('id', 'https://github.com/alejandro-perez/pyikev2').encode())
+                                 conf_dict.get('id', default_id).encode())
         result['peer_id'] = PayloadID(PayloadID.Type.ID_FQDN,
-            conf_dict.get('id', 'https://github.com/alejandro-perez/pyikev2').encode())
+                                      conf_dict.get('id', default_id).encode())
         result['encr'] = self._load_crypto_algs(
             'encr', conf_dict.get('encr', ['aes256']), _encr_name_to_transform)
         result['integ'] = self._load_crypto_algs(
-            'integ', conf_dict.get('integ', ['sha1']), _integ_name_to_transform)
+            'integ', conf_dict.get('integ', ['sha1']),
+            _integ_name_to_transform)
         result['prf'] = self._load_crypto_algs(
             'prf', conf_dict.get('prf', ['sha1']), _prf_name_to_transform)
         result['dh'] = self._load_crypto_algs(
@@ -103,7 +117,7 @@ class Configuration(object):
     def _load_ip_network(self, value):
         try:
             return ip_network(value)
-        except ValueError:
+        except ValueError as ex:
             raise ConfigurationError(str(ex))
 
     def _load_ip_address(self, value):
@@ -129,7 +143,8 @@ class Configuration(object):
         result['encr'] = self._load_crypto_algs(
             'encr', conf_dict.get('encr', ['aes256']), _encr_name_to_transform)
         result['integ'] = self._load_crypto_algs(
-            'integ', conf_dict.get('integ', ['sha1']), _integ_name_to_transform)
+            'integ', conf_dict.get('integ', ['sha1']),
+            _integ_name_to_transform)
         return result
 
     def get_ike_configuration(self, addr):
