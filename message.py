@@ -765,9 +765,6 @@ class PayloadDELETE(Payload):
         ]))
         return result
 
-# TODO: Message should have the crypto object from the beggining, in such a
-# way that to_bytes do not require providing it. In relation with this,
-# the IV for the SK should probably be generated here to ensure consistency
 class Message:
     class Exchange(SafeIntEnum):
         IKE_SA_INIT = 34
@@ -910,7 +907,6 @@ class Message:
                                           len(payload_data) + 4)
             payloads_data += payload_data
         return payloads_data
-
 
     def to_bytes(self, crypto=None):
         # create a temporary copy of payloads list

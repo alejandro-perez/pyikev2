@@ -39,6 +39,7 @@ class IkeSa(object):
         DELETED = 4
         INIT_REQ_SENT = 5
         AUTH_REQ_SENT = 6
+        CHILD_REQ_SENT = 7
 
     def __init__(self, is_initiator, peer_spi, configuration, my_addr, peer_addr):
         self.state = IkeSa.State.INITIAL
@@ -318,6 +319,7 @@ class IkeSa(object):
         _handler_dict = {
             Message.Exchange.IKE_SA_INIT: self.process_ike_sa_init_response,
             Message.Exchange.IKE_AUTH: self.process_ike_auth_response,
+            Message.Exchange.CREATE_CHILD_SA: self.process_create_child_sa_response,
         }
 
         # if message ID is not the expected one, log and omit
@@ -381,15 +383,14 @@ class IkeSa(object):
         if self.state == IkeSa.State.INITIAL:
             request = self.generate_ike_sa_init_request(acquire)
         else:
-            print("Should send CREATE_CHILD_SA. TBD.")
-            request = None
+            request = self.generate_create_child_sa_request(acquire)
 
         if request:
             request_data = request.to_bytes(self.my_crypto)
             self.log_message(request, self.peer_addr, request_data, send=True)
             return request_data
-
-        return None
+        else:
+            return None
 
     def _process_ike_sa_negotiation_request(self, request, encrypted=False,
                                             old_sk_d=None):
@@ -528,6 +529,14 @@ class IkeSa(object):
         # return request
         return self.request
 
+    @property
+    def spi_i(self):
+        return self.my_spi if self.is_initiator else self.peer_spi
+
+    @property
+    def spi_r(self):
+        return self.peer_spi if self.is_initiator else self.my_spi
+
     def generate_ike_auth_request(self):
         """ Creates a IKE_AUTH request message
         """
@@ -576,7 +585,7 @@ class IkeSa(object):
             encrypted_payloads=[payload_idi, payload_tsi, payload_tsr,
                                 payload_sa, payload_auth])
 
-        # increase msg_id and transition
+        # transition
         self.state = IkeSa.State.AUTH_REQ_SENT
 
         return self.request
@@ -904,6 +913,50 @@ class IkeSa(object):
         self.state = IkeSa.State.ESTABLISHED
         return None
 
+    def generate_create_child_sa_request(self, acquire):
+        """ Creates a CREATE_CHILD_SA request message for creating a new CHILD
+        """
+        if self.state != IkeSa.State.ESTABLISHED:
+            raise InvalidSyntax(
+                'IKE SA state cannot create CREATE_CHILD_SA message')
+
+        # get the ipsec configuration.
+        ipsec_conf = next(x for x in self.configuration['protect']
+                            if x['index'] == acquire.index)
+
+        # generate Payload TSi, TSr
+        tsi, tsr = self._ipsec_conf_2_traffic_selectors(ipsec_conf)
+        payload_tsi = PayloadTSi([acquire.tsi, tsi])
+        payload_tsr = PayloadTSr([acquire.tsr, tsr])
+
+        # generate Payload SA
+        proposal = self._ipsec_conf_2_proposal(ipsec_conf)
+        proposal.spi = os.urandom(4)
+        payload_sa = PayloadSA([proposal])
+
+        # generate Payload NONCE
+        payload_nonce = PayloadNONCE()
+
+        # generate the message
+        self.request = Message(
+            spi_i=self.spi_i,
+            spi_r=self.spi_r,
+            major=2,
+            minor=0,
+            exchange_type=Message.Exchange.CREATE_CHILD_SA,
+            is_response=False,
+            can_use_higher_version=False,
+            is_initiator=self.is_initiator,
+            message_id=self.my_msg_id,
+            payloads=[],
+            encrypted_payloads=[payload_tsi, payload_tsr, payload_sa,
+                                payload_nonce])
+
+        # transition
+        self.state = IkeSa.State.CHILD_REQ_SENT
+
+        return self.request
+
     def process_informational_request(self, request):
         """ Processes an INFORMATIONAL message and returns a INFORMATIONAL response
         """
@@ -1016,6 +1069,19 @@ class IkeSa(object):
             payloads=[],
             encrypted_payloads=response_payloads,
         )
+
+    def process_create_child_sa_response(self, response):
+        """ Processes a CREATE_CHILD_SA response message
+        """
+        # TODO: Use different functions for CREATE_CHILD, REKEY_CHILD, REKEY_IKE.
+        # They are very different
+        if self.state != IkeSa.State.CHILD_REQ_SENT:
+            raise IkeSaError(
+                'IKE SA state cannot proccess CREATE_CHILD_SA response message')
+
+        self._process_create_child_sa_negotiation_res(response)
+        self.state = IkeSa.State.ESTABLISHED
+
 
 class IkeSaController:
     def __init__(self, my_addr, configuration):
