@@ -765,9 +765,17 @@ class PayloadDELETE(Payload):
         ]))
         return result
 
-class PayloadFactory:
-    # Payload SK is intentionally left out, as it needs keyring and proposal
-    payload_classes = {
+# TODO: Message should have the crypto object from the beggining, in such a
+# way that to_bytes do not require providing it. In relation with this,
+# the IV for the SK should probably be generated here to ensure consistency
+class Message:
+    class Exchange(SafeIntEnum):
+        IKE_SA_INIT = 34
+        IKE_AUTH = 35
+        CREATE_CHILD_SA = 36
+        INFORMATIONAL = 37
+
+    type_2_payload = {
         Payload.Type.SA: PayloadSA,
         Payload.Type.KE: PayloadKE,
         Payload.Type.IDi: PayloadIDi,
@@ -781,29 +789,6 @@ class PayloadFactory:
         Payload.Type.SK: PayloadSK,
         Payload.Type.DELETE: PayloadDELETE,
     }
-
-    @classmethod
-    def parse(cls, payload_type, data, critical=False):
-        """ Parses a payload and returns an object.
-            If the payload type is not recognized and critical, raise and
-            exception. Else, returns None
-        """
-        try:
-            return cls.payload_classes[payload_type].parse(data, critical)
-        except KeyError:
-            raise InvalidSyntax(
-                'Unrecognized payload with type '
-                '{}'.format(Payload.Type.safe_name(payload_type)))
-
-# TODO: Message should have the crypto object from the beggining, in such a
-# way that to_bytes do not require providing it. In relation with this,
-# the IV for the SK should probably be generated here to ensure consistency
-class Message:
-    class Exchange(SafeIntEnum):
-        IKE_SA_INIT = 34
-        IKE_AUTH = 35
-        CREATE_CHILD_SA = 36
-        INFORMATIONAL = 37
 
     def __init__(self, spi_i, spi_r, major, minor,
                  exchange_type, is_response, can_use_higher_version,
@@ -829,7 +814,8 @@ class Message:
         while (payload_type != Payload.Type.NONE):
             # Read payload common header
             try:
-                (next_payload_type,critical, length) = unpack_from('>BBH', data, offset)
+                (next_payload_type,
+                    critical, length) = unpack_from('>BBH', data, offset)
             except struct_error as ex:
                 raise InvalidSyntax(ex)
             critical = critical >> 7
@@ -837,15 +823,18 @@ class Message:
             end = offset + length
             # Parse the payload. If not known and critical, raise exception
             try:
-                payload = PayloadFactory.parse(payload_type, data[start:end], critical)
+                payload_class = cls.type_2_payload[payload_type]
+                payload = payload_class.parse(data[start:end], critical)
                 # If payload SK, annotate next_payload_type and set it to NONE
                 if payload_type == Payload.Type.SK:
                     payload.next_payload_type = next_payload_type
                     next_payload_type = Payload.Type.NONE
                 # offset is increased in any case
                 payloads.append(payload)
-            except InvalidSyntax as ex:
-                logging.warning(ex)
+            except KeyError as ex:
+                logging.warning(
+                    'Unrecognized payload with type '
+                    '{}'.format(Payload.Type.safe_name(payload_type)))
                 if critical:
                     raise UnsupportedCriticalPayload
 
