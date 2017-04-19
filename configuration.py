@@ -3,6 +3,7 @@
 
 """ This module defines the classes for the protocol handling.
 """
+import socket
 from ipaddress import ip_address, ip_network
 
 from crypto import Cipher, DiffieHellman, Integrity, Prf
@@ -82,7 +83,7 @@ class Configuration(object):
         self.my_addr = self._load_ip_address(my_addr)
         for key, value in conf_dict.items():
             try:
-                ip = ip_address(key)
+                ip = ip_address(socket.gethostbyname(key))
             except ValueError as ex:
                 raise ConfigurationError(str(ex))
             self._configuration[ip] = self._load_ike_conf(ip, value)
