@@ -590,7 +590,7 @@ class TrafficSelector(object):
 
     def get_network(self):
         network = ip_network(self.start_addr)
-        while self.end_addr not in network.supernet():
+        while self.end_addr not in network:
             network = network.supernet()
         return network
 
@@ -630,38 +630,23 @@ class TrafficSelector(object):
             ('addr-range', '{} - {}'.format(self.start_addr, self.end_addr)),
         ])
 
-    def intersection(self, other):
-        """ Generates the intersection of two TS payloads
-        """
-        if self.ts_type != other.ts_type:
-            return None
-        ts_type = self.ts_type
-
-        # check if both have compatibles protocols
-        if (self.ip_proto != other.ip_proto
-                and self.ip_proto != TrafficSelector.IpProtocol.ANY
-                and other.ip_proto != TrafficSelector.IpProtocol.ANY):
-            return None
-
-        ip_proto = (self.ip_proto if self.ip_proto
-                    != TrafficSelector.IpProtocol.ANY else other.ip_proto)
-
-        start_port = max(self.start_port, other.start_port)
-        end_port = min(self.end_port, other.end_port)
-        if start_port > end_port:
-            return None
-
-        start_addr = max(self.start_addr, other.start_addr)
-        end_addr = min(self.end_addr, other.end_addr)
-        if start_addr > end_addr:
-            return None
-
-        return TrafficSelector(ts_type, ip_proto, start_port,
-                               end_port, start_addr, end_addr)
-
     def is_subset(self, other):
-        intersection = self.intersection(other)
-        return intersection == self
+        if self.ts_type != other.ts_type:
+            return False
+
+        if (other.ip_proto != TrafficSelector.IpProtocol.ANY
+                and self.ip_proto != other.ip_proto):
+            return False
+
+        if (self.start_port < other.start_port
+                or self.end_port > other.end_port):
+            return False
+
+        if (self.start_addr < other.start_addr
+                or self.end_addr > other.end_addr):
+            return False
+
+        return True
 
     def __eq__(self, other):
         return (
@@ -1034,3 +1019,4 @@ class Message:
             raise PayloadNotFound(
                 'Required payload {} was not found in message'
                 ''.format(Payload.Type.safe_name(payload_type)))
+

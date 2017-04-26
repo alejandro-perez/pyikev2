@@ -198,18 +198,19 @@ class IkeSa(object):
     def _get_ipsec_configuration(self, payload_tsi, payload_tsr):
         """ Find matching IPsec configuration.
             It iterates over the received TS in reversed order and returns the
-            first configuration that is bigger than our selectors, and the
-            narrowed selectors as well
+            first configuration that is larger or smaller than the proposed
+            pair, along with the chosen selectors
         """
         for tsi in reversed(payload_tsi.traffic_selectors):
             for tsr in reversed(payload_tsr.traffic_selectors):
                 for ipsec_conf in self.configuration['protect']:
-                    (conf_tsi,
-                     conf_tsr) = self._ipsec_conf_2_ts(ipsec_conf)
-                    narrowed_tsi = tsi.intersection(conf_tsi)
-                    narrowed_tsr = tsr.intersection(conf_tsr)
-                    if narrowed_tsi and narrowed_tsr:
-                        return (ipsec_conf, narrowed_tsi, narrowed_tsr)
+                    conf_tsi, conf_tsr = self._ipsec_conf_2_ts(ipsec_conf)
+                    # look for a larger policy
+                    if tsi.is_subset(conf_tsi) and tsr.is_subset(conf_tsr):
+                        return (ipsec_conf, tsi, tsr)
+                    # look for a smaller policy
+                    elif conf_tsi.is_subset(tsi) and conf_tsr.is_subset(tsr):
+                        return (ipsec_conf, conf_tsi, conf_tsr)
         raise InvalidSelectors(
             'TS could not be matched with any IPsec configuration')
 
