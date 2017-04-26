@@ -34,19 +34,31 @@ ChildSa = namedtuple('ChildSa', ['inbound_spi', 'outbound_spi', 'protocol'])
 Acquire = namedtuple('Acquire', ['tsi', 'tsr', 'index'])
 
 
+class IkeSaStateError(Exception):
+    pass
+
 class IkeSa(object):
     """ This class controls the state machine of a IKE SA
         It is triggered with received Messages and/or IPsec events
     """
     class State(SafeIntEnum):
+        # Non-established states
         INITIAL = 0
         INIT_RES_SENT = 1
-        ESTABLISHED = 2
-        REKEYED = 3
-        DELETED = 4
-        INIT_REQ_SENT = 5
-        AUTH_REQ_SENT = 6
-        CHILD_REQ_SENT = 7
+        INIT_REQ_SENT = 2
+        AUTH_REQ_SENT = 3
+
+        # Established states
+        ESTABLISHED = 10
+        NEW_CHILD_REQ_SENT = 11
+        REK_CHILD_REQ_SENT = 12
+        REK_IKE_SA_REQ_SENT = 13
+        DEL_CHILD_REQ_SENT = 14
+        DEL_IKE_SA_REQ_SENT = 15
+
+        # Closing states
+        REKEYED = 20
+        DELETED = 21
 
     def __init__(self, is_initiator, peer_spi, configuration, my_addr,
                  peer_addr):
@@ -106,7 +118,6 @@ class IkeSa(object):
                         'sk_er', 'sk_pi', 'sk_pr']:
             hexkey = hexstring(getattr(ike_sa_keyring, keyname))
             logging.debug('Generated {}: {}'.format(keyname, hexkey))
-
         return ike_sa_keyring
 
     def delete_child_sas(self):
@@ -391,6 +402,8 @@ class IkeSa(object):
         else:
             request = self.generate_create_child_sa_request(acquire)
 
+        # TODO: Use a request queue for simplicity and to avoid problems with
+        # state machine
         if request:
             request_data = request.to_bytes(self.my_crypto)
             self.log_message(request, self.peer_addr, request_data, send=True)
@@ -446,9 +459,7 @@ class IkeSa(object):
     def process_ike_sa_init_request(self, request):
         """ Processes a IKE_SA_INIT message and returns a IKE_SA_INIT response
         """
-        # check state
-        if self.state != IkeSa.State.INITIAL:
-            raise IkeSaError('IKE SA state cannot accept IKE_SA_INIT message')
+        self._check_in_states(request, [IkeSa.State.INITIAL])
 
         # process the IKE_SA negotiation payloads
         response_payloads = self._process_ike_sa_negotiation_request(request,
@@ -500,8 +511,7 @@ class IkeSa(object):
         """ Creates a IKE_SA_INIT message
         """
         # check state
-        if self.state != IkeSa.State.INITIAL:
-            raise IkeSaError('IKE SA state cannot create IKE_SA_INIT message')
+        assert(self.state == IkeSa.State.INITIAL)
 
         # generate the IKE SA negotiation payloads
         ike_sa_payloads = self._generate_ike_sa_negotiation_request()
@@ -635,10 +645,7 @@ class IkeSa(object):
     def process_ike_sa_init_response(self, response):
         """ Processes a IKE_SA_INIT response message
         """
-        # check state
-        if self.state != IkeSa.State.INIT_REQ_SENT:
-            raise IkeSaError('IKE SA state cannot proccess IKE_SA_INIT '
-                             'response message')
+        self._check_in_states(response, [IkeSa.State.INIT_REQ_SENT])
 
         # process the IKE_SA negotiation payloads
         self._process_ike_sa_negotiation_response(response)
@@ -742,13 +749,29 @@ class IkeSa(object):
 
         return response_payloads
 
+
+    def _check_in_states(self, message, list_of_valid_states):
+        if self.state not in list_of_valid_states:
+            raise IkeSaStateError(
+                'Cannot process an {} {} when in state {}.'
+                ''.format(Message.Exchange.safe_name(message.exchange_type),
+                          'request' if message.is_request else 'response',
+                          self.state.name))
+
+    def _check_established(self, message):
+        return self._check_in_states(message, range(IkeSa.State.ESTABLISHED,
+                                                    IkeSa.State.REKEYED))
+
+    def _check_established_or_rekeyed(self, message):
+        return self._check_in_states(message, range(IkeSa.State.ESTABLISHED,
+                                                    IkeSa.State.REKEYED + 1))
+
+
     def process_ike_auth_request(self, request):
         """ Processes a IKE_AUTH request message and returns a
             IKE_AUTH response
         """
-        if self.state != IkeSa.State.INIT_RES_SENT:
-            raise InvalidSyntax(
-                'IKE SA state cannot proccess IKE_AUTH message')
+        self._check_in_states(request, [IkeSa.State.INIT_RES_SENT])
 
         # get some relevant payloads from the message
         request_payload_idi = request.get_payload(Payload.Type.IDi, True)
@@ -895,9 +918,7 @@ class IkeSa(object):
             child_sa_keyring.sk_ar, request_mode)
 
     def process_ike_auth_response(self, response):
-        if self.state != IkeSa.State.AUTH_REQ_SENT:
-            raise InvalidSyntax(
-                'IKE SA state cannot proccess IKE_AUTH message')
+        self._check_in_states(response, [IkeSa.State.AUTH_REQ_SENT])
 
         # get some relevant payloads from the message
         response_payload_idr = response.get_payload(Payload.Type.IDr, True)
@@ -962,33 +983,28 @@ class IkeSa(object):
                                 payload_nonce])
 
         # transition
-        self.state = IkeSa.State.CHILD_REQ_SENT
+        self.state = IkeSa.State.NEW_CHILD_REQ_SENT
 
         return self.request
 
     def process_informational_request(self, request):
-        """ Processes an INFORMATIONAL message and returns a INFORMATIONAL response
+        """ Processes an INFORMATIONAL request
         """
+        # TODO: Handle the different INFORMATIONAL Exchanges in different
+        # methods
         response_payloads = []
         try:
             delete_payload = request.get_payload(Payload.Type.DELETE, True)
-        except PayloadNotFound:
-            delete_payload = None
-
-        if delete_payload is not None:
             # if protocol is IKE, just mark the IKE SA for removal and return
             # emtpy INFORMATIONAL exchange
             if delete_payload.protocol_id == Proposal.Protocol.IKE:
-                if self.state not in (IkeSa.State.ESTABLISHED,
-                                      IkeSa.State.REKEYED):
-                    raise IkeSaError(
-                        'IKE SA state cannot be deleted on this state: {}'
-                        ''.format(self.state))
+                self._check_established_or_rekeyed(request)
                 self.state = IkeSa.State.DELETED
 
             # if protocol is either AH or ESP, delete the Child SAs and return
             # the inbound SPI
             else:
+                self._check_established(request)
                 del_spi = delete_payload.spis[0]
                 try:
                     child_sa = next(x for x in self.child_sas
@@ -1003,6 +1019,10 @@ class IkeSa(object):
                 response_payloads.append(
                     PayloadDELETE(delete_payload.protocol_id,
                                   [child_sa.inbound_spi]))
+        # If there is no DELETE palyload, this is just a keep alive and we
+        # return no payloads
+        except PayloadNotFound:
+            pass
 
         return Message(
             spi_i=request.spi_i,
@@ -1015,16 +1035,15 @@ class IkeSa(object):
             is_initiator=self.is_initiator,
             message_id=self.peer_msg_id,
             payloads=[],
-            encrypted_payloads=response_payloads),
+            encrypted_payloads=response_payloads,
+        )
 
     def process_create_child_sa_request(self, request):
         """ Processes a CREATE_CHILD_SA message and returns response
         """
         # TODO: Use different functions for CREATE_CHILD, REKEY_CHILD...
         # They are very different
-        if self.state != IkeSa.State.ESTABLISHED:
-            raise IkeSaError(
-                'IKE SA state cannot proccess CREATE_CHILD_SA message')
+        self._check_established(request)
 
         # determine whether this concerns to IKE_SA or CHILD_SA
         payload_sa = request.get_payload(Payload.Type.SA, True)
@@ -1086,9 +1105,7 @@ class IkeSa(object):
         """
         # TODO: Use different functions for CREATE_CHILD, REKEY_CHILD...
         # They are very different
-        if self.state != IkeSa.State.CHILD_REQ_SENT:
-            raise IkeSaError(
-                'IKE SA state cannot proccess CREATE_CHILD_SA resp message')
+        self._check_in_states(response, [IkeSa.State.NEW_CHILD_REQ_SENT])
 
         self._process_create_child_sa_negotiation_res(response)
         self.state = IkeSa.State.ESTABLISHED
@@ -1163,6 +1180,7 @@ class IkeSaController:
         logging.debug('Received acquire for {}'.format(peer_addr))
 
         # look for an active IKE_SA with the peer
+        # TODO: Probably need to check state to see if we can use it or not
         try:
             ike_sa = self._get_ike_sa_by_peer_addr(peer_addr)
         except StopIteration:
