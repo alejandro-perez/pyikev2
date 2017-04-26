@@ -28,6 +28,10 @@ from message import (Message, Payload, PayloadAUTH, PayloadDELETE, PayloadIDi,
                      Proposal, TrafficSelector, Transform)
 
 
+""" TODO: Protocol exceptions should be defined here, as they are not used in
+          message.py
+"""
+
 Keyring = namedtuple('Keyring', ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er',
                                  'sk_pi', 'sk_pr'])
 ChildSa = namedtuple('ChildSa', ['inbound_spi', 'outbound_spi', 'protocol'])
@@ -553,30 +557,40 @@ class IkeSa(object):
     def spi_r(self):
         return self.peer_spi if self.is_initiator else self.my_spi
 
-    def generate_ike_auth_request(self):
-        """ Creates a IKE_AUTH request message
-        """
-        if self.state != IkeSa.State.INIT_REQ_SENT:
-            raise InvalidSyntax(
-                'IKE SA state cannot create IKE_AUTH message')
-
-        # generate IDi
-        payload_idi = PayloadIDi(self.configuration['id'].id_type,
-                                 self.configuration['id'].id_data)
-
-        # get the ipsec configuration.
+    def _generate_child_sa_negotiation_req(self, acquire):
+        result = []
+        # get the ipsec configuration
         ipsec_conf = next(x for x in self.configuration['protect']
-                          if x['index'] == self.acquire.index)
+                          if x['index'] == acquire.index)
 
         # generate Payload TSi, TSr
         tsi, tsr = self._ipsec_conf_2_ts(ipsec_conf)
-        payload_tsi = PayloadTSi([self.acquire.tsi, tsi])
-        payload_tsr = PayloadTSr([self.acquire.tsr, tsr])
+        result.append(PayloadTSi([acquire.tsi, tsi]))
+        result.append(PayloadTSr([acquire.tsr, tsr]))
 
         # generate Payload SA
         proposal = self._ipsec_conf_2_proposal(ipsec_conf)
         proposal.spi = os.urandom(4)
-        payload_sa = PayloadSA([proposal])
+        result.append(PayloadSA([proposal]))
+
+        # genereate USE_TRANSPORT_MODE notify if needed
+        if ipsec_conf['mode'] == ipsec.Mode.TRANSPORT:
+            result.append(PayloadNOTIFY(Proposal.Protocol.NONE,
+                                        PayloadNOTIFY.Type.USE_TRANSPORT_MODE,
+                                        b'', b''))
+        return result
+
+    def generate_ike_auth_request(self):
+        """ Creates a IKE_AUTH request message
+        """
+        assert(self.state == IkeSa.State.INIT_REQ_SENT)
+
+        # generate the CHILD_SA negotiation payloads
+        child_sa_payloads = self._generate_child_sa_negotiation_req(self.acquire)
+
+        # generate IDi
+        payload_idi = PayloadIDi(self.configuration['id'].id_type,
+                                 self.configuration['id'].id_data)
 
         # generate Payload AUTH
         ike_sa_init_res = Message.parse(self.ike_sa_init_res_data)
@@ -598,8 +612,8 @@ class IkeSa(object):
             is_initiator=True,
             message_id=self.my_msg_id,
             payloads=[],
-            encrypted_payloads=[payload_idi, payload_tsi, payload_tsr,
-                                payload_sa, payload_auth])
+            encrypted_payloads=child_sa_payloads + [payload_idi, payload_auth],
+        )
 
         # transition
         self.state = IkeSa.State.AUTH_REQ_SENT
@@ -697,9 +711,8 @@ class IkeSa(object):
         if request.get_notifies(PayloadNOTIFY.Type.USE_TRANSPORT_MODE, True):
             mode = ipsec.Mode.TRANSPORT
             response_payloads.append(
-                PayloadNOTIFY(
-                    Proposal.Protocol.NONE,
-                    PayloadNOTIFY.Type.USE_TRANSPORT_MODE, b'', b''))
+                PayloadNOTIFY(Proposal.Protocol.NONE,
+                              PayloadNOTIFY.Type.USE_TRANSPORT_MODE, b'', b''))
 
         if ipsec_conf['mode'] != mode:
             raise InvalidSelectors('Invalid mode requested')
@@ -946,23 +959,10 @@ class IkeSa(object):
     def generate_create_child_sa_request(self, acquire):
         """ Creates a CREATE_CHILD_SA request message for creating a new CHILD
         """
-        if self.state != IkeSa.State.ESTABLISHED:
-            raise InvalidSyntax(
-                'IKE SA state cannot create CREATE_CHILD_SA message')
+        assert(self.state == IkeSa.State.ESTABLISHED)
 
-        # get the ipsec configuration.
-        ipsec_conf = next(x for x in self.configuration['protect']
-                          if x['index'] == acquire.index)
-
-        # generate Payload TSi, TSr
-        tsi, tsr = self._ipsec_conf_2_ts(ipsec_conf)
-        payload_tsi = PayloadTSi([acquire.tsi, tsi])
-        payload_tsr = PayloadTSr([acquire.tsr, tsr])
-
-        # generate Payload SA
-        proposal = self._ipsec_conf_2_proposal(ipsec_conf)
-        proposal.spi = os.urandom(4)
-        payload_sa = PayloadSA([proposal])
+        # generate the CHILD_SA negotiation payloads
+        child_sa_payloads = self._generate_child_sa_negotiation_req(acquire)
 
         # generate Payload NONCE
         payload_nonce = PayloadNONCE()
@@ -979,8 +979,8 @@ class IkeSa(object):
             is_initiator=self.is_initiator,
             message_id=self.my_msg_id,
             payloads=[],
-            encrypted_payloads=[payload_tsi, payload_tsr, payload_sa,
-                                payload_nonce])
+            encrypted_payloads=child_sa_payloads + [payload_nonce],
+        )
 
         # transition
         self.state = IkeSa.State.NEW_CHILD_REQ_SENT
