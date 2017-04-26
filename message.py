@@ -289,7 +289,8 @@ class Proposal:
                 == (other.num, other.protocol_id, other.spi, other.transforms))
 
     def is_subset(self, other):
-        return (self.intersection(other) == self)
+        intersection = self.intersection(other)
+        return (intersection is not None) and (intersection == self)
 
 
 class PayloadSA(Payload):
