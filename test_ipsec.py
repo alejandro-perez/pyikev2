@@ -3,12 +3,16 @@
 
 """ This module defines test for the IPsec module
 """
-import unittest
-import ipsec
-from message import TrafficSelector, Proposal
 import subprocess
-from crypto import Cipher, Integrity
+import unittest
 from ipaddress import ip_address, ip_network
+
+import ipsec
+from crypto import Cipher, Integrity
+from message import TrafficSelector, Proposal
+
+__author__ = 'Alejandro Perez <alex@um.es>'
+
 
 class TestIpsec(unittest.TestCase):
     def setUp(self):
@@ -76,53 +80,58 @@ class TestIpsec(unittest.TestCase):
 
     def test_create_transport_ipsec_sa(self):
         ipsec.create_sa(ip_address('192.168.1.1'), ip_address('192.168.1.2'),
-                        TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
-                                        TrafficSelector.IpProtocol.TCP, 0, 0,
-                                        ip_address('192.168.1.1'),
-                                        ip_address('192.168.1.1')),
-                        TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
-                                        TrafficSelector.IpProtocol.TCP, 0, 0,
-                                        ip_address('192.168.1.2'),
-                                        ip_address('192.168.1.2')),
+                        TrafficSelector(
+                            TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
+                            TrafficSelector.IpProtocol.TCP, 0, 0,
+                            ip_address('192.168.1.1'),
+                            ip_address('192.168.1.1')),
+                        TrafficSelector(
+                            TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
+                            TrafficSelector.IpProtocol.TCP, 0, 0,
+                            ip_address('192.168.1.2'),
+                            ip_address('192.168.1.2')),
                         Proposal.Protocol.ESP, b'1234', Cipher.Id.ENCR_AES_CBC,
-                        b'1'*16, Integrity.Id.AUTH_HMAC_MD5_96, b'1'*16,
+                        b'1' * 16, Integrity.Id.AUTH_HMAC_MD5_96, b'1' * 16,
                         ipsec.Mode.TRANSPORT)
         # text_state = subprocess.check_output(['ip', 'xfrm', 'state'])
         # self.assertEqual(
-        #     text_state,
-        #     b'src 192.168.1.1 dst 192.168.1.2\n\tproto esp spi 0x31323334 '
-        #     b'reqid 0 mode transport\n\treplay-window 0 \n\tauth-trunc '
-        #     b'hmac(md5) 0x31313131313131313131313131313131 96\n\tenc cbc(aes) '
-        #     b'0x31313131313131313131313131313131\n\tanti-replay context: seq '
-        #     b'0x0, oseq 0x0, bitmap 0x00000000\n\tsel src 0.0.0.0/0 dst '
-        #     b'0.0.0.0/0 \n')
+        #  text_state,
+        #  b'src 192.168.1.1 dst 192.168.1.2\n\tproto esp spi 0x31323334 '
+        #  b'reqid 0 mode transport\n\treplay-window 0 \n\tauth-trunc '
+        #  b'hmac(md5) 0x31313131313131313131313131313131 96\n\tenc cbc(aes) '
+        #  b'0x31313131313131313131313131313131\n\tanti-replay context: seq '
+        #  b'0x0, oseq 0x0, bitmap 0x00000000\n\tsel src 0.0.0.0/0 dst '
+        #  b'0.0.0.0/0 \n')
 
     def test_create_tunnel_ipsec_sa(self):
         ipsec.create_sa(ip_address('192.168.1.1'), ip_address('192.168.1.2'),
-                        TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
-                                        TrafficSelector.IpProtocol.TCP, 0, 0,
-                                        ip_address('192.168.1.1'),
-                                        ip_address('192.168.1.1')),
-                        TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
-                                        TrafficSelector.IpProtocol.TCP, 0, 0,
-                                        ip_address('192.168.1.2'),
-                                        ip_address('192.168.1.2')),
+                        TrafficSelector(
+                            TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
+                            TrafficSelector.IpProtocol.TCP, 0, 0,
+                            ip_address('192.168.1.1'),
+                            ip_address('192.168.1.1')),
+                        TrafficSelector(
+                            TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
+                            TrafficSelector.IpProtocol.TCP, 0, 0,
+                            ip_address('192.168.1.2'),
+                            ip_address('192.168.1.2')),
                         Proposal.Protocol.ESP, b'1234', Cipher.Id.ENCR_AES_CBC,
-                        b'1'*16, Integrity.Id.AUTH_HMAC_MD5_96, b'1'*16,
+                        b'1' * 16, Integrity.Id.AUTH_HMAC_MD5_96, b'1' * 16,
                         ipsec.Mode.TUNNEL)
         # text_state = subprocess.check_output(['ip', 'xfrm', 'state'])
         # self.assertEqual(
-        #     text_state,
-        #     b'src 192.168.1.1 dst 192.168.1.3\n\tproto esp spi 0x31323334 '
-        #     b'reqid 0 mode tunnel\n\treplay-window 0 \n\tauth-trunc hmac(md5) '
-        #     b'0x31313131313131313131313131313131 96\n\tenc cbc(aes) '
-        #     b'0x31313131313131313131313131313131\n\tanti-replay context: seq '
-        #     b'0x0, oseq 0x0, bitmap 0x00000000\n\tsel src 0.0.0.0/0 dst '
-        #     b'0.0.0.0/0 \n')
+        #  text_state,
+        #  b'src 192.168.1.1 dst 192.168.1.3\n\tproto esp spi 0x31323334 '
+        #  b'reqid 0 mode tunnel\n\treplay-window 0 \n\tauth-trunc hmac(md5) '
+        #  b'0x31313131313131313131313131313131 96\n\tenc cbc(aes) '
+        #  b'0x31313131313131313131313131313131\n\tanti-replay context: seq '
+        #  b'0x0, oseq 0x0, bitmap 0x00000000\n\tsel src 0.0.0.0/0 dst '
+        #  b'0.0.0.0/0 \n')
 
     def tearDown(self):
         ipsec.flush_policies()
         ipsec.flush_sas()
+
 
 if __name__ == '__main__':
     unittest.main()

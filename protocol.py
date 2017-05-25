@@ -6,27 +6,23 @@
 import json
 import logging
 import os
-
 from collections import namedtuple
 from ipaddress import ip_address, ip_network
 from struct import pack, unpack
 
-from crypto import Cipher, Crypto, DiffieHellman, Integrity, Prf
-
-from helpers import SafeIntEnum, hexstring
-
 import ipsec
-
+from crypto import Cipher, Crypto, DiffieHellman, Integrity, Prf
+from helpers import SafeIntEnum, hexstring
 from message import (AuthenticationFailed, ChildSaNotFound, IkeSaError,
                      InvalidKePayload, InvalidSelectors, InvalidSyntax,
                      NoProposalChosen, PayloadNotFound,
                      UnsupportedCriticalPayload)
-
 from message import (Message, Payload, PayloadAUTH, PayloadDELETE, PayloadIDi,
                      PayloadIDr, PayloadKE, PayloadNONCE, PayloadNOTIFY,
                      PayloadSA, PayloadTSi, PayloadTSr, PayloadVENDOR,
                      Proposal, TrafficSelector, Transform)
 
+__author__ = 'Alejandro Perez <alex@um.es>'
 
 """ TODO: Protocol exceptions should be defined here, as they are not used in
           message.py
@@ -41,10 +37,12 @@ Acquire = namedtuple('Acquire', ['tsi', 'tsr', 'index'])
 class IkeSaStateError(Exception):
     pass
 
+
 class IkeSa(object):
     """ This class controls the state machine of a IKE SA
         It is triggered with received Messages and/or IPsec events
     """
+
     class State(SafeIntEnum):
         # Non-established states
         INITIAL = 0
@@ -80,6 +78,11 @@ class IkeSa(object):
         self.my_addr = my_addr
         self.peer_addr = peer_addr
         self.child_sas = []
+        self.ike_sa_init_req_data = None
+        self.ike_sa_init_res_data = None
+        self.request = None
+        self.acquire = None
+        self.new_ike_sa = None
 
     def _generate_ike_sa_key_material(self, ike_proposal, nonce_i, nonce_r,
                                       spi_i, spi_r, shared_secret,
@@ -94,21 +97,21 @@ class IkeSa(object):
                         ike_proposal.get_transform(Transform.Type.ENCR).keylen)
 
         if not old_sk_d:
-            SKEYSEED = prf.prf(nonce_i + nonce_r, shared_secret)
+            skeyseed = prf.prf(nonce_i + nonce_r, shared_secret)
         else:
-            SKEYSEED = prf.prf(old_sk_d, shared_secret + nonce_i + nonce_r)
+            skeyseed = prf.prf(old_sk_d, shared_secret + nonce_i + nonce_r)
 
-        logging.debug('Generated SKEYSEED: {}'.format(hexstring(SKEYSEED)))
+        logging.debug('Generated SKEYSEED: {}'.format(hexstring(skeyseed)))
 
         keymat = prf.prfplus(
-            SKEYSEED,
+            skeyseed,
             nonce_i + nonce_r + spi_i + spi_r,
             prf.key_size * 3 + integ.key_size * 2 + cipher.key_size * 2)
-        ike_sa_keyring = Keyring._make(
-            unpack('>{0}s{1}s{1}s{2}s{2}s{0}s{0}s'.format(prf.key_size,
-                                                          integ.key_size,
-                                                          cipher.key_size),
-                   keymat))
+        ike_sa_keyring = Keyring._make(unpack(
+            '>{0}s{1}s{1}s{2}s{2}s{0}s{0}s'.format(prf.key_size,
+                                                   integ.key_size,
+                                                   cipher.key_size),
+            keymat))
         crypto_i = Crypto(cipher, ike_sa_keyring.sk_ei,
                           integ, ike_sa_keyring.sk_ai,
                           prf, ike_sa_keyring.sk_pi)
@@ -179,9 +182,9 @@ class IkeSa(object):
     def _ike_conf_2_proposal(self):
         return Proposal(1, Proposal.Protocol.IKE, b'',
                         (self.configuration['encr']
-                            + self.configuration['integ']
-                            + self.configuration['prf']
-                            + self.configuration['dh']))
+                         + self.configuration['integ']
+                         + self.configuration['prf']
+                         + self.configuration['dh']))
 
     def _ipsec_conf_2_proposal(self, ipsec_conf):
         proto = ipsec_conf['ipsec_proto']
@@ -208,7 +211,7 @@ class IkeSa(object):
         conf_tsr = TrafficSelector.from_network(ipsec_conf['peer_subnet'],
                                                 ipsec_conf['peer_port'],
                                                 ipsec_conf['ip_proto'])
-        return (conf_tsi, conf_tsr)
+        return conf_tsi, conf_tsr
 
     def _get_ipsec_configuration(self, payload_tsi, payload_tsr):
         """ Find matching IPsec configuration.
@@ -222,10 +225,10 @@ class IkeSa(object):
                     conf_tsi, conf_tsr = self._ipsec_conf_2_ts(ipsec_conf)
                     # look for a larger policy
                     if tsi.is_subset(conf_tsi) and tsr.is_subset(conf_tsr):
-                        return (ipsec_conf, tsi, tsr)
+                        return ipsec_conf, tsi, tsr
                     # look for a smaller policy
                     elif conf_tsi.is_subset(tsi) and conf_tsr.is_subset(tsr):
-                        return (ipsec_conf, conf_tsi, conf_tsr)
+                        return ipsec_conf, conf_tsi, conf_tsr
         raise InvalidSelectors(
             'TS could not be matched with any IPsec configuration')
 
@@ -276,18 +279,18 @@ class IkeSa(object):
         if message.message_id == self.peer_msg_id - 1:
             logging.warning(
                 'Retransmission detected. Sending last sent message')
-            return (True, self.last_sent_response_data)
+            return True, self.last_sent_response_data
         elif message.message_id != self.peer_msg_id:
             logging.error('Message with invalid ID. Expecting: {}. Received: '
                           '{}. Omitting.'.format(self.peer_msg_id,
                                                  message.message_id))
-            return (True, None)
+            return True, None
         try:
             handler = _handler_dict[message.exchange_type]
         except KeyError:
             logging.error('I don\'t know how to handle this message. '
                           'Please, implement a handler for this exchange!')
-            return (True, None)
+            return True, None
 
         status = False
         response = None
@@ -349,7 +352,7 @@ class IkeSa(object):
         if message.message_id != self.my_msg_id:
             logging.error('Message with invalid ID. Expecting {}. Omitting.'
                           ''.format(self.my_msg_id))
-            return (True, None)
+            return True, None
 
         # process the message
         try:
@@ -357,7 +360,7 @@ class IkeSa(object):
         except KeyError:
             logging.error('I don\'t know how to handle this message. '
                           'Please, implement a handler!')
-            return (True, None)
+            return True, None
 
         # increment our message ID for future requests
         self.my_msg_id = self.my_msg_id + 1
@@ -586,7 +589,8 @@ class IkeSa(object):
         assert(self.state == IkeSa.State.INIT_REQ_SENT)
 
         # generate the CHILD_SA negotiation payloads
-        child_sa_payloads = self._generate_child_sa_negotiation_req(self.acquire)
+        child_sa_payloads = self._generate_child_sa_negotiation_req(
+            self.acquire)
 
         # generate IDi
         payload_idi = PayloadIDi(self.configuration['id'].id_type,
@@ -762,7 +766,6 @@ class IkeSa(object):
 
         return response_payloads
 
-
     def _check_in_states(self, message, list_of_valid_states):
         if self.state not in list_of_valid_states:
             raise IkeSaStateError(
@@ -778,7 +781,6 @@ class IkeSa(object):
     def _check_established_or_rekeyed(self, message):
         return self._check_in_states(message, range(IkeSa.State.ESTABLISHED,
                                                     IkeSa.State.REKEYED + 1))
-
 
     def process_ike_auth_request(self, request):
         """ Processes a IKE_AUTH request message and returns a
@@ -867,8 +869,8 @@ class IkeSa(object):
             response_payload_nonce = ike_sa_init_res.get_payload(
                 Payload.Type.NONCE)
         else:
-            request_payload_nonce = self.request.get_payload(Payload.Type.NONCE,
-                                                             True)
+            request_payload_nonce = self.request.get_payload(
+                Payload.Type.NONCE, True)
             response_payload_nonce = response.get_payload(Payload.Type.NONCE,
                                                           True)
 
@@ -1010,7 +1012,8 @@ class IkeSa(object):
                     child_sa = next(x for x in self.child_sas
                                     if x.outbound_spi == del_spi)
                 except StopIteration:
-                    raise ChildSaNotFound(del_spi)
+                    raise ChildSaNotFound(
+                        'The indicated SPI could not be found', spi=del_spi)
                 ipsec.delete_sa(self.peer_addr, child_sa.protocol,
                                 child_sa.outbound_spi)
                 ipsec.delete_sa(self.my_addr, child_sa.protocol,
@@ -1071,13 +1074,14 @@ class IkeSa(object):
             rekey_notify = request.get_notifies(PayloadNOTIFY.Type.REKEY_SA,
                                                 encrypted=True)
             if rekey_notify:
+                # use only the first notification
+                rekey_spi = rekey_notify[0].spi
                 try:
-                    # use only the first notification
-                    rekey_spi = rekey_notify[0].spi
                     rekeyed_child_sa = next(x for x in self.child_sas
                                             if x.outbound_spi == rekey_spi)
                 except StopIteration:
-                    raise ChildSaNotFound(spi=rekey_spi)
+                    raise ChildSaNotFound(
+                        'The indicated SPI could not be found', spi=rekey_spi)
                 response_payloads.append(
                     PayloadNOTIFY(proposal.protocol_id,
                                   PayloadNOTIFY.Type.REKEY_SA,
@@ -1153,7 +1157,7 @@ class IkeSaController:
                 logging.warning('Received message for unknown SPI={}. '
                                 'Omitting.'.format(hexstring(my_spi)))
                 logging.debug(json.dumps(header.to_dict(),
-                              indent=logging.indent))
+                                         indent=logging.indent))
                 return None
 
         # generate the reply (if any)
@@ -1187,7 +1191,7 @@ class IkeSaController:
             my_addr = xfrm_acquire.saddr.to_ipaddr()
             ike_conf = self.configuration.get_ike_configuration(peer_addr)
             # create new IKE_SA (for now)
-            ike_sa = IkeSa(is_initiator=True, peer_spi=b'\0'*8,
+            ike_sa = IkeSa(is_initiator=True, peer_spi=b'\0' * 8,
                            configuration=ike_conf, my_addr=my_addr,
                            peer_addr=peer_addr)
             self.ike_sas.append(ike_sa)

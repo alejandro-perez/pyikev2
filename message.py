@@ -3,8 +3,6 @@
 
 """ This module defines the classes for the protocol messages.
 """
-__author__ = 'Alejandro Perez <alex@um.es>'
-
 import logging
 import os
 
@@ -16,6 +14,8 @@ from struct import error as struct_error, pack, pack_into, unpack_from
 from crypto import Cipher, DiffieHellman, ESN, Integrity, Prf
 
 from helpers import SafeIntEnum, hexstring
+
+__author__ = 'Alejandro Perez <alex@um.es>'
 
 
 class IkeSaError(Exception):
@@ -39,8 +39,8 @@ class NoProposalChosen(IkeSaError):
 
 
 class InvalidKePayload(IkeSaError):
-    def __init__(self, *args, group, **kwargs):
-        super(InvalidKePayload, self).__init__(self, *args, **kwargs)
+    def __init__(self, msg, group):
+        super(InvalidKePayload, self).__init__(self, msg)
         self.group = group
 
 
@@ -57,8 +57,8 @@ class PayloadNotFound(IkeSaError):
 
 
 class ChildSaNotFound(ChildSaError):
-    def __init__(self, *args, spi, **kwargs):
-        super(ChildSaNotFound, self).__init__(self, *args, **kwargs)
+    def __init__(self, msg, spi):
+        super(ChildSaNotFound, self).__init__(self, msg)
         self.spi = spi
 
 
@@ -81,6 +81,8 @@ class Payload:
         SK = 46
         CP = 47
         EAP = 48
+
+    type = Type.NONE
 
     def __init__(self, critical=False):
         self.critical = critical
@@ -315,7 +317,7 @@ class PayloadSA(Payload):
                 proposal = Proposal.parse(data[start:end])
                 proposals.append(proposal)
                 offset += length
-        return PayloadSA(proposals)
+        return PayloadSA(proposals, critical=critical)
 
     def to_bytes(self):
         data = bytearray()
@@ -432,7 +434,7 @@ class PayloadNOTIFY(Payload):
     def parse(cls, data, critical=False):
         try:
             (protocol_id,
-                spi_size, notification_type) = unpack_from('>BBH', data)
+             spi_size, notification_type) = unpack_from('>BBH', data)
         except struct_error:
             raise InvalidSyntax('Error parsing Payload Notify.')
         if spi_size > 0:
@@ -441,7 +443,7 @@ class PayloadNOTIFY(Payload):
             spi = b''
         notification_data = data[4 + spi_size:]
         return PayloadNOTIFY(protocol_id, notification_type, spi,
-                             notification_data)
+                             notification_data, critical=critical)
 
     def to_bytes(self):
         data = bytearray(pack('>BBH', self.protocol_id, len(self.spi),
@@ -488,7 +490,7 @@ class PayloadID(Payload):
             raise InvalidSyntax('Error parsing Payload ID.')
         id_data = data[4:]
         # we need to use cls as it might be PayloadIDi or PayloadIDr
-        return cls(id_type, id_data)
+        return cls(id_type, id_data, critical=critical)
 
     def to_bytes(self):
         data = bytearray(pack('>BBH', self.id_type, 0, 0))
@@ -544,7 +546,7 @@ class PayloadAUTH(Payload):
         except struct_error:
             raise InvalidSyntax('Error parsing Payload AUTH.')
         auth_data = data[4:]
-        return PayloadAUTH(method, auth_data)
+        return PayloadAUTH(method, auth_data, critical=critical)
 
     def to_bytes(self):
         data = bytearray(pack('>BBH', self.method, 0, 0))
@@ -601,10 +603,10 @@ class TrafficSelector(object):
             return self.end_port
 
     @classmethod
-    def parse(cls, data, critical=False):
+    def parse(cls, data):
         try:
             (ts_type, ip_proto,
-                _, start_port, end_port) = unpack_from('>BBHHH', data)
+             _, start_port, end_port) = unpack_from('>BBHHH', data)
             addr_len = (4 if ts_type == TrafficSelector.Type.TS_IPV4_ADDR_RANGE
                         else 16)
             start_addr, end_addr = unpack_from('>{0}s{0}s'.format(addr_len),
@@ -685,7 +687,7 @@ class PayloadTS(Payload):
                                 'Expected {} got {}'
                                 ''.format(n_ts, len(traffic_selectors)))
         # we need to use cls as it might be PayloadTSi or PayloadTSr
-        return cls(traffic_selectors)
+        return cls(traffic_selectors, critical=critical)
 
     def to_bytes(self):
         data = bytearray(pack('>BBH', len(self.traffic_selectors), 0, 0))
@@ -727,11 +729,11 @@ class PayloadSK(Payload):
     def decrypt(self, crypto):
         iv = self.ciphertext[:crypto.cipher.block_size]
         ciphertext = self.ciphertext[
-            crypto.cipher.block_size:-crypto.integrity.hash_size]
+                     crypto.cipher.block_size:-crypto.integrity.hash_size]
         decrypted = crypto.cipher.decrypt(crypto.sk_e, bytes(iv),
                                           bytes(ciphertext))
         padlen = decrypted[-1]
-        return decrypted[:-1-padlen]
+        return decrypted[:-1 - padlen]
 
     @classmethod
     def generate(cls, cleartext, crypto):
@@ -770,7 +772,7 @@ class PayloadDELETE(Payload):
         for i in range(0, num_spis):
             spis.append(data[offset:offset + spi_size])
             offset += spi_size
-        return PayloadDELETE(protocol_id, spis)
+        return PayloadDELETE(protocol_id, spis, critical=critical)
 
     def to_bytes(self):
         data = bytearray(pack('>BBH', self.protocol_id,
@@ -832,14 +834,14 @@ class Message:
         offset = 0
         payload_type = first_payload_type
 
-        while (payload_type != Payload.Type.NONE):
+        while payload_type != Payload.Type.NONE:
             # Read payload common header
             try:
                 (next_payload_type,
-                    critical, length) = unpack_from('>BBH', data, offset)
+                 critical, length) = unpack_from('>BBH', data, offset)
             except struct_error as ex:
                 raise InvalidSyntax(ex)
-            critical = critical >> 7
+            critical = (critical >> 7) == 1
             start = offset + 4
             end = offset + length
             # Parse the payload. If not known and critical, raise exception
@@ -852,7 +854,7 @@ class Message:
                     next_payload_type = Payload.Type.NONE
                 # offset is increased in any case
                 payloads.append(payload)
-            except KeyError as ex:
+            except KeyError:
                 logging.warning(
                     'Unrecognized payload with type '
                     '{}'.format(Payload.Type.safe_name(payload_type)))
@@ -914,7 +916,8 @@ class Message:
 
         return message
 
-    def _payloads_to_bytes(self, payloads):
+    @staticmethod
+    def _payloads_to_bytes(payloads):
         # generate payloads
         payloads_data = bytearray()
         for index in range(0, len(payloads)):
@@ -953,7 +956,7 @@ class Message:
             '>8s8s4B2L', self.spi_i, self.spi_r, first_payload_type,
             (self.major << 4 | self.minor & 0x0F), self.exchange_type,
             (self.is_response << 5 | self.can_use_higher_version << 4 |
-                self.is_initiator << 3),
+             self.is_initiator << 3),
             self.message_id, 28,
         ))
 
@@ -1019,4 +1022,3 @@ class Message:
             raise PayloadNotFound(
                 'Required payload {} was not found in message'
                 ''.format(Payload.Type.safe_name(payload_type)))
-

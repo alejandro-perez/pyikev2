@@ -6,6 +6,8 @@
 import codecs
 from enum import Enum
 
+__author__ = 'Alejandro Perez <alex@um.es>'
+
 
 def hexstring(data):
     return codecs.encode(data, 'hex').decode()

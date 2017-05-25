@@ -1,27 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
-__author__ = 'Alejandro Perez <alex@um.es>'
-__version__ = "0.1"
-
 import argparse
 import logging
+import netifaces
 import signal
 import socket
 import sys
-
 from ipaddress import ip_address
 from select import select
 
-from configuration import Configuration
+import yaml
 
 import ipsec
-
-import netifaces
-
+from configuration import Configuration
 from protocol import IkeSaController
 
-import yaml
+__author__ = 'Alejandro Perez <alex@um.es>'
+__version__ = "0.1"
 
 # check the available interfaces
 interfaces = netifaces.interfaces()
@@ -32,7 +28,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument(
     '--verbose', '-v', action='store_true',
     help='Enable (much) more verbosity. WARNING: This will make your key '
-    'material to be shown in the log output!')
+         'material to be shown in the log output!')
 parser.add_argument(
     '--interface', '-i', required=True, metavar='IFACE', choices=interfaces,
     help='Interface where the daemon will listen from. Choices: %(choices)s')
@@ -49,6 +45,7 @@ args = parser.parse_args()
 try:
     addrs = netifaces.ifaddresses(args.interface)
     ip = addrs[netifaces.AF_INET][0]['addr']
+    port = 500
 except ValueError as ex:
     print(ex)
     sys.exit(1)
@@ -65,9 +62,8 @@ logging.indent = None if args.no_indent else 2
 
 # create network socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.bind((ip, 500))
-logging.info('Listening from {}:{}'.format(sock.getsockname()[0],
-                                           sock.getsockname()[1]))
+sock.bind((ip, port))
+logging.info('Listening from {}:{}'.format(ip, port))
 
 # create XFRM socket
 xfrm = ipsec.get_socket()
@@ -78,22 +74,22 @@ try:
     with open(args.configuration_file, 'r') as file:
         conf_dict = yaml.load(file, yaml.Loader)
 except (FileNotFoundError, yaml.YAMLError) as ex:
-    logging.error('Error in configuration file {}:\n{}'
-                  ''.format(args.configuration_file, str(ex)))
+    logging.error(
+        'Error in configuration file {}:\n{}'.format(args.configuration_file,
+                                                     str(ex)))
     sys.exit(1)
 
-configuration = Configuration(sock.getsockname()[0], conf_dict)
+configuration = Configuration(ip, conf_dict)
 
 # create IkeSaController
-ike_sa_controller = IkeSaController(ip_address(sock.getsockname()[0]),
+ike_sa_controller = IkeSaController(ip_address(ip),
                                     configuration=configuration)
 
 
-def signal_handler(signal, frame):
-        print('SIGINT received. Exiting.')
-        # TODO: Close IKE_SA_CONTROLLER gracefully
-        sys.exit(0)
-
+def signal_handler(*unused):
+    print('SIGINT received. Exiting.')
+    # TODO: Close IKE_SA_CONTROLLER gracefully
+    sys.exit(0)
 
 signal.signal(signal.SIGINT, signal_handler)
 
@@ -109,7 +105,7 @@ while True:
     if xfrm in ready_to_read:
         data = xfrm.recv(4096)
         header, msg, attributes = ipsec.parse_xfrm_message(data)
-        reply_data = None
+        reply_data, addr = None, None
         if header.type == ipsec.XFRM_MSG_ACQUIRE:
             reply_data, addr = ike_sa_controller.process_acquire(
                 msg, attributes[ipsec.XFRMA_TMPL])

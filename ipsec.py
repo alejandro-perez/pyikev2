@@ -7,7 +7,6 @@ import logging
 import os
 import socket
 import time
-
 from ctypes import (Structure, addressof, c_int, c_ubyte, c_uint16, c_uint32,
                     c_uint64, memmove, sizeof)
 from ipaddress import ip_address, ip_network
@@ -15,10 +14,10 @@ from random import SystemRandom
 from struct import unpack_from
 
 from crypto import Cipher, Integrity
-
 from helpers import SafeIntEnum, hexstring
-
 from message import Proposal
+
+__author__ = 'Alejandro Perez <alex@um.es>'
 
 # netlink flags
 NLM_F_REQUEST = 0x0001
@@ -105,17 +104,17 @@ class NetlinkError(Exception):
 
 class NetlinkStructure(Structure):
     @classmethod
-    def parse(cls, bytes):
+    def parse(cls, data):
         result = cls()
-        memmove(addressof(result), bytes, sizeof(cls))
+        memmove(addressof(result), data, sizeof(cls))
         return result
 
     def to_dict(self):
         result = {}
         for name, _ in self._fields_:
-            object = getattr(self, name)
-            if hasattr(object, 'to_dict'):
-                result[name] = object.to_dict()
+            obj = getattr(self, name)
+            if hasattr(obj, 'to_dict'):
+                result[name] = obj.to_dict()
             else:
                 result[name] = getattr(self, name)
         return result
@@ -260,10 +259,11 @@ class XfrmAlgo(NetlinkStructure):
 
 
 def xfrm_algo_factory(alg_name, key):
-    class _internal(NetlinkStructure):
+    class _Internal(NetlinkStructure):
         _fields_ = (('xfrm_algo', XfrmAlgo),
                     ('key', c_ubyte * len(key)))
-    return _internal(
+
+    return _Internal(
         xfrm_algo=XfrmAlgo(alg_name=create_byte_array(alg_name, 64),
                            alg_key_len=len(key) * 8),
         key=create_byte_array(key))
@@ -297,19 +297,16 @@ _cipher_names = {
     Cipher.Id.ENCR_AES_CBC: b'aes',
 }
 
-
 _auth_names = {
     Integrity.Id.AUTH_HMAC_MD5_96: b'md5',
     Integrity.Id.AUTH_HMAC_SHA1_96: b'sha1',
 }
-
 
 _msg_to_struct = {
     XFRM_MSG_ACQUIRE: XfrmUserAcquire,
     XFRM_MSG_EXPIRE: XfrmUserExpire,
     NLMSG_ERROR: NetlinkErrorMsg,
 }
-
 
 _attr_to_struct = {
     XFRMA_TMPL: XfrmUserTmpl,
@@ -339,14 +336,15 @@ def parse_xfrm_message(data):
         msg = msg_struct.parse(data[sizeof(header):])
         attributes = parse_xfrm_attributes(
             data[sizeof(header) + sizeof(msg):header.length])
-    return header,  msg, attributes
+        return header, msg, attributes
+    return header, None, None
 
 
 def xfrm_send(command, flags, data):
     sock = socket.socket(socket.AF_NETLINK,
                          socket.SOCK_RAW,
                          socket.NETLINK_XFRM)
-    sock.bind((0, 0),)
+    sock.bind((0, 0), )
     header = NetlinkHeader(length=sizeof(NetlinkHeader) + len(data),
                            type=command,
                            seq=int(time.time()),
@@ -374,25 +372,27 @@ def flush_sas():
               bytes(usersaflush))
 
 
-def create_byte_array(bytes, size=None):
+def create_byte_array(data, size=None):
     if size is None:
-        size = len(bytes)
+        size = len(data)
     fmt = c_ubyte * size
-    return fmt(*bytes)
+    return fmt(*data)
 
 
 def attribute_factory(code, data):
-    class _internal(NetlinkStructure):
+    class _Internal(NetlinkStructure):
         _fields_ = (
             ('len', c_uint16),
             ('code', c_uint16),
             ('data', type(data)),
         )
-    return _internal(code=code, len=sizeof(_internal), data=data)
+
+    return _Internal(code=code, len=sizeof(_Internal), data=data)
 
 
 def xfrm_create_policy(src_selector, dst_selector, src_port, dst_port,
-                       ip_proto, dir, ipsec_proto, mode, src, dst, index=0):
+                       ip_proto, direction, ipsec_proto, mode, src, dst,
+                       index=0):
     policy = XfrmUserPolicyInfo(
         sel=XfrmSelector(
             family=socket.AF_INET,
@@ -405,7 +405,7 @@ def xfrm_create_policy(src_selector, dst_selector, src_port, dst_port,
             prefixlen_d=dst_selector.prefixlen,
             prefixlen_s=src_selector.prefixlen,
             proto=ip_proto),
-        dir=dir,
+        dir=direction,
         index=index,
         action=XFRM_POLICY_ALLOW,
         lft=XfrmLifetimeCfg.infinite(),
@@ -424,9 +424,8 @@ def xfrm_create_policy(src_selector, dst_selector, src_port, dst_port,
             ealgos=0xFFFFFFFF,
             calgos=0xFFFFFFFF,
             mode=mode))
-    header, msg, attr = xfrm_send(XFRM_MSG_NEWPOLICY,
-                                  (NLM_F_REQUEST | NLM_F_ACK),
-                                  bytes(policy) + bytes(tmpl))
+    xfrm_send(XFRM_MSG_NEWPOLICY, (NLM_F_REQUEST | NLM_F_ACK),
+              bytes(policy) + bytes(tmpl))
 
 
 def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
@@ -525,5 +524,5 @@ def create_sa(src, dst, src_sel, dst_sel, ipsec_protocol, spi, enc_algorith,
 def get_socket():
     sock = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW,
                          socket.NETLINK_XFRM)
-    sock.bind((0, XFRMGRP_ACQUIRE | XFRMGRP_EXPIRE),)
+    sock.bind((0, XFRMGRP_ACQUIRE | XFRMGRP_EXPIRE), )
     return sock

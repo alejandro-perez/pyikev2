@@ -4,24 +4,23 @@
 """ This module defines cryptographic classes
 """
 
-__author__ = 'Alejandro Perez <alex@um.es>'
-
 import hashlib
 import os
-
 from collections import namedtuple
-
 from hmac import HMAC
 
 import cryptography.hazmat.backends.openssl.backend
 from cryptography.hazmat.primitives.asymmetric import dh
-from cryptography.hazmat.primitives.ciphers import (Cipher as cypher,
-                                                    algorithms, modes)
+from cryptography.hazmat.primitives.ciphers import (
+    Cipher as CryptographyCipher,
+    algorithms, modes)
 
 from helpers import SafeIntEnum
 
-Crypto = namedtuple('Crypto', ['cipher', 'sk_e', 'integrity', 'sk_a', 'prf',
-                               'sk_p'])
+__author__ = 'Alejandro Perez <alex@um.es>'
+
+Crypto = namedtuple('Crypto',
+                    ['cipher', 'sk_e', 'integrity', 'sk_a', 'prf', 'sk_p'])
 
 
 class EncrError(Exception):
@@ -102,8 +101,8 @@ class Cipher:
         if len(key) != self.key_size:
             raise EncrError('Key must be of the indicated size {}'
                             ''.format(self.key_size))
-        cyph = cypher(self._algorithm(key), modes.CBC(iv),
-                      backend=self._backend)
+        cyph = CryptographyCipher(self._algorithm(key), modes.CBC(iv),
+                                  backend=self._backend)
         encryptor = cyph.encryptor()
         return encryptor.update(data) + encryptor.finalize()
 
@@ -111,8 +110,8 @@ class Cipher:
         if len(key) != self.key_size:
             raise EncrError('Key must be of the indicated size {}'
                             ''.format(self.key_size))
-        cyph = cypher(self._algorithm(key), modes.CBC(iv),
-                      backend=self._backend)
+        cyph = CryptographyCipher(self._algorithm(key), modes.CBC(iv),
+                                  backend=self._backend)
         decryptor = cyph.decryptor()
         return decryptor.update(data) + decryptor.finalize()
 
@@ -304,6 +303,7 @@ class DiffieHellman:
         self._pn = dh.DHParameterNumbers(self._module, 2)
         self._parameters = self._pn.parameters(self.backend)
         self._generate_keys()
+        self.shared_secret = None
 
     def _generate_keys(self):
         self._private_key = self._parameters.generate_private_key()
