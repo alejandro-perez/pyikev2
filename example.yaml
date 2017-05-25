@@ -7,15 +7,15 @@ sdn-openikev2-alice:
     - ip_proto: tcp
       mode: tunnel
       my_port: 23
-      my_subnet: "10.0.3.0/24"
-      peer_subnet: "10.0.3.0/24"
+      my_subnet: "10.0.5.0/24"
+      peer_subnet: "10.0.5.0/24"
       ipsec_proto: esp
       encr: [aes256, aes128]
     - ip_proto: tcp
       mode: tunnel
       peer_port: 23
-      my_subnet: "10.0.3.0/24"
-      peer_subnet: "10.0.3.0/24"
+      my_subnet: "10.0.5.0/24"
+      peer_subnet: "10.0.5.0/24"
       ipsec_proto: esp
       encr: [aes256, aes128]
 
