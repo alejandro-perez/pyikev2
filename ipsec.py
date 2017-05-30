@@ -8,7 +8,7 @@ import os
 import socket
 import time
 from ctypes import (Structure, addressof, c_int, c_ubyte, c_uint16, c_uint32,
-                    c_uint64, memmove, sizeof)
+                    c_uint64, memmove, sizeof, Array)
 from ipaddress import ip_address, ip_network
 from random import SystemRandom
 from struct import unpack_from
@@ -116,6 +116,8 @@ class NetlinkStructure(Structure):
             obj = getattr(self, name)
             if hasattr(obj, 'to_dict'):
                 result[name] = obj.to_dict()
+            elif isinstance(obj, Array):
+                result[name] = str(list(obj))
             else:
                 result[name] = getattr(self, name)
         return result
