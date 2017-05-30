@@ -106,7 +106,8 @@ class NetlinkStructure(Structure):
     @classmethod
     def parse(cls, data):
         result = cls()
-        memmove(addressof(result), data, sizeof(cls))
+        fit = min(len(data), sizeof(cls))
+        memmove(addressof(result), data, fit)
         return result
 
     def to_dict(self):
