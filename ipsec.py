@@ -372,8 +372,7 @@ def flush_sas():
 def create_byte_array(data, size=None):
     if size is None:
         size = len(data)
-    fmt = c_ubyte * size
-    return fmt(*data)
+    return (c_ubyte * size)(*data)
 
 
 def attribute_factory(code, data):
