@@ -6,8 +6,7 @@
 import os
 import socket
 import time
-from ctypes import memmove, Structure, sizeof, addressof, Array, c_uint32, \
-    c_uint16, c_int
+from ctypes import memmove, Structure, sizeof, addressof, Array, c_uint32, c_uint16, c_int
 from struct import unpack_from
 
 # Flags
@@ -92,8 +91,7 @@ class NetlinkProtocol(object):
             if length == 0:
                 break
             try:
-                attributes[type] = self.attribute_types[type].parse(
-                    data[4:length])
+                attributes[type] = self.attribute_types[type].parse(data[4:length])
             except KeyError:
                 pass
             data = data[length:]
@@ -105,8 +103,7 @@ class NetlinkProtocol(object):
         payload = None
         attributes = {}
         try:
-            payload = self.payload_types[header.type].parse(
-                data[sizeof(header):])
+            payload = self.payload_types[header.type].parse(data[sizeof(header):])
             attributes = self._parse_attributes(
                 data[sizeof(header) + sizeof(payload):header.length])
         except KeyError:
@@ -121,15 +118,13 @@ class NetlinkProtocol(object):
             for attribute_type, attribute_value in attributes.items():
                 attr = self._attribute_factory(attribute_type, attribute_value)
                 data += bytes(attr)
-        header = NetlinkHeader(length=sizeof(NetlinkHeader) + len(data),
-                               type=payload_type, seq=int(time.time()),
-                               pid=os.getpid(), flags=flags)
+        header = NetlinkHeader(length=sizeof(NetlinkHeader) + len(data), type=payload_type,
+                               seq=int(time.time()), pid=os.getpid(), flags=flags)
         sock = self._get_socket(0)
         sock.send(bytes(header) + data)
         data = sock.recv(4096)
         sock.close()
         header, payload, attributes = self._parse_message(data)
         if header.type == NLMSG_ERROR and payload.error != 0:
-            raise NetlinkError(
-                'Received error header!: {}'.format(payload.error))
+            raise NetlinkError('Received error header!: {}'.format(payload.error))
         return header, payload, attributes

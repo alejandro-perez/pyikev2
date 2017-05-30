@@ -66,13 +66,11 @@ _ipsec_proto_name_to_enum = {
 
 
 class Configuration(object):
-    """ Represents the daemon configuration
-        Basically, a collection of IkeConfigurations
+    """ Represents the daemon configuration.
     """
 
     def __init__(self, my_addr, conf_dict):
-        """ Creates a new Configuration object from a textual dict
-            (e.g. comming fron JSON or YAML)
+        """ Creates a new Configuration object from a textual dict (e.g. comming fron JSON or YAML)
         """
         self._configuration = {}
         for key, value in conf_dict.items():
@@ -90,21 +88,15 @@ class Configuration(object):
         default_id = 'https://github.com/alejandro-perez/pyikev2'
         result = {
             'psk': conf_dict.get('psk', 'whatever').encode(),
-            'id': PayloadID(PayloadID.Type.ID_FQDN,
-                            conf_dict.get('id', default_id).encode()),
-            'peer_id': PayloadID(PayloadID.Type.ID_FQDN,
-                                 conf_dict.get('id', default_id).encode()),
-            'encr': self._load_crypto_algs('encr',
-                                           conf_dict.get('encr', ['aes256']),
+            'id': PayloadID(PayloadID.Type.ID_FQDN, conf_dict.get('id', default_id).encode()),
+            'peer_id': PayloadID(PayloadID.Type.ID_FQDN, conf_dict.get('id', default_id).encode()),
+            'encr': self._load_crypto_algs('encr', conf_dict.get('encr', ['aes256']),
                                            _encr_name_to_transform),
-            'integ': self._load_crypto_algs('integ',
-                                            conf_dict.get('integ', ['sha1']),
+            'integ': self._load_crypto_algs('integ', conf_dict.get('integ', ['sha1']),
                                             _integ_name_to_transform),
-            'prf': self._load_crypto_algs('prf',
-                                          conf_dict.get('prf', ['sha1']),
+            'prf': self._load_crypto_algs('prf', conf_dict.get('prf', ['sha1']),
                                           _prf_name_to_transform),
-            'dh': self._load_crypto_algs('dh', conf_dict.get('dh', ['2']),
-                                         _dh_name_to_transform),
+            'dh': self._load_crypto_algs('dh', conf_dict.get('dh', ['2']), _dh_name_to_transform),
         }
 
         ipsec_confs = []
@@ -129,24 +121,18 @@ class Configuration(object):
 
     def _load_ipsec_conf(self, peer_ip, conf_dict):
         return {
-            'my_subnet': self._load_ip_network(conf_dict.get('my_subnet',
-                                                             self.my_addr)),
-            'peer_subnet': self._load_ip_network(conf_dict.get('peer_subnet',
-                                                               peer_ip)),
+            'my_subnet': self._load_ip_network(conf_dict.get('my_subnet', self.my_addr)),
+            'peer_subnet': self._load_ip_network(conf_dict.get('peer_subnet', peer_ip)),
             'my_port': int(conf_dict.get('my_port', 0)),
             'peer_port': int(conf_dict.get('peer_port', 0)),
             'ip_proto': self._load_from_dict(conf_dict.get('ip_proto', 'any'),
                                              _ip_proto_name_to_enum),
-            'mode': self._load_from_dict(conf_dict.get('mode', 'transport'),
-                                         _mode_name_to_enum),
-            'ipsec_proto': self._load_from_dict(
-                conf_dict.get('ipsec_proto', 'esp'),
-                _ipsec_proto_name_to_enum),
-            'encr': self._load_crypto_algs('encr',
-                                           conf_dict.get('encr', ['aes256']),
+            'mode': self._load_from_dict(conf_dict.get('mode', 'transport'), _mode_name_to_enum),
+            'ipsec_proto': self._load_from_dict(conf_dict.get('ipsec_proto', 'esp'),
+                                                _ipsec_proto_name_to_enum),
+            'encr': self._load_crypto_algs('encr', conf_dict.get('encr', ['aes256']),
                                            _encr_name_to_transform),
-            'integ': self._load_crypto_algs('integ',
-                                            conf_dict.get('integ', ['sha1']),
+            'integ': self._load_crypto_algs('integ', conf_dict.get('integ', ['sha1']),
                                             _integ_name_to_transform),
         }
 
@@ -163,8 +149,7 @@ class Configuration(object):
         try:
             return cnf_dict[key]
         except KeyError:
-            raise ConfigurationError(
-                '{} not supported'.format(key))
+            raise ConfigurationError('{} not supported'.format(key))
 
     def _load_crypto_algs(self, key, names, name_to_transform):
         transforms = []
