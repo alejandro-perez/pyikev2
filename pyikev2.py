@@ -88,14 +88,14 @@ signal.signal(signal.SIGINT, signal_handler)
 
 # do server
 while True:
-    ready_to_read, _, _ = select([sock, xfrm_socket], [], [])
-    if sock in ready_to_read:
+    readeble = select([sock, xfrm_socket], [], [])[0]
+    if sock in readeble:
         data, addr = sock.recvfrom(4096)
         data = ike_sa_controller.dispatch_message(data, sock.getsockname(), addr)
         if data:
             sock.sendto(data, addr)
     # TODO: Wrong. _parse_message should not be used here
-    if xfrm_socket in ready_to_read:
+    if xfrm_socket in readeble:
         data = xfrm_socket.recv(4096)
         header, msg, attributes = xfrm._parse_message(data)
         reply_data, addr = None, None
