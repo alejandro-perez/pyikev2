@@ -10,7 +10,7 @@ from collections import namedtuple
 from ipaddress import ip_address, ip_network
 from struct import pack, unpack
 
-import ipsec
+import xfrm
 from crypto import Cipher, Crypto, DiffieHellman, Integrity, Prf
 from helpers import SafeIntEnum, hexstring
 from message import (AuthenticationFailed, ChildSaNotFound, IkeSaError,
@@ -83,6 +83,7 @@ class IkeSa(object):
         self.request = None
         self.acquire = None
         self.new_ike_sa = None
+        self.xfrm = xfrm.Xfrm()
 
     def _generate_ike_sa_key_material(self, ike_proposal, nonce_i, nonce_r,
                                       spi_i, spi_r, shared_secret,
@@ -129,10 +130,10 @@ class IkeSa(object):
 
     def delete_child_sas(self):
         for child_sa in self.child_sas:
-            ipsec.delete_sa(self.peer_addr, child_sa.protocol,
-                            child_sa.outbound_spi)
-            ipsec.delete_sa(self.my_addr, child_sa.protocol,
-                            child_sa.inbound_spi)
+            self.xfrm.delete_sa(self.peer_addr, child_sa.protocol,
+                                child_sa.outbound_spi)
+            self.xfrm.delete_sa(self.my_addr, child_sa.protocol,
+                                child_sa.inbound_spi)
 
     def _generate_child_sa_key_material(self, ike_proposal, child_proposal,
                                         nonce_i, nonce_r, sk_d):
@@ -394,7 +395,7 @@ class IkeSa(object):
             return self._process_response(message, data, addr)
 
     # TODO: This interface should be using a non-XFRM interface. Acquire should
-    # come from the ipsec.py module
+    # come from the xfrm.py module
     def process_acquire(self, xfrm_acquire, xfrm_tmpl):
         small_tsi = TrafficSelector.from_network(
             ip_network(xfrm_acquire.sel.saddr.to_ipaddr()),
@@ -577,7 +578,7 @@ class IkeSa(object):
         result.append(PayloadSA([proposal]))
 
         # genereate USE_TRANSPORT_MODE notify if needed
-        if ipsec_conf['mode'] == ipsec.Mode.TRANSPORT:
+        if ipsec_conf['mode'] == xfrm.Mode.TRANSPORT:
             result.append(PayloadNOTIFY(Proposal.Protocol.NONE,
                                         PayloadNOTIFY.Type.USE_TRANSPORT_MODE,
                                         b'', b''))
@@ -711,9 +712,9 @@ class IkeSa(object):
             request_payload_tsr, request_payload_tsi)
 
         # check which mode peer wants and compare to ours
-        mode = ipsec.Mode.TUNNEL
+        mode = xfrm.Mode.TUNNEL
         if request.get_notifies(PayloadNOTIFY.Type.USE_TRANSPORT_MODE, True):
-            mode = ipsec.Mode.TRANSPORT
+            mode = xfrm.Mode.TRANSPORT
             response_payloads.append(
                 PayloadNOTIFY(Proposal.Protocol.NONE,
                               PayloadNOTIFY.Type.USE_TRANSPORT_MODE, b'', b''))
@@ -743,13 +744,13 @@ class IkeSa(object):
                 Transform.Type.ENCR).id
         else:
             encr_transform = None
-        ipsec.create_sa(
+        self.xfrm.create_sa(
             self.my_addr, self.peer_addr, chosen_tsr, chosen_tsi,
             chosen_child_proposal.protocol_id, child_sa.outbound_spi,
             encr_transform, child_sa_keyring.sk_er,
             chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
             child_sa_keyring.sk_ar, mode)
-        ipsec.create_sa(
+        self.xfrm.create_sa(
             self.peer_addr, self.my_addr, chosen_tsi, chosen_tsr,
             chosen_child_proposal.protocol_id, child_sa.inbound_spi,
             encr_transform, child_sa_keyring.sk_ei,
@@ -875,10 +876,10 @@ class IkeSa(object):
                                                           True)
 
         # check mode is consistent (TODO: REVIEW THIS CODE)
-        request_mode = (ipsec.Mode.TRANSPORT
-                        if request_transport_mode else ipsec.Mode.TUNNEL)
-        response_mode = (ipsec.Mode.TRANSPORT
-                         if response_transport_mode else ipsec.Mode.TUNNEL)
+        request_mode = (xfrm.Mode.TRANSPORT
+                        if request_transport_mode else xfrm.Mode.TUNNEL)
+        response_mode = (xfrm.Mode.TRANSPORT
+                         if response_transport_mode else xfrm.Mode.TUNNEL)
         if request_mode != response_mode:
             raise InvalidSelectors('Invalid mode requested {} vs {}'
                                    ''.format(request_mode, response_mode))
@@ -919,13 +920,13 @@ class IkeSa(object):
         if chosen_child_proposal.protocol_id == Proposal.Protocol.ESP:
             encr_transform = chosen_child_proposal.get_transform(
                 Transform.Type.ENCR).id
-        ipsec.create_sa(
+        self.xfrm.create_sa(
             self.my_addr, self.peer_addr, chosen_tsi, chosen_tsr,
             chosen_child_proposal.protocol_id, child_sa.outbound_spi,
             encr_transform, child_sa_keyring.sk_ei,
             chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
             child_sa_keyring.sk_ai, request_mode)
-        ipsec.create_sa(
+        self.xfrm.create_sa(
             self.peer_addr, self.my_addr, chosen_tsr, chosen_tsi,
             chosen_child_proposal.protocol_id, child_sa.inbound_spi,
             encr_transform, child_sa_keyring.sk_er,
@@ -1014,9 +1015,9 @@ class IkeSa(object):
                 except StopIteration:
                     raise ChildSaNotFound(
                         'The indicated SPI could not be found', spi=del_spi)
-                ipsec.delete_sa(self.peer_addr, child_sa.protocol,
+                self.xfrm.delete_sa(self.peer_addr, child_sa.protocol,
                                 child_sa.outbound_spi)
-                ipsec.delete_sa(self.my_addr, child_sa.protocol,
+                self.xfrm.delete_sa(self.my_addr, child_sa.protocol,
                                 child_sa.inbound_spi)
                 self.child_sas.remove(child_sa)
                 response_payloads.append(
@@ -1119,12 +1120,13 @@ class IkeSaController:
     def __init__(self, my_addr, configuration):
         self.ike_sas = []
         self.configuration = configuration
+        self.xfrm = xfrm.Xfrm()
 
         # establish policies
-        ipsec.flush_policies()
-        ipsec.flush_sas()
+        self.xfrm.flush_policies()
+        self.xfrm.flush_sas()
         for peer_addr, ike_conf in configuration.items():
-            ipsec.create_policies(my_addr, peer_addr, ike_conf)
+            self.xfrm.create_policies(my_addr, peer_addr, ike_conf)
 
     def _get_ike_sa_by_spi(self, spi):
         return next(x for x in self.ike_sas if x.my_spi == spi)
