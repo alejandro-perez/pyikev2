@@ -256,18 +256,14 @@ class XfrmUserSaInfo(NetlinkStructure):
 
 class XfrmAlgo(NetlinkStructure):
     _fields_ = (('alg_name', c_ubyte * 64),
-                ('alg_key_len', c_uint32))
+                ('alg_key_len', c_uint32),
+                ('key', c_ubyte * 64))
 
-
-def xfrm_algo_factory(alg_name, key):
-    class _Internal(NetlinkStructure):
-        _fields_ = (('xfrm_algo', XfrmAlgo),
-                    ('key', c_ubyte * len(key)))
-
-    return _Internal(
-        xfrm_algo=XfrmAlgo(alg_name=create_byte_array(alg_name, 64),
-                           alg_key_len=len(key) * 8),
-        key=create_byte_array(key))
+    @classmethod
+    def build(cls, alg_name, key):
+        return XfrmAlgo(alg_name=create_byte_array(alg_name, 64),
+                        alg_key_len=len(key) * 8,
+                        key=create_byte_array(key, 64))
 
 
 class XfrmUserSaId(NetlinkStructure):
@@ -460,12 +456,12 @@ def xfrm_create_ipsec_sa(src_selector, dst_selector, src_port, dst_port, spi,
     if ipsec_proto == Proposal.Protocol.ESP:
         enc_attr = attribute_factory(
             XFRMA_ALG_CRYPT,
-            xfrm_algo_factory(alg_name=_cipher_names[enc_algorith], key=sk_e))
+            XfrmAlgo.build(alg_name=_cipher_names[enc_algorith], key=sk_e))
         attribute_data += bytes(enc_attr)
 
     auth_attr = attribute_factory(
         XFRMA_ALG_AUTH,
-        xfrm_algo_factory(alg_name=_auth_names[auth_algorithm], key=sk_a))
+        XfrmAlgo.build(alg_name=_auth_names[auth_algorithm], key=sk_a))
     attribute_data += bytes(auth_attr)
 
     xfrm_send(XFRM_MSG_NEWSA, (NLM_F_REQUEST | NLM_F_ACK),
