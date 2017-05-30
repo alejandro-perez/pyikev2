@@ -12,9 +12,9 @@ from select import select
 
 import yaml
 
-import ipsec
 from configuration import Configuration
 from protocol import IkeSaController
+from xfrm import XFRM_MSG_ACQUIRE, Xfrm, XFRMA_TMPL, XFRM_MSG_EXPIRE
 
 __author__ = 'Alejandro Perez <alex@um.es>'
 __version__ = "0.1"
@@ -66,7 +66,8 @@ sock.bind((ip, port))
 logging.info('Listening from {}:{}'.format(ip, port))
 
 # create XFRM socket
-xfrm = ipsec.get_socket()
+xfrm = Xfrm()
+xfrm_socket = xfrm.get_socket()
 logging.info('Listening XFRM events.')
 
 # load configuration
@@ -95,21 +96,22 @@ signal.signal(signal.SIGINT, signal_handler)
 
 # do server
 while True:
-    ready_to_read, _, _ = select([sock, xfrm], [], [])
+    ready_to_read, _, _ = select([sock, xfrm_socket], [], [])
     if sock in ready_to_read:
         data, addr = sock.recvfrom(4096)
         data = ike_sa_controller.dispatch_message(data, sock.getsockname(),
                                                   addr)
         if data:
             sock.sendto(data, addr)
-    if xfrm in ready_to_read:
-        data = xfrm.recv(4096)
-        header, msg, attributes = ipsec.parse_xfrm_message(data)
+    # TODO: Wrong. _parse_message should not be used here
+    if xfrm_socket in ready_to_read:
+        data = xfrm_socket.recv(4096)
+        header, msg, attributes = xfrm._parse_message(data)
         reply_data, addr = None, None
-        if header.type == ipsec.XFRM_MSG_ACQUIRE:
+        if header.type == XFRM_MSG_ACQUIRE:
             reply_data, addr = ike_sa_controller.process_acquire(
-                msg, attributes[ipsec.XFRMA_TMPL])
-        elif header.type == ipsec.XFRM_MSG_EXPIRE:
+                msg, attributes[XFRMA_TMPL])
+        elif header.type == XFRM_MSG_EXPIRE:
             reply_data, addr = ike_sa_controller.process_expire(msg)
         if reply_data:
             sock.sendto(reply_data, addr)

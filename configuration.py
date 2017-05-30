@@ -6,7 +6,7 @@
 import socket
 from ipaddress import ip_address, ip_network
 
-import ipsec
+import xfrm
 from crypto import Cipher, DiffieHellman, Integrity, Prf
 from message import PayloadID, Proposal, TrafficSelector, Transform
 
@@ -55,8 +55,8 @@ _ip_proto_name_to_enum = {
 }
 
 _mode_name_to_enum = {
-    'transport': ipsec.Mode.TRANSPORT,
-    'tunnel': ipsec.Mode.TUNNEL,
+    'transport': xfrm.Mode.TRANSPORT,
+    'tunnel': xfrm.Mode.TUNNEL,
 }
 
 _ipsec_proto_name_to_enum = {

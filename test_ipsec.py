@@ -7,7 +7,7 @@ import subprocess
 import unittest
 from ipaddress import ip_address, ip_network
 
-import ipsec
+import xfrm
 from crypto import Cipher, Integrity
 from message import TrafficSelector, Proposal
 
@@ -16,8 +16,8 @@ __author__ = 'Alejandro Perez <alex@um.es>'
 
 class TestIpsec(unittest.TestCase):
     def setUp(self):
-        ipsec.flush_policies()
-        ipsec.flush_sas()
+        xfrm.flush_policies()
+        xfrm.flush_sas()
 
     def test_create_transport_policy(self):
         ike_conf = {
@@ -29,13 +29,13 @@ class TestIpsec(unittest.TestCase):
                     'peer_port': 80,
                     'ip_proto': TrafficSelector.IpProtocol.TCP,
                     'ipsec_proto': Proposal.Protocol.AH,
-                    'mode': ipsec.Mode.TRANSPORT
+                    'mode': xfrm.Mode.TRANSPORT
                 }
             ]
         }
-        ipsec.create_policies(ip_address('192.168.1.1'),
-                              ip_address('192.168.1.2'),
-                              ike_conf)
+        xfrm.create_policies(ip_address('192.168.1.1'),
+                             ip_address('192.168.1.2'),
+                             ike_conf)
 
         text_pol = subprocess.check_output(['ip', 'xfrm', 'policy'])
         self.assertEqual(
@@ -59,13 +59,13 @@ class TestIpsec(unittest.TestCase):
                     'peer_port': 80,
                     'ip_proto': TrafficSelector.IpProtocol.TCP,
                     'ipsec_proto': Proposal.Protocol.AH,
-                    'mode': ipsec.Mode.TUNNEL
+                    'mode': xfrm.Mode.TUNNEL
                 }
             ]
         }
-        ipsec.create_policies(ip_address('192.168.1.1'),
-                              ip_address('192.168.1.2'),
-                              ike_conf)
+        xfrm.create_policies(ip_address('192.168.1.1'),
+                             ip_address('192.168.1.2'),
+                             ike_conf)
         text_pol = subprocess.check_output(['ip', 'xfrm', 'policy'])
         self.assertEqual(
             text_pol,
@@ -79,20 +79,20 @@ class TestIpsec(unittest.TestCase):
             b'unnel\n')
 
     def test_create_transport_ipsec_sa(self):
-        ipsec.create_sa(ip_address('192.168.1.1'), ip_address('192.168.1.2'),
-                        TrafficSelector(
+        xfrm.create_sa(ip_address('192.168.1.1'), ip_address('192.168.1.2'),
+                       TrafficSelector(
                             TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
                             TrafficSelector.IpProtocol.TCP, 0, 0,
                             ip_address('192.168.1.1'),
                             ip_address('192.168.1.1')),
-                        TrafficSelector(
+                       TrafficSelector(
                             TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
                             TrafficSelector.IpProtocol.TCP, 0, 0,
                             ip_address('192.168.1.2'),
                             ip_address('192.168.1.2')),
-                        Proposal.Protocol.ESP, b'1234', Cipher.Id.ENCR_AES_CBC,
+                       Proposal.Protocol.ESP, b'1234', Cipher.Id.ENCR_AES_CBC,
                         b'1' * 16, Integrity.Id.AUTH_HMAC_MD5_96, b'1' * 16,
-                        ipsec.Mode.TRANSPORT)
+                       xfrm.Mode.TRANSPORT)
         # text_state = subprocess.check_output(['ip', 'xfrm', 'state'])
         # self.assertEqual(
         #  text_state,
@@ -104,20 +104,20 @@ class TestIpsec(unittest.TestCase):
         #  b'0.0.0.0/0 \n')
 
     def test_create_tunnel_ipsec_sa(self):
-        ipsec.create_sa(ip_address('192.168.1.1'), ip_address('192.168.1.2'),
-                        TrafficSelector(
+        xfrm.create_sa(ip_address('192.168.1.1'), ip_address('192.168.1.2'),
+                       TrafficSelector(
                             TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
                             TrafficSelector.IpProtocol.TCP, 0, 0,
                             ip_address('192.168.1.1'),
                             ip_address('192.168.1.1')),
-                        TrafficSelector(
+                       TrafficSelector(
                             TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
                             TrafficSelector.IpProtocol.TCP, 0, 0,
                             ip_address('192.168.1.2'),
                             ip_address('192.168.1.2')),
-                        Proposal.Protocol.ESP, b'1234', Cipher.Id.ENCR_AES_CBC,
+                       Proposal.Protocol.ESP, b'1234', Cipher.Id.ENCR_AES_CBC,
                         b'1' * 16, Integrity.Id.AUTH_HMAC_MD5_96, b'1' * 16,
-                        ipsec.Mode.TUNNEL)
+                       xfrm.Mode.TUNNEL)
         # text_state = subprocess.check_output(['ip', 'xfrm', 'state'])
         # self.assertEqual(
         #  text_state,
@@ -129,8 +129,8 @@ class TestIpsec(unittest.TestCase):
         #  b'0.0.0.0/0 \n')
 
     def tearDown(self):
-        ipsec.flush_policies()
-        ipsec.flush_sas()
+        xfrm.flush_policies()
+        xfrm.flush_sas()
 
 
 if __name__ == '__main__':
