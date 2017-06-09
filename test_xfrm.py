@@ -75,6 +75,13 @@ class TestIpsec(unittest.TestCase):
                                             ip_address('192.168.1.2')),
                             Proposal.Protocol.ESP, b'1234', Cipher.Id.ENCR_AES_CBC, b'1' * 16,
                             Integrity.Id.AUTH_HMAC_MD5_96, b'1' * 16, Mode.TUNNEL)
+        self.xfrm.delete_sa(ip_address('192.168.1.2'), Proposal.Protocol.ESP, b'1234')
+
+    def test_get_policies(self):
+        self.test_create_transport_policy()
+        policies = self.xfrm._get_policies()
+        for header, payload, attributes in policies:
+            payload.to_dict()
 
     def tearDown(self):
         self.xfrm.flush_policies()
