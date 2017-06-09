@@ -102,11 +102,10 @@ class IkeSa(object):
 
         keymat = prf.prfplus(skeyseed, nonce_i + nonce_r + spi_i + spi_r,
                              prf.key_size * 3 + integ.key_size * 2 + cipher.key_size * 2)
-        ike_sa_keyring = Keyring._make(unpack(
-            '>{0}s{1}s{1}s{2}s{2}s{0}s{0}s'.format(prf.key_size,
-                                                   integ.key_size,
-                                                   cipher.key_size),
-            keymat))
+        sk_d, sk_ai, sk_ar, sk_ei, sk_er, sk_pi, sk_pr = unpack(
+            '>{0}s{1}s{1}s{2}s{2}s{0}s{0}s'.format(prf.key_size, integ.key_size, cipher.key_size),
+            keymat)
+        ike_sa_keyring = Keyring(sk_d, sk_ai, sk_ar, sk_ei, sk_er, sk_pi, sk_pr)
         crypto_i = Crypto(cipher, ike_sa_keyring.sk_ei, integ, ike_sa_keyring.sk_ai, prf,
                           ike_sa_keyring.sk_pi)
         crypto_r = Crypto(cipher, ike_sa_keyring.sk_er, integ, ike_sa_keyring.sk_ar, prf,
@@ -146,8 +145,7 @@ class IkeSa(object):
         sk_ei, sk_ai, sk_er, sk_ar = unpack(
             '>{0}s{1}s{0}s{1}s'.format(encr_key_size, integ_key_size),
             keymat)
-        child_sa_keyring = Keyring(sk_ai=sk_ai, sk_ei=sk_ei, sk_ar=sk_ar, sk_er=sk_er, sk_d=None,
-                                   sk_pi=None, sk_pr=None)
+        child_sa_keyring = Keyring(None, sk_ai, sk_ar, sk_ei, sk_er, None, None)
 
         logging.debug('Generated sk_ai: {}'.format(hexstring(sk_ai)))
         logging.debug('Generated sk_ar: {}'.format(hexstring(sk_ar)))
