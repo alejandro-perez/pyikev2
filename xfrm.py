@@ -273,8 +273,8 @@ class Xfrm(NetlinkProtocol):
 
     netlink_family = socket.NETLINK_XFRM
 
-    def create_ipsec_sa(self, src_selector, dst_selector, src_port, dst_port, spi, ip_proto,
-                        ipsec_proto, mode, src, dst, enc_algorith, sk_e, auth_algorithm, sk_a):
+    def _create_sa(self, src_selector, dst_selector, src_port, dst_port, spi, ip_proto,
+                   ipsec_proto, mode, src, dst, enc_algorith, sk_e, auth_algorithm, sk_a):
         usersa = XfrmUserSaInfo(
             sel=XfrmSelector(family=socket.AF_INET,
                              daddr=XfrmAddress.from_ipaddr(dst_selector[0]),
@@ -312,8 +312,8 @@ class Xfrm(NetlinkProtocol):
         usersaflush = XfrmUserSaFlush(proto=0)
         self.send_recv(XFRM_MSG_FLUSHSA, (NLM_F_REQUEST | NLM_F_ACK), usersaflush)
 
-    def create_policy(self, src_selector, dst_selector, src_port, dst_port, ip_proto, direction,
-                      ipsec_proto, mode, src, dst, index=0):
+    def _create_policy(self, src_selector, dst_selector, src_port, dst_port, ip_proto, direction,
+                       ipsec_proto, mode, src, dst, index=0):
         policy = XfrmUserPolicyInfo(
             sel=XfrmSelector(family=socket.AF_INET,
                              daddr=XfrmAddress.from_ipaddr(dst_selector[0]),
@@ -367,23 +367,23 @@ class Xfrm(NetlinkProtocol):
             index = SystemRandom().randint(0, 10000) << 2 | XFRM_POLICY_OUT
             ipsec_conf['index'] = index
 
-            self.create_policy(src_selector, dst_selector, ipsec_conf['my_port'],
-                               ipsec_conf['peer_port'], ipsec_conf['ip_proto'], XFRM_POLICY_OUT,
-                               ipsec_conf['ipsec_proto'], ipsec_conf['mode'], my_addr, peer_addr,
-                               index=index)
-            self.create_policy(dst_selector, src_selector, ipsec_conf['peer_port'],
-                               ipsec_conf['my_port'], ipsec_conf['ip_proto'], XFRM_POLICY_IN,
-                               ipsec_conf['ipsec_proto'], ipsec_conf['mode'], peer_addr, my_addr)
-            self.create_policy(dst_selector, src_selector,
-                               ipsec_conf['peer_port'], ipsec_conf['my_port'],
-                               ipsec_conf['ip_proto'], XFRM_POLICY_FWD, ipsec_conf['ipsec_proto'],
-                               ipsec_conf['mode'], peer_addr, my_addr)
+            self._create_policy(src_selector, dst_selector, ipsec_conf['my_port'],
+                                ipsec_conf['peer_port'], ipsec_conf['ip_proto'], XFRM_POLICY_OUT,
+                                ipsec_conf['ipsec_proto'], ipsec_conf['mode'], my_addr, peer_addr,
+                                index=index)
+            self._create_policy(dst_selector, src_selector, ipsec_conf['peer_port'],
+                                ipsec_conf['my_port'], ipsec_conf['ip_proto'], XFRM_POLICY_IN,
+                                ipsec_conf['ipsec_proto'], ipsec_conf['mode'], peer_addr, my_addr)
+            self._create_policy(dst_selector, src_selector,
+                                ipsec_conf['peer_port'], ipsec_conf['my_port'],
+                                ipsec_conf['ip_proto'], XFRM_POLICY_FWD, ipsec_conf['ipsec_proto'],
+                                ipsec_conf['mode'], peer_addr, my_addr)
 
     def create_sa(self, src, dst, src_sel, dst_sel, ipsec_protocol, spi, enc_algorith, sk_e,
                   auth_algorithm, sk_a, mode):
-        self.create_ipsec_sa(src_sel.get_network(), dst_sel.get_network(), src_sel.get_port(),
-                             dst_sel.get_port(), spi, src_sel.ip_proto, ipsec_protocol, mode, src,
-                             dst, enc_algorith, sk_e, auth_algorithm, sk_a)
+        self._create_sa(src_sel.get_network(), dst_sel.get_network(), src_sel.get_port(),
+                        dst_sel.get_port(), spi, src_sel.ip_proto, ipsec_protocol, mode, src,
+                        dst, enc_algorith, sk_e, auth_algorithm, sk_a)
 
     def get_socket(self):
         return self._get_socket(XFRMGRP_ACQUIRE | XFRMGRP_EXPIRE)

@@ -97,7 +97,7 @@ class NetlinkProtocol(object):
             data = data[length:]
         return attributes
 
-    def _parse_message(self, data):
+    def parse_message(self, data):
         self.payload_types[NLMSG_ERROR] = NetlinkErrorMsg
         header = NetlinkHeader.parse(data)
         payload = None

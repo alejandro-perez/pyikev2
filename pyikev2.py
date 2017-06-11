@@ -97,7 +97,7 @@ while True:
     # TODO: Wrong. _parse_message should not be used here
     if xfrm_socket in readeble:
         data = xfrm_socket.recv(4096)
-        header, msg, attributes = xfrm._parse_message(data)
+        header, msg, attributes = xfrm.parse_message(data)
         reply_data, addr = None, None
         if header.type == XFRM_MSG_ACQUIRE:
             reply_data, addr = ike_sa_controller.process_acquire(msg, attributes[XFRMA_TMPL])
