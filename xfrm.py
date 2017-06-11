@@ -13,7 +13,7 @@ from random import SystemRandom
 from crypto import Cipher, Integrity
 from helpers import SafeIntEnum, hexstring
 from message import Proposal
-from netlink import (NetlinkStructure, NetlinkProtocol, NLM_F_REQUEST, NLM_F_ACK, NetlinkError)
+from netlink import (NetlinkStructure, NetlinkProtocol, NLM_F_REQUEST, NLM_F_ACK, NLM_F_DUMP, NetlinkError)
 
 __author__ = 'Alejandro Perez <alex@um.es>'
 
@@ -259,6 +259,7 @@ class Xfrm(NetlinkProtocol):
     payload_types = _msg_to_struct = {
         XFRM_MSG_ACQUIRE: XfrmUserAcquire,
         XFRM_MSG_EXPIRE: XfrmUserExpire,
+        XFRM_MSG_NEWPOLICY: XfrmUserPolicyInfo,
     }
 
     _cipher_names = {
@@ -384,6 +385,10 @@ class Xfrm(NetlinkProtocol):
         self._create_sa(src_sel.get_network(), dst_sel.get_network(), src_sel.get_port(),
                         dst_sel.get_port(), spi, src_sel.ip_proto, ipsec_protocol, mode, src,
                         dst, enc_algorith, sk_e, auth_algorithm, sk_a)
+
+    def _get_policies(self):
+        policy_id = XfrmUserPolicyId()
+        return self.send_recv(XFRM_MSG_GETPOLICY, (NLM_F_REQUEST | NLM_F_DUMP), policy_id)
 
     def get_socket(self):
         return self._get_socket(XFRMGRP_ACQUIRE | XFRMGRP_EXPIRE)
