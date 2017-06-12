@@ -116,7 +116,6 @@ class NetlinkProtocol(object):
 
         return header, payload, attributes
 
-    # TODO: Process multiple response messages
     def send_recv(self, payload_type, flags, payload, attributes=None):
         data = bytearray(payload)
         if attributes:
