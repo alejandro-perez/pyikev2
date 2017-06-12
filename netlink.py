@@ -109,7 +109,8 @@ class NetlinkProtocol(object):
         if header.type != NLMSG_DONE:
             try:
                 payload = self.payload_types[header.type].parse(data[sizeof(header):])
-                attributes = self._parse_attributes(data[sizeof(header) + sizeof(payload):header.length])
+                attributes = self._parse_attributes(
+                    data[sizeof(header) + sizeof(payload):header.length])
             except KeyError:
                 logging.warning('Unknown Netlink payload type: {}'.format(header.type))
                 pass
@@ -122,8 +123,8 @@ class NetlinkProtocol(object):
             for attribute_type, attribute_value in attributes.items():
                 attr = self._attribute_factory(attribute_type, attribute_value)
                 data += bytes(attr)
-        header = NetlinkHeader(length=sizeof(NetlinkHeader) + len(data), type=payload_type, seq=int(time.time()),
-                               pid=os.getpid(), flags=flags)
+        header = NetlinkHeader(length=sizeof(NetlinkHeader) + len(data), type=payload_type,
+                               seq=int(time.time()), pid=os.getpid(), flags=flags)
         sock = self._get_socket(0)
         sock.send(bytes(header) + data)
         data = sock.recv(4096)
@@ -132,7 +133,8 @@ class NetlinkProtocol(object):
         while len(data) > 0:
             header, payload, attributes = self.parse_message(data)
             if header.type == NLMSG_ERROR and payload.error != 0:
-                raise NetlinkError('Received error header!: {}'.format(os.strerror(-payload.error)))
+                raise NetlinkError(
+                    'Received error header!: {}'.format(os.strerror(-payload.error)))
             if header.type == NLMSG_DONE:
                 break
             data = data[header.length:]

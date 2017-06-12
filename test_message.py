@@ -7,7 +7,7 @@ import unittest
 from ipaddress import ip_address
 from ipaddress import ip_network
 
-from crypto import Prf, Cipher, Integrity, Crypto
+from crypto import Cipher, Integrity, Crypto
 from message import (
     PayloadNONCE, PayloadKE, PayloadVENDOR, PayloadSK, InvalidSyntax,
     Transform, Proposal, PayloadSA, Message, UnsupportedCriticalPayload,
@@ -154,7 +154,8 @@ class TestProposal(TestPayloadMixin, unittest.TestCase):
 
     def test_intersection(self):
         proposal = Proposal(20, Proposal.Protocol.IKE, b'aspiwhatever',
-                            [Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96, 128),
+                            [Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96,
+                                       128),
                              Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC, 128),
                              Transform(Transform.Type.PRF, Transform.PrfId.PRF_HMAC_SHA1)])
         intersection = self.object.intersection(proposal)
@@ -163,7 +164,8 @@ class TestProposal(TestPayloadMixin, unittest.TestCase):
 
     def test_is_subset(self):
         proposal = Proposal(20, Proposal.Protocol.IKE, b'aspiwhatever',
-                            [Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96, 128),
+                            [Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96,
+                                       128),
                              Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC, 128),
                              Transform(Transform.Type.PRF, Transform.PrfId.PRF_HMAC_SHA1)])
         self.assertTrue(self.object.is_subset(proposal))
@@ -187,6 +189,7 @@ class TestProposal(TestPayloadMixin, unittest.TestCase):
         self.assertEqual(self.object, proposal)
         self.assertNotEqual(self.object, proposal2)
         self.assertNotEqual(self.object, proposal3)
+
 
 class TestPayloadSA(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
@@ -227,21 +230,23 @@ class TestPayloadNOTIFY(TestPayloadMixin, unittest.TestCase):
         payload = PayloadNOTIFY.parse(data)
         self.assertEqual(payload.spi, b'')
 
+
 class TestPayloadIDIpAddr(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
         super(TestPayloadIDIpAddr, self).setUp()
         self.object = PayloadID(PayloadID.Type.ID_IPV4_ADDR, b'192.168.1.1')
+
 
 class TestPayloadIDEmail(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
         super(TestPayloadIDEmail, self).setUp()
         self.object = PayloadID(PayloadID.Type.ID_RFC822_ADDR, b'pyikev2@github')
 
+
 class TestPayloadIDOther(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
         super(TestPayloadIDOther, self).setUp()
         self.object = PayloadID(PayloadID.Type.ID_DER_ASN1_DN, b'something')
-
 
 
 class TestTrafficSelector(TestPayloadMixin, unittest.TestCase):

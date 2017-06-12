@@ -12,7 +12,8 @@ from random import SystemRandom
 
 from helpers import SafeIntEnum, hexstring
 from message import Proposal, Transform
-from netlink import (NetlinkStructure, NetlinkProtocol, NLM_F_REQUEST, NLM_F_ACK, NLM_F_DUMP, NetlinkError)
+from netlink import (NetlinkStructure, NetlinkProtocol, NLM_F_REQUEST, NLM_F_ACK, NLM_F_DUMP,
+                     NetlinkError)
 
 __author__ = 'Alejandro Perez <alex@um.es>'
 

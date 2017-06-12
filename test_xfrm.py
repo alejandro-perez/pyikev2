@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-""" This module defines test for the IPsec module
+""" This module defines test for the xfrm module
 """
-import subprocess
 import unittest
 from ipaddress import ip_address, ip_network
 
 from xfrm import Xfrm, Mode
-from crypto import Cipher, Integrity
 from message import TrafficSelector, Proposal, Transform
 
 __author__ = 'Alejandro Perez <alex@um.es>'
 
 
-class TestIpsec(unittest.TestCase):
+class TestXfrm(unittest.TestCase):
     def setUp(self):
         self.xfrm = Xfrm()
         self.xfrm.flush_policies()
