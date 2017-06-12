@@ -182,8 +182,11 @@ class Transform:
             result['keylen'] = self.keylen
         return result
 
+    def __hash__(self):
+        return hash((self.type, self.id, self.keylen),)
+
     def __eq__(self, other):
-        return (self.type, self.id, self.keylen) == (other.type, other.id, other.keylen)
+        return hash(self) == hash(other)
 
 
 class Proposal:
@@ -279,8 +282,8 @@ class Proposal:
         return None
 
     def __eq__(self, other):
-        return ((self.num, self.protocol_id, self.spi, self.transforms)
-                == (other.num, other.protocol_id, other.spi, other.transforms))
+        return ((self.num, self.protocol_id, self.spi, set(self.transforms))
+                == (other.num, other.protocol_id, other.spi, set(other.transforms)))
 
     def is_subset(self, other):
         intersection = self.intersection(other)
