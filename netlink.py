@@ -111,7 +111,7 @@ class NetlinkProtocol(object):
                 payload = self.payload_types[header.type].parse(data[sizeof(header):])
                 attributes = self._parse_attributes(data[sizeof(header) + sizeof(payload):header.length])
             except KeyError:
-                logging.warning('Unknonw Netlink payload type: {}'.format(header.type))
+                logging.warning('Unknown Netlink payload type: {}'.format(header.type))
                 pass
 
         return header, payload, attributes
