@@ -5,7 +5,7 @@
 """
 import unittest
 
-from crypto import Prf, Cipher, DiffieHellman
+from crypto import Prf, Cipher, DiffieHellman, Integrity
 
 __author__ = 'Alejandro Perez <alex@um.es>'
 
@@ -47,6 +47,9 @@ class TestCrypto(unittest.TestCase):
                          b'\x86\xc0\xaa\x1a/\xb8J\xbfC\x85T\xb5\x1ddm{\x1cCqfx'
                          b'\x0f[\xb1\xd3\'\t\x92\\\xb9\xd7(SS')
 
-
+    def test_integrity(self):
+        integrity = Integrity(Integrity.Id.AUTH_HMAC_MD5_96)
+        checksum = integrity.compute(b'supersecret', b'This is a long message')
+        self.assertEqual(checksum, b'\x8b\xe5&\xa5\xf84 \xa1D\x8c\x07\xb1')
 if __name__ == '__main__':
     unittest.main()

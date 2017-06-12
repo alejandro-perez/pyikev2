@@ -153,6 +153,7 @@ class Transform:
         keylen = None
         while offset < len(data):
             try:
+                # TODO: Change this to attr_type, attr_value = ...
                 attribute = unpack_from('>HH', data, offset)
             except struct_error:
                 raise InvalidSyntax('Error parsing Transform attribute.')
@@ -218,8 +219,8 @@ class Proposal:
         while offset < len(data):
             try:
                 more, _, length = unpack_from('>BBH', data, offset)
-            except struct_error:
-                raise InvalidSyntax('Error parsing Transform header')
+            except struct_error as ex:
+                raise InvalidSyntax('Error parsing Transform header') from ex
             start = offset + 4
             end = offset + length
             transform = Transform.parse(data[start:end])
