@@ -189,22 +189,17 @@ class Transform:
         except struct_error:
             raise InvalidSyntax('Error parsing Tranform.')
         offset = 4
-        keylen = None
         while offset < len(data):
             try:
-                # TODO: Change this to attr_type, attr_value = ...
-                attribute = unpack_from('>HH', data, offset)
+                attr_type, attr_value = unpack_from('>HH', data, offset)
             except struct_error:
                 raise InvalidSyntax('Error parsing Transform attribute.')
-            # Not used as we only care about the KEYLEN attribute
-            # is_tv = attribute[0] >> 15
-            # attr_type = attribute[0] & 0x7FFF
+            # We only care about the KEYLEN attribute
             # if we find a KeyLen attribute, we can abort to save some cycles
-            if attribute[0] == (14 | 0x8000):
-                keylen = attribute[1]
-                break
+            if attr_type & 0x7FFF == 14:
+                return Transform(type, id, attr_value)
             offset += 4
-        return Transform(type, id, keylen)
+        return Transform(type, id, None)
 
     def to_bytes(self):
         data = bytearray(pack('>BBH', self.type, 0, self.id))
