@@ -10,9 +10,8 @@ from ctypes import (c_ubyte, c_uint16, c_uint32, c_uint64, BigEndianStructure)
 from ipaddress import ip_address, ip_network
 from random import SystemRandom
 
-from crypto import Cipher, Integrity
 from helpers import SafeIntEnum, hexstring
-from message import Proposal
+from message import Proposal, Transform
 from netlink import (NetlinkStructure, NetlinkProtocol, NLM_F_REQUEST, NLM_F_ACK, NLM_F_DUMP, NetlinkError)
 
 __author__ = 'Alejandro Perez <alex@um.es>'
@@ -264,12 +263,12 @@ class Xfrm(NetlinkProtocol):
 
     _cipher_names = {
         None: b'none',
-        Cipher.Id.ENCR_AES_CBC: b'aes',
+        Transform.EncrId.ENCR_AES_CBC: b'aes',
     }
 
     _auth_names = {
-        Integrity.Id.AUTH_HMAC_MD5_96: b'md5',
-        Integrity.Id.AUTH_HMAC_SHA1_96: b'sha1',
+        Transform.IntegId.AUTH_HMAC_MD5_96: b'md5',
+        Transform.IntegId.AUTH_HMAC_SHA1_96: b'sha1',
     }
 
     netlink_family = socket.NETLINK_XFRM

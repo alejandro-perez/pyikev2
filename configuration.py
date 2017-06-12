@@ -7,7 +7,6 @@ import socket
 from ipaddress import ip_address, ip_network
 
 import xfrm
-from crypto import Cipher, DiffieHellman, Integrity, Prf
 from message import PayloadID, Proposal, TrafficSelector, Transform
 
 __author__ = 'Alejandro Perez <alex@um.es>'
@@ -22,29 +21,29 @@ class ConfigurationNotFound(ConfigurationError):
 
 
 _encr_name_to_transform = {
-    'aes128': Transform(Transform.Type.ENCR, Cipher.Id.ENCR_AES_CBC, 128),
-    'aes256': Transform(Transform.Type.ENCR, Cipher.Id.ENCR_AES_CBC, 256),
+    'aes128': Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC, 128),
+    'aes256': Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC, 256),
 }
 
 _integ_name_to_transform = {
-    'sha1': Transform(Transform.Type.INTEG, Integrity.Id.AUTH_HMAC_SHA1_96),
-    'md5': Transform(Transform.Type.INTEG, Integrity.Id.AUTH_HMAC_MD5_96),
+    'sha1': Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96),
+    'md5': Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_MD5_96),
 }
 
 _prf_name_to_transform = {
-    'sha1': Transform(Transform.Type.PRF, Prf.Id.PRF_HMAC_SHA1),
-    'md5': Transform(Transform.Type.PRF, Prf.Id.PRF_HMAC_MD5),
+    'sha1': Transform(Transform.Type.PRF, Transform.PrfId.PRF_HMAC_SHA1),
+    'md5': Transform(Transform.Type.PRF, Transform.PrfId.PRF_HMAC_MD5),
 }
 
 _dh_name_to_transform = {
-    '1': Transform(Transform.Type.DH, DiffieHellman.Id.DH_1),
-    '2': Transform(Transform.Type.DH, DiffieHellman.Id.DH_2),
-    '5': Transform(Transform.Type.DH, DiffieHellman.Id.DH_5),
-    '14': Transform(Transform.Type.DH, DiffieHellman.Id.DH_14),
-    '15': Transform(Transform.Type.DH, DiffieHellman.Id.DH_15),
-    '16': Transform(Transform.Type.DH, DiffieHellman.Id.DH_16),
-    '17': Transform(Transform.Type.DH, DiffieHellman.Id.DH_17),
-    '18': Transform(Transform.Type.DH, DiffieHellman.Id.DH_18),
+    '1': Transform(Transform.Type.DH, Transform.DhId.DH_1),
+    '2': Transform(Transform.Type.DH, Transform.DhId.DH_2),
+    '5': Transform(Transform.Type.DH, Transform.DhId.DH_5),
+    '14': Transform(Transform.Type.DH, Transform.DhId.DH_14),
+    '15': Transform(Transform.Type.DH, Transform.DhId.DH_15),
+    '16': Transform(Transform.Type.DH, Transform.DhId.DH_16),
+    '17': Transform(Transform.Type.DH, Transform.DhId.DH_17),
+    '18': Transform(Transform.Type.DH, Transform.DhId.DH_18),
 }
 
 _ip_proto_name_to_enum = {

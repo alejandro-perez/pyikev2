@@ -9,7 +9,7 @@ from ipaddress import ip_address, ip_network
 
 from xfrm import Xfrm, Mode
 from crypto import Cipher, Integrity
-from message import TrafficSelector, Proposal
+from message import TrafficSelector, Proposal, Transform
 
 __author__ = 'Alejandro Perez <alex@um.es>'
 
@@ -60,8 +60,9 @@ class TestIpsec(unittest.TestCase):
                                             TrafficSelector.IpProtocol.TCP, 0, 0,
                                             ip_address('192.168.1.2'),
                                             ip_address('192.168.1.2')),
-                            Proposal.Protocol.ESP, b'1234', Cipher.Id.ENCR_AES_CBC, b'1' * 16,
-                            Integrity.Id.AUTH_HMAC_MD5_96, b'1' * 16, Mode.TRANSPORT)
+                            Proposal.Protocol.ESP, b'1234',
+                            Transform.EncrId.ENCR_AES_CBC, b'1' * 16,
+                            Transform.IntegId.AUTH_HMAC_MD5_96, b'1' * 16, Mode.TRANSPORT)
 
     def test_create_tunnel_ipsec_sa(self):
         self.xfrm.create_sa(ip_address('192.168.1.1'), ip_address('192.168.1.2'),
@@ -73,8 +74,9 @@ class TestIpsec(unittest.TestCase):
                                             TrafficSelector.IpProtocol.TCP, 0, 0,
                                             ip_address('192.168.1.2'),
                                             ip_address('192.168.1.2')),
-                            Proposal.Protocol.ESP, b'1234', Cipher.Id.ENCR_AES_CBC, b'1' * 16,
-                            Integrity.Id.AUTH_HMAC_MD5_96, b'1' * 16, Mode.TUNNEL)
+                            Proposal.Protocol.ESP, b'1234',
+                            Transform.EncrId.ENCR_AES_CBC, b'1' * 16,
+                            Transform.IntegId.AUTH_HMAC_MD5_96, b'1' * 16, Mode.TUNNEL)
         self.xfrm.delete_sa(ip_address('192.168.1.2'), Proposal.Protocol.ESP, b'1234')
 
     def test_get_policies(self):

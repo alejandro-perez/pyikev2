@@ -11,8 +11,6 @@ from ipaddress import ip_address, ip_network
 from random import SystemRandom
 from struct import error as struct_error, pack, pack_into, unpack_from
 
-from crypto import Cipher, DiffieHellman, ESN, Integrity, Prf
-
 from helpers import SafeIntEnum, hexstring
 
 __author__ = 'Alejandro Perez <alex@um.es>'
@@ -130,12 +128,53 @@ class Transform:
         DH = 4
         ESN = 5
 
+    class EncrId(SafeIntEnum):
+        ENCR_DES = 2
+        ENCR_3DES = 3
+        ENCR_RC5 = 4
+        ENCR_IDEA = 5
+        ENCR_CAST = 6
+        ENCR_BLOWFISH = 7
+        ENCR_3IDEA = 8
+        ENCR_DES_IV32 = 9
+        ENCR_NULL = 11
+        ENCR_AES_CBC = 12
+        ENCR_AES_CTR = 13
+
+    class PrfId(SafeIntEnum):
+        PRF_HMAC_MD5 = 1
+        PRF_HMAC_SHA1 = 2
+        PRF_HMAC_TIGER = 3
+
+    class DhId(SafeIntEnum):
+        DH_NONE = 0
+        DH_1 = 1
+        DH_2 = 2
+        DH_5 = 5
+        DH_14 = 14
+        DH_15 = 15
+        DH_16 = 16
+        DH_17 = 17
+        DH_18 = 18
+
+    class IntegId(SafeIntEnum):
+        INTEG_NONE = 0
+        AUTH_HMAC_MD5_96 = 1
+        AUTH_HMAC_SHA1_96 = 2
+        AUTH_DES_MAC = 3
+        AUTH_KPDK_MD5 = 4
+        AUTH_AES_XCBC_96 = 5
+
+    class EsnId(SafeIntEnum):
+        NO_ESN = 0
+        ESN = 1
+
     _transform_id_enums = {
-        Type.ENCR: Cipher.Id,
-        Type.PRF: Prf.Id,
-        Type.INTEG: Integrity.Id,
-        Type.DH: DiffieHellman.Id,
-        Type.ESN: ESN.Id,
+        Type.ENCR: EncrId,
+        Type.PRF: PrfId,
+        Type.INTEG: IntegId,
+        Type.DH: DhId,
+        Type.ESN: EsnId
     }
 
     def __init__(self, type, id, keylen=None):

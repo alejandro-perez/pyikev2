@@ -6,6 +6,7 @@
 import unittest
 
 from crypto import Prf, Cipher, DiffieHellman, Integrity
+from message import Transform
 
 __author__ = 'Alejandro Perez <alex@um.es>'
 
@@ -19,7 +20,7 @@ class TestCrypto(unittest.TestCase):
         self.assertEqual(dh1.shared_secret, dh2.shared_secret)
 
     def test_encr(self):
-        cipher = Cipher(Cipher.Id.ENCR_AES_CBC, 256)
+        cipher = Cipher(Transform.EncrId.ENCR_AES_CBC, 256)
         iv = cipher.generate_iv()
         original = b'Hello this is a long message' * cipher.block_size
         ciphertext = cipher.encrypt(b'Mypassword121111' * 2, iv, original)
@@ -33,7 +34,7 @@ class TestCrypto(unittest.TestCase):
         self.assertNotEqual(decrypted, decrypted2)
 
     def test_prf(self):
-        prf = Prf(Prf.Id.PRF_HMAC_SHA1)
+        prf = Prf(Transform.PrfId.PRF_HMAC_SHA1)
         digest = prf.prf(b'supersecret', b'This is a long message')
         prfplus = prf.prfplus(b'supersecret', b'This is a long message', 100)
         self.assertEqual(digest,
@@ -48,8 +49,9 @@ class TestCrypto(unittest.TestCase):
                          b'\x0f[\xb1\xd3\'\t\x92\\\xb9\xd7(SS')
 
     def test_integrity(self):
-        integrity = Integrity(Integrity.Id.AUTH_HMAC_MD5_96)
+        integrity = Integrity(Transform.IntegId.AUTH_HMAC_MD5_96)
         checksum = integrity.compute(b'supersecret', b'This is a long message')
         self.assertEqual(checksum, b'\x8b\xe5&\xa5\xf84 \xa1D\x8c\x07\xb1')
+
 if __name__ == '__main__':
     unittest.main()
