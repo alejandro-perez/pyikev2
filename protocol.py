@@ -372,10 +372,13 @@ class IkeSa(object):
                                                  xfrm_acquire.sel.dport, xfrm_acquire.sel.proto)
         acquire = Acquire(small_tsi, small_tsr, xfrm_acquire.policy.index)
 
+        request = None
         if self.state == IkeSa.State.INITIAL:
             request = self.generate_ike_sa_init_request(acquire)
-        else:
+        elif self.state == IkeSa.State.ESTABLISHED:
             request = self.generate_create_child_sa_request(acquire)
+        else:
+            logging.warning('Cannot process acquire while waiting for a response.')
 
         # TODO: Use a request queue for simplicity and to avoid problems with
         # state machine
