@@ -187,15 +187,15 @@ class Transform:
         try:
             type, _, id = unpack_from('>BBH', data)
         except struct_error:
-            raise InvalidSyntax('Error parsing Tranform.')
+            raise InvalidSyntax('Error parsing Transform.')
         offset = 4
         while offset < len(data):
             try:
                 attr_type, attr_value = unpack_from('>HH', data, offset)
             except struct_error:
                 raise InvalidSyntax('Error parsing Transform attribute.')
-            # We only care about the KEYLEN attribute
-            # if we find a KeyLen attribute, we can abort to save some cycles
+            # We only care about the KEYLEN attribute, so if we find a KeyLen attribute,
+            # we can abort to save some cycles
             if attr_type & 0x7FFF == 14:
                 return Transform(type, id, attr_value)
             offset += 4
@@ -209,9 +209,8 @@ class Transform:
 
     def to_dict(self):
         id_name = Transform._transform_id_enums[self.type].safe_name(self.id)
-        result = OrderedDict([
-            ('type', Transform.Type.safe_name(self.type)),
-            ('id', id_name)])
+        result = OrderedDict([('type', Transform.Type.safe_name(self.type)),
+                              ('id', id_name)])
         if self.keylen:
             result['keylen'] = self.keylen
         return result
