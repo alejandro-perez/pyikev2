@@ -230,6 +230,8 @@ class IkeSa(object):
                       if request.exchange_type == Message.Exchange.IKE_SA_INIT else []),
             encrypted_payloads=([notify_error]
                                 if request.exchange_type != Message.Exchange.IKE_SA_INIT else []),
+            crypto=(self.my_crypto
+                    if request.exchange_type != Message.Exchange.IKE_SA_INIT else None)
         )
 
     def _process_request(self, message, data, addr):
@@ -298,7 +300,7 @@ class IkeSa(object):
         # if the message is succesfully processed, increment expected message
         # ID and store response (for future retransmissions responses)
         self.peer_msg_id = self.peer_msg_id + 1
-        response_data = response.to_bytes(self.my_crypto)
+        response_data = response.to_bytes()
         self.log_message(response, addr, response_data, send=True)
         self.last_sent_response_data = response_data
         return status, response_data
@@ -336,7 +338,7 @@ class IkeSa(object):
 
         # If there is a another request to be sent, serizalize it and return it
         if request:
-            request_data = request.to_bytes(self.my_crypto)
+            request_data = request.to_bytes()
             self.log_message(request, addr, request_data, send=True)
             return True, request_data
         # TODO: Closing the IKE_SA can be done by "tricking" the state machine
@@ -372,7 +374,7 @@ class IkeSa(object):
         # TODO: Use a request queue for simplicity and to avoid problems with
         # state machine
         if request:
-            request_data = request.to_bytes(self.my_crypto)
+            request_data = request.to_bytes()
             self.log_message(request, self.peer_addr, request_data, send=True)
             return request_data
         else:
@@ -439,7 +441,9 @@ class IkeSa(object):
             is_initiator=False,
             message_id=self.peer_msg_id,
             payloads=response_payloads,
-            encrypted_payloads=[])
+            encrypted_payloads=[],
+            crypto=self.my_crypto
+        )
 
         # switch state
         self.state = IkeSa.State.INIT_RES_SENT
@@ -490,13 +494,15 @@ class IkeSa(object):
             is_initiator=True,
             message_id=self.my_msg_id,
             payloads=ike_sa_payloads + [payload_vendor],
-            encrypted_payloads=[])
+            encrypted_payloads=[],
+            crypto=self.my_crypto
+        )
 
         # switch state
         self.state = IkeSa.State.INIT_REQ_SENT
 
         # save the message for later authentication
-        self.ike_sa_init_req_data = self.request.to_bytes(None)
+        self.ike_sa_init_req_data = self.request.to_bytes()
 
         # store the acquire object to be used in the IKE_AUTH exchange
         self.acquire = acquire
@@ -565,6 +571,7 @@ class IkeSa(object):
             message_id=self.my_msg_id,
             payloads=[],
             encrypted_payloads=child_sa_payloads + [payload_idi, payload_auth],
+            crypto=self.my_crypto
         )
 
         # transition
@@ -614,7 +621,7 @@ class IkeSa(object):
         self._process_ike_sa_negotiation_response(response)
 
         # save the message for later authentication
-        self.ike_sa_init_res_data = response.to_bytes(None)
+        self.ike_sa_init_res_data = response.to_bytes()
 
         # return IKE_AUTH request callback
         return self.generate_ike_auth_request()
@@ -767,7 +774,10 @@ class IkeSa(object):
             is_initiator=False,
             message_id=self.peer_msg_id,
             payloads=[],
-            encrypted_payloads=response_payloads)
+            encrypted_payloads=response_payloads,
+            crypto=self.my_crypto
+
+        )
 
         # increase msg_id and transition
         self.state = IkeSa.State.ESTABLISHED
@@ -896,7 +906,9 @@ class IkeSa(object):
             is_initiator=self.is_initiator,
             message_id=self.my_msg_id,
             payloads=[],
-            encrypted_payloads=child_sa_payloads + [payload_nonce])
+            encrypted_payloads=child_sa_payloads + [payload_nonce],
+            crypto=self.my_crypto
+        )
 
         # transition
         self.state = IkeSa.State.NEW_CHILD_REQ_SENT
@@ -947,7 +959,9 @@ class IkeSa(object):
             is_initiator=self.is_initiator,
             message_id=self.peer_msg_id,
             payloads=[],
-            encrypted_payloads=response_payloads)
+            encrypted_payloads=response_payloads,
+            crypto=self.my_crypto
+        )
 
     def process_create_child_sa_request(self, request):
         """ Processes a CREATE_CHILD_SA message and returns response
@@ -1006,7 +1020,9 @@ class IkeSa(object):
             is_initiator=self.is_initiator,
             message_id=self.peer_msg_id,
             payloads=[],
-            encrypted_payloads=response_payloads)
+            encrypted_payloads=response_payloads,
+            crypto=self.my_crypto
+        )
 
     def process_create_child_sa_response(self, response):
         """ Processes a CREATE_CHILD_SA response message

@@ -89,12 +89,13 @@ class TestPayloadSK(TestPayloadMixin, unittest.TestCase):
         integrity = Integrity(Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96))
         cipher = Cipher(Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC, 256))
         encryption_key = b'Mypassword121111' * 2
-
+        iv = cipher.generate_iv()
         crypto = Crypto(cipher, encryption_key, integrity, b'', None, b'')
 
-        payload_sk = PayloadSK.generate(b'Hello there!', crypto)
-        clear = payload_sk.decrypt(crypto)
+        payload_sk = PayloadSK.generate(b'Hello there!', iv, crypto)
+        iv2, clear = payload_sk.decrypt(crypto)
         self.assertEqual(clear, b'Hello there!')
+        self.assertEqual(iv, iv2)
 
 
 class TestTransformWithKeylen(TestPayloadMixin, unittest.TestCase):
@@ -365,6 +366,13 @@ class TestMessage(TestPayloadMixin, unittest.TestCase):
         payload_sa = PayloadSA([proposal1])
         payload_nonce = PayloadNONCE()
 
+        crypto = Crypto(Cipher(Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC, 256)),
+                        b'a' * 32,
+                        Integrity(
+                            Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96)),
+                        b'a' * 16,
+                        None, b'')
+
         message = Message(
             spi_i=b'12345678',
             spi_r=b'12345678',
@@ -376,21 +384,14 @@ class TestMessage(TestPayloadMixin, unittest.TestCase):
             is_initiator=False,
             message_id=0,
             payloads=[],
-            encrypted_payloads=[payload_sa, payload_nonce]
+            encrypted_payloads=[payload_sa, payload_nonce],
+            crypto=crypto
         )
 
-        crypto = Crypto(Cipher(Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC, 256)),
-                        b'a' * 32,
-                        Integrity(
-                            Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96)),
-                        b'a' * 16,
-                        None, b'')
-
-        a = str(message.to_dict())
-        data = message.to_bytes(crypto)
-        new_message = self.object.parse(data, header_only=False, crypto=crypto)
-        b = str(new_message.to_dict())
-        self.assertEqual(a, b)
+        data = message.to_bytes()
+        new_message = Message.parse(data, crypto=crypto)
+        data2 = new_message.to_bytes()
+        self.assertEqual(data, data2)
 
 
 if __name__ == '__main__':
