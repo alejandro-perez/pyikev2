@@ -123,8 +123,7 @@ class IkeSa(object):
             self.xfrm.delete_sa(self.peer_addr, child_sa.protocol, child_sa.outbound_spi)
             self.xfrm.delete_sa(self.my_addr, child_sa.protocol, child_sa.inbound_spi)
 
-    def _generate_child_sa_key_material(self, ike_proposal, child_proposal, nonce_i, nonce_r,
-                                        sk_d):
+    def _generate_child_sa_key_material(self, child_proposal, nonce_i, nonce_r, sk_d):
         """ Generates CHILD_SA key material
         """
         # TODO: Replace self.chosen_proposal for adding prf to the crypto
@@ -677,11 +676,8 @@ class IkeSa(object):
 
         # generate CHILD key material
         child_sa_keyring = self._generate_child_sa_key_material(
-            ike_proposal=self.chosen_proposal,
-            child_proposal=chosen_child_proposal,
-            nonce_i=request_payload_nonce.nonce,
-            nonce_r=response_payload_nonce.nonce,
-            sk_d=self.ike_sa_keyring.sk_d)
+            child_proposal=chosen_child_proposal, nonce_i=request_payload_nonce.nonce,
+            nonce_r=response_payload_nonce.nonce, sk_d=self.ike_sa_keyring.sk_d)
 
         # create the IPsec SAs according to the negotiated CHILD SA
         child_sa = ChildSa(outbound_spi=chosen_child_proposal.spi,
@@ -830,11 +826,8 @@ class IkeSa(object):
 
         # generate CHILD key material
         child_sa_keyring = self._generate_child_sa_key_material(
-            ike_proposal=self.chosen_proposal,
-            child_proposal=chosen_child_proposal,
-            nonce_i=request_payload_nonce.nonce,
-            nonce_r=response_payload_nonce.nonce,
-            sk_d=self.ike_sa_keyring.sk_d)
+            child_proposal=chosen_child_proposal, nonce_i=request_payload_nonce.nonce,
+            nonce_r=response_payload_nonce.nonce, sk_d=self.ike_sa_keyring.sk_d)
 
         # Check TSi and TSr are subsets of what we sent
         chosen_tsi = response_payload_tsi.traffic_selectors[0]
