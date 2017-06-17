@@ -11,7 +11,7 @@ from hmac import HMAC
 
 import cryptography.hazmat.backends.openssl.backend
 from cryptography.hazmat.primitives.asymmetric import dh
-from cryptography.hazmat.primitives.ciphers import Cipher as CryptographyCipher, algorithms, modes
+from cryptography.hazmat.primitives.ciphers import Cipher as _Cipher, algorithms, modes
 
 from message import Transform
 
@@ -78,15 +78,15 @@ class Cipher:
     def encrypt(self, key, iv, data):
         if len(key) != self.key_size:
             raise EncrError('Key must be of the indicated size {}'.format(self.key_size))
-        cyph = CryptographyCipher(self._algorithm(key), modes.CBC(iv), backend=self._backend)
-        encryptor = cyph.encryptor()
+        _cipher = _Cipher(self._algorithm(key), modes.CBC(iv), backend=self._backend)
+        encryptor = _cipher.encryptor()
         return encryptor.update(data) + encryptor.finalize()
 
     def decrypt(self, key, iv, data):
         if len(key) != self.key_size:
             raise EncrError('Key must be of the indicated size {}'.format(self.key_size))
-        cyph = CryptographyCipher(self._algorithm(key), modes.CBC(iv), backend=self._backend)
-        decryptor = cyph.decryptor()
+        _cipher = _Cipher(self._algorithm(key), modes.CBC(iv), backend=self._backend)
+        decryptor = _cipher.decryptor()
         return decryptor.update(data) + decryptor.finalize()
 
     def generate_iv(self):
