@@ -86,12 +86,9 @@ class IkeSa(object):
                                       shared_secret, old_sk_d=None):
         """ Generates IKE_SA key material based on the proposal and DH
         """
-        # TODO: Make a helper funciton in Transform that returns the KEYSIZE
-        # Then Cipher and Integrity can contain the keys inside
-        prf = Prf(ike_proposal.get_transform(Transform.Type.PRF).id)
-        integ = Integrity(ike_proposal.get_transform(Transform.Type.INTEG).id)
-        cipher = Cipher(ike_proposal.get_transform(Transform.Type.ENCR).id,
-                        ike_proposal.get_transform(Transform.Type.ENCR).keylen)
+        prf = Prf(ike_proposal.get_transform(Transform.Type.PRF))
+        integ = Integrity(ike_proposal.get_transform(Transform.Type.INTEG))
+        cipher = Cipher(ike_proposal.get_transform(Transform.Type.ENCR))
 
         if not old_sk_d:
             skeyseed = prf.prf(nonce_i + nonce_r, shared_secret)
@@ -126,20 +123,13 @@ class IkeSa(object):
     def _generate_child_sa_key_material(self, child_proposal, nonce_i, nonce_r, sk_d):
         """ Generates CHILD_SA key material
         """
-        # TODO: Replace self.chosen_proposal for adding prf to the crypto
-        # object so we have access to the prf without the proposal)
-        prf = Prf(ike_proposal.get_transform(Transform.Type.PRF).id)
-
-        # ESP and AH need integrity transform
-        integ = Integrity(child_proposal.get_transform(Transform.Type.INTEG).id)
-        integ_key_size = integ.key_size
         encr_key_size = 0
+        integ_key_size = Integrity(child_proposal.get_transform(Transform.Type.INTEG)).key_size
         if child_proposal.protocol_id == Proposal.Protocol.ESP:
-            cipher = Cipher(child_proposal.get_transform(Transform.Type.ENCR).id,
-                            child_proposal.get_transform(Transform.Type.ENCR).keylen)
-            encr_key_size = cipher.key_size
+            encr_key_size = Cipher(child_proposal.get_transform(Transform.Type.ENCR)).key_size
 
-        keymat = prf.prfplus(sk_d, nonce_i + nonce_r, 2 * integ_key_size + 2 * encr_key_size)
+        keymat = self.my_crypto.prf.prfplus(sk_d, nonce_i + nonce_r,
+                                            2 * integ_key_size + 2 * encr_key_size)
 
         sk_ei, sk_ai, sk_er, sk_ar = unpack(
             '>{0}s{1}s{0}s{1}s'.format(encr_key_size, integ_key_size),
