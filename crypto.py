@@ -17,8 +17,6 @@ from message import Transform, InvalidSyntax
 
 __author__ = 'Alejandro Perez <alex@um.es>'
 
-Crypto = namedtuple('Crypto', ['cipher', 'sk_e', 'integrity', 'sk_a', 'prf', 'sk_p'])
-
 
 class EncrError(Exception):
     pass
@@ -317,3 +315,12 @@ class Integrity:
     def compute(self, key, data):
         m = HMAC(key, data, digestmod=self.hasher)
         return m.digest()[:self.hash_size]
+
+class Crypto:
+    def __init__(self, cipher, sk_e, integrity, sk_a, prf, sk_p):
+        self.cipher = cipher
+        self.sk_e = sk_e
+        self.integrity = integrity
+        self.sk_a = sk_a
+        self.prf = prf
+        self.sk_p = sk_p
