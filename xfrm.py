@@ -91,7 +91,6 @@ def create_byte_array(data, size=None):
     return (c_ubyte * size)(*data)
 
 
-# TODO: This should be in an Enum
 class Mode(SafeIntEnum):
     TRANSPORT = XFRM_MODE_TRANSPORT
     TUNNEL = XFRM_MODE_TUNNEL

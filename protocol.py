@@ -333,8 +333,7 @@ class IkeSa(object):
         # TODO: Process notifies and generate exceptions.
         # These exceptions may (or may not) close the IKE_SA
         except IkeSaError as ex:
-            hexspi = hexstring(self.my_spi)
-            logging.error('IKE_SA: {}. {}'.format(hexspi, str(ex)))
+            logging.error('IKE_SA: {}. {}'.format(hexstring(self.my_spi), str(ex)))
 
         # If there is a another request to be sent, serizalize it and return it
         if request:
@@ -810,7 +809,7 @@ class IkeSa(object):
             request_payload_nonce = self.request.get_payload(Payload.Type.NONCE, True)
             response_payload_nonce = response.get_payload(Payload.Type.NONCE, True)
 
-        # check mode is consistent (TODO: REVIEW THIS CODE)
+        # check mode is consistent
         request_mode = (xfrm.Mode.TRANSPORT if request_transport_mode else xfrm.Mode.TUNNEL)
         response_mode = (xfrm.Mode.TRANSPORT if response_transport_mode else xfrm.Mode.TUNNEL)
         if request_mode != response_mode:
