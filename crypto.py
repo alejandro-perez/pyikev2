@@ -11,16 +11,11 @@ from hmac import HMAC
 
 import cryptography.hazmat.backends.openssl.backend
 from cryptography.hazmat.primitives.asymmetric import dh
-from cryptography.hazmat.primitives.ciphers import (
-    Cipher as CryptographyCipher,
-    algorithms, modes)
+from cryptography.hazmat.primitives.ciphers import Cipher as _Cipher, algorithms, modes
 
-from helpers import SafeIntEnum
+from message import Transform, InvalidSyntax
 
 __author__ = 'Alejandro Perez <alex@um.es>'
-
-Crypto = namedtuple('Crypto',
-                    ['cipher', 'sk_e', 'integrity', 'sk_a', 'prf', 'sk_p'])
 
 
 class EncrError(Exception):
@@ -28,18 +23,14 @@ class EncrError(Exception):
 
 
 class Prf(object):
-    class Id(SafeIntEnum):
-        PRF_HMAC_MD5 = 1
-        PRF_HMAC_SHA1 = 2
-        PRF_HMAC_TIGER = 3
-
     _digestmod_dict = {
-        Id.PRF_HMAC_MD5: hashlib.md5,
-        Id.PRF_HMAC_SHA1: hashlib.sha1,
+        Transform.PrfId.PRF_HMAC_MD5: hashlib.md5,
+        Transform.PrfId.PRF_HMAC_SHA1: hashlib.sha1,
     }
 
-    def __init__(self, transform_id):
-        self.hasher = self._digestmod_dict[transform_id]
+    def __init__(self, transform):
+        assert(transform.type == Transform.Type.PRF)
+        self.hasher = self._digestmod_dict[transform.id]
 
     @property
     def key_size(self):
@@ -65,29 +56,28 @@ class Prf(object):
 
 
 class Cipher:
-    class Id(SafeIntEnum):
-        ENCR_DES_IV64 = 1
-        ENCR_DES = 2
-        ENCR_3DES = 3
-        ENCR_RC5 = 4
-        ENCR_IDEA = 5
-        ENCR_CAST = 6
-        ENCR_BLOWFISH = 7
-        ENCR_3IDEA = 8
-        ENCR_DES_IV32 = 9
-        ENCR_NULL = 11
-        ENCR_AES_CBC = 12
-        ENCR_AES_CTR = 13
-
     _algorithm_dict = {
-        Id.ENCR_AES_CBC: algorithms.AES,
+        Transform.EncrId.ENCR_AES_CBC: algorithms.AES,
     }
 
     _backend = cryptography.hazmat.backends.openssl.backend
 
-    def __init__(self, transform_id, negotiated_keylen):
-        self._algorithm = self._algorithm_dict[transform_id]
-        self.negotiated_keylen = negotiated_keylen
+    def __init__(self, transform):
+        assert(transform.type == Transform.Type.ENCR)
+        self._algorithm = self._algorithm_dict[transform.id]
+        self._transform = transform
+        # establish whether transform.keylen attribute is valid
+        if self._transform.keylen is not None:
+            if len(self._algorithm.key_sizes) == 1:
+                raise InvalidSyntax(
+                    'Algorithm {} only accepts one keylen but KEY_LEN attribute is provided.'
+                    ''.format(self._algorithm.name))
+            if transform.keylen not in self._algorithm.key_sizes:
+                raise InvalidSyntax(
+                    'Incorrect key length {} for algorithm {}. Acceptable values are: {}'
+                    ''.format(transform.keylen, self._algorithm.name, self._algorithm.key_sizes))
+        elif len(self._algorithm.key_sizes) > 1:
+            raise('Algorithm {} requires a KEY_LEN attribute'.format(self._algorithm.name))
 
     @property
     def block_size(self):
@@ -95,24 +85,21 @@ class Cipher:
 
     @property
     def key_size(self):
-        return self.negotiated_keylen // 8
+        # if no KEYLEN attribute is present, return the first possible one
+        return (self._transform.keylen or self._algorithm.key_sizes[0]) // 8
 
     def encrypt(self, key, iv, data):
         if len(key) != self.key_size:
-            raise EncrError('Key must be of the indicated size {}'
-                            ''.format(self.key_size))
-        cyph = CryptographyCipher(self._algorithm(key), modes.CBC(iv),
-                                  backend=self._backend)
-        encryptor = cyph.encryptor()
+            raise EncrError('Key must be of the indicated size {}'.format(self.key_size))
+        _cipher = _Cipher(self._algorithm(key), modes.CBC(iv), backend=self._backend)
+        encryptor = _cipher.encryptor()
         return encryptor.update(data) + encryptor.finalize()
 
     def decrypt(self, key, iv, data):
         if len(key) != self.key_size:
-            raise EncrError('Key must be of the indicated size {}'
-                            ''.format(self.key_size))
-        cyph = CryptographyCipher(self._algorithm(key), modes.CBC(iv),
-                                  backend=self._backend)
-        decryptor = cyph.decryptor()
+            raise EncrError('Key must be of the indicated size {}'.format(self.key_size))
+        _cipher = _Cipher(self._algorithm(key), modes.CBC(iv), backend=self._backend)
+        decryptor = _cipher.decryptor()
         return decryptor.update(data) + decryptor.finalize()
 
     def generate_iv(self):
@@ -120,26 +107,15 @@ class Cipher:
 
 
 class DiffieHellman:
-    class Id(SafeIntEnum):
-        DH_NONE = 0
-        DH_1 = 1
-        DH_2 = 2
-        DH_5 = 5
-        DH_14 = 14
-        DH_15 = 15
-        DH_16 = 16
-        DH_17 = 17
-        DH_18 = 18
-
     _group_dict = {
         # MODP768
-        Id.DH_1:
+        Transform.DhId.DH_1:
             'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1'
             '29024E088A67CC74020BBEA63B139B22514A08798E3404DD'
             'EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245'
             'E485B576625E7EC6F44C42E9A63A3620FFFFFFFFFFFFFFFF',
         # MODP1024
-        Id.DH_2:
+        Transform.DhId.DH_2:
             'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1'
             '29024E088A67CC74020BBEA63B139B22514A08798E3404DD'
             'EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245'
@@ -148,7 +124,7 @@ class DiffieHellman:
             'FFFFFFFFFFFFFFFF',
 
         # MODP1536
-        Id.DH_5:
+        Transform.DhId.DH_5:
             'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1'
             '29024E088A67CC74020BBEA63B139B22514A08798E3404DD'
             'EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245'
@@ -159,7 +135,7 @@ class DiffieHellman:
             '670C354E4ABC9804F1746C08CA237327FFFFFFFFFFFFFFFF',
 
         # 14, MODP2048
-        Id.DH_14:
+        Transform.DhId.DH_14:
             'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1'
             '29024E088A67CC74020BBEA63B139B22514A08798E3404DD'
             'EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245'
@@ -173,7 +149,7 @@ class DiffieHellman:
             '15728E5A8AACAA68FFFFFFFFFFFFFFFF',
 
         # 15, MODP3072
-        Id.DH_15:
+        Transform.DhId.DH_15:
             'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1'
             '29024E088A67CC74020BBEA63B139B22514A08798E3404DD'
             'EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245'
@@ -192,7 +168,7 @@ class DiffieHellman:
             '43DB5BFCE0FD108E4B82D120A93AD2CAFFFFFFFFFFFFFFFF',
 
         # 16, MODP4096
-        Id.DH_16:
+        Transform.DhId.DH_16:
             'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1'
             '29024E088A67CC74020BBEA63B139B22514A08798E3404DD'
             'EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245'
@@ -217,7 +193,7 @@ class DiffieHellman:
             'FFFFFFFFFFFFFFFF',
 
         # 17, MODP6144
-        Id.DH_17:
+        Transform.DhId.DH_17:
             'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E08'
             '8A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B'
             '302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9'
@@ -248,7 +224,7 @@ class DiffieHellman:
             '6DCC4024FFFFFFFFFFFFFFFF',
 
         # 18, MODP8192
-        Id.DH_18:
+        Transform.DhId.DH_18:
             'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1'
             '29024E088A67CC74020BBEA63B139B22514A08798E3404DD'
             'EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245'
@@ -318,21 +294,14 @@ class DiffieHellman:
 
 
 class Integrity:
-    class Id(SafeIntEnum):
-        INTEG_NONE = 0
-        AUTH_HMAC_MD5_96 = 1
-        AUTH_HMAC_SHA1_96 = 2
-        AUTH_DES_MAC = 3
-        AUTH_KPDK_MD5 = 4
-        AUTH_AES_XCBC_96 = 5
-
     _digestmod_dict = {
-        Id.AUTH_HMAC_MD5_96: hashlib.md5,
-        Id.AUTH_HMAC_SHA1_96: hashlib.sha1,
+        Transform.IntegId.AUTH_HMAC_MD5_96: hashlib.md5,
+        Transform.IntegId.AUTH_HMAC_SHA1_96: hashlib.sha1,
     }
 
-    def __init__(self, transform_id):
-        self.hasher = self._digestmod_dict[transform_id]
+    def __init__(self, transform):
+        assert(transform.type == Transform.Type.INTEG)
+        self.hasher = self._digestmod_dict[transform.id]
 
     @property
     def key_size(self):
@@ -340,17 +309,18 @@ class Integrity:
 
     @property
     def hash_size(self):
-        # return self.hasher().digest_size
-        # Hardcoded as we only support _96 algorithms
+        # Hardcoded as we only support _96 algorithms so far
         return 96 // 8
 
     def compute(self, key, data):
         m = HMAC(key, data, digestmod=self.hasher)
-        # Hardcoded as we only support _96 algorithms
-        return m.digest()[:12]
+        return m.digest()[:self.hash_size]
 
-
-class ESN:
-    class Id(SafeIntEnum):
-        NO_ESN = 0
-        ESN = 1
+class Crypto:
+    def __init__(self, cipher, sk_e, integrity, sk_a, prf, sk_p):
+        self.cipher = cipher
+        self.sk_e = sk_e
+        self.integrity = integrity
+        self.sk_a = sk_a
+        self.prf = prf
+        self.sk_p = sk_p
