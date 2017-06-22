@@ -187,15 +187,15 @@ class Transform:
         try:
             type, _, id = unpack_from('>BBH', data)
         except struct_error:
-            raise InvalidSyntax('Error parsing Tranform.')
+            raise InvalidSyntax('Error parsing Transform.')
         offset = 4
         while offset < len(data):
             try:
                 attr_type, attr_value = unpack_from('>HH', data, offset)
             except struct_error:
                 raise InvalidSyntax('Error parsing Transform attribute.')
-            # We only care about the KEYLEN attribute
-            # if we find a KeyLen attribute, we can abort to save some cycles
+            # We only care about the KEYLEN attribute, so if we find a KeyLen attribute,
+            # we can abort to save some cycles
             if attr_type & 0x7FFF == 14:
                 return Transform(type, id, attr_value)
             offset += 4
@@ -209,9 +209,8 @@ class Transform:
 
     def to_dict(self):
         id_name = Transform._transform_id_enums[self.type].safe_name(self.id)
-        result = OrderedDict([
-            ('type', Transform.Type.safe_name(self.type)),
-            ('id', id_name)])
+        result = OrderedDict([('type', Transform.Type.safe_name(self.type)),
+                              ('id', id_name)])
         if self.keylen:
             result['keylen'] = self.keylen
         return result
@@ -731,11 +730,10 @@ class PayloadSK(Payload):
         ciphertext = self.ciphertext[crypto.cipher.block_size:-crypto.integrity.hash_size]
         decrypted = crypto.cipher.decrypt(crypto.sk_e, bytes(iv), bytes(ciphertext))
         padlen = decrypted[-1]
-        return decrypted[:-1 - padlen]
+        return iv, decrypted[:-1 - padlen]
 
     @classmethod
-    def generate(cls, cleartext, crypto):
-        iv = crypto.cipher.generate_iv()
+    def generate(cls, cleartext, iv, crypto):
         padlen = (crypto.cipher.block_size - (len(cleartext) % crypto.cipher.block_size) - 1)
         cleartext += b'\x00' * padlen + pack('>B', padlen)
         encrypted = crypto.cipher.encrypt(crypto.sk_e, bytes(iv), bytes(cleartext))
@@ -806,7 +804,8 @@ class Message:
     }
 
     def __init__(self, spi_i, spi_r, major, minor, exchange_type, is_response,
-                 can_use_higher_version, is_initiator, message_id, payloads, encrypted_payloads):
+                 can_use_higher_version, is_initiator, message_id, payloads, encrypted_payloads,
+                 crypto=None, iv=None):
         self.spi_i = spi_i
         self.spi_r = spi_r
         self.major = major
@@ -818,6 +817,10 @@ class Message:
         self.message_id = message_id
         self.payloads = payloads
         self.encrypted_payloads = encrypted_payloads
+        self.crypto = crypto
+        self.iv = iv
+        if self.crypto is not None and self.iv is None:
+            self.iv = self.crypto.cipher.generate_iv()
 
     @classmethod
     def _parse_payloads(cls, data, first_payload_type):
@@ -880,6 +883,7 @@ class Message:
             message_id=header[6],
             payloads=[],
             encrypted_payloads=[],
+            crypto=crypto
         )
 
         if not header_only:
@@ -899,9 +903,10 @@ class Message:
                     raise InvalidSyntax('CHECKSUM ERROR')
 
                 # parse decrypted payloads and remove Payload SK
-                decrypted_data = payload_sk.decrypt(crypto)
+                message.iv, decrypted_data = payload_sk.decrypt(crypto)
                 message.encrypted_payloads = cls._parse_payloads(decrypted_data,
                                                                  payload_sk.next_payload_type)
+
         return message
 
     @staticmethod
@@ -922,15 +927,14 @@ class Message:
             payloads_data += payload_data
         return payloads_data
 
-    def to_bytes(self, crypto=None):
+    def to_bytes(self):
         # create a temporary copy of payloads list
         _payloads = self.payloads[:]
 
         # if crypto is provided, encrypt everything into a SK payload
-        if (crypto is not None
-                and self.exchange_type != Message.Exchange.IKE_SA_INIT):
+        if self.crypto is not None:
             cleartext = self._payloads_to_bytes(self.encrypted_payloads)
-            payload_sk = PayloadSK.generate(cleartext, crypto)
+            payload_sk = PayloadSK.generate(cleartext, self.iv, self.crypto)
             payload_sk.next_payload_type = (self.encrypted_payloads[0].type
                                             if self.encrypted_payloads else Payload.Type.NONE)
             _payloads.append(payload_sk)
@@ -953,9 +957,9 @@ class Message:
         pack_into('>L', data, 24, len(data))
 
         # calculate checksum (if payload SK is present)
-        if crypto is not None and _payloads[-1].type == Payload.Type.SK:
-            # check integrity
-            checksum = crypto.integrity.compute(crypto.sk_a, data[:-crypto.integrity.hash_size])
+        if self.crypto is not None:
+            checksum = self.crypto.integrity.compute(self.crypto.sk_a,
+                                                     data[:-self.crypto.integrity.hash_size])
             pack_into('>{}s'.format(len(checksum)), data, len(data) - len(checksum), checksum)
 
         return data

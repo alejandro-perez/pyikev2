@@ -86,12 +86,9 @@ class IkeSa(object):
                                       shared_secret, old_sk_d=None):
         """ Generates IKE_SA key material based on the proposal and DH
         """
-        # TODO: Make a helper funciton in Transform that returns the KEYSIZE
-        # Then Cipher and Integrity can contain the keys inside
-        prf = Prf(ike_proposal.get_transform(Transform.Type.PRF).id)
-        integ = Integrity(ike_proposal.get_transform(Transform.Type.INTEG).id)
-        cipher = Cipher(ike_proposal.get_transform(Transform.Type.ENCR).id,
-                        ike_proposal.get_transform(Transform.Type.ENCR).keylen)
+        prf = Prf(ike_proposal.get_transform(Transform.Type.PRF))
+        integ = Integrity(ike_proposal.get_transform(Transform.Type.INTEG))
+        cipher = Cipher(ike_proposal.get_transform(Transform.Type.ENCR))
 
         if not old_sk_d:
             skeyseed = prf.prf(nonce_i + nonce_r, shared_secret)
@@ -123,24 +120,16 @@ class IkeSa(object):
             self.xfrm.delete_sa(self.peer_addr, child_sa.protocol, child_sa.outbound_spi)
             self.xfrm.delete_sa(self.my_addr, child_sa.protocol, child_sa.inbound_spi)
 
-    def _generate_child_sa_key_material(self, ike_proposal, child_proposal, nonce_i, nonce_r,
-                                        sk_d):
+    def _generate_child_sa_key_material(self, child_proposal, nonce_i, nonce_r, sk_d):
         """ Generates CHILD_SA key material
         """
-        # TODO: Replace self.chosen_proposal for adding prf to the crypto
-        # object so we have access to the prf without the proposal)
-        prf = Prf(ike_proposal.get_transform(Transform.Type.PRF).id)
-
-        # ESP and AH need integrity transform
-        integ = Integrity(child_proposal.get_transform(Transform.Type.INTEG).id)
-        integ_key_size = integ.key_size
         encr_key_size = 0
+        integ_key_size = Integrity(child_proposal.get_transform(Transform.Type.INTEG)).key_size
         if child_proposal.protocol_id == Proposal.Protocol.ESP:
-            cipher = Cipher(child_proposal.get_transform(Transform.Type.ENCR).id,
-                            child_proposal.get_transform(Transform.Type.ENCR).keylen)
-            encr_key_size = cipher.key_size
+            encr_key_size = Cipher(child_proposal.get_transform(Transform.Type.ENCR)).key_size
 
-        keymat = prf.prfplus(sk_d, nonce_i + nonce_r, 2 * integ_key_size + 2 * encr_key_size)
+        keymat = self.my_crypto.prf.prfplus(sk_d, nonce_i + nonce_r,
+                                            2 * integ_key_size + 2 * encr_key_size)
 
         sk_ei, sk_ai, sk_er, sk_ar = unpack(
             '>{0}s{1}s{0}s{1}s'.format(encr_key_size, integ_key_size),
@@ -241,6 +230,8 @@ class IkeSa(object):
                       if request.exchange_type == Message.Exchange.IKE_SA_INIT else []),
             encrypted_payloads=([notify_error]
                                 if request.exchange_type != Message.Exchange.IKE_SA_INIT else []),
+            crypto=(self.my_crypto
+                    if request.exchange_type != Message.Exchange.IKE_SA_INIT else None)
         )
 
     def _process_request(self, message, data, addr):
@@ -309,7 +300,7 @@ class IkeSa(object):
         # if the message is succesfully processed, increment expected message
         # ID and store response (for future retransmissions responses)
         self.peer_msg_id = self.peer_msg_id + 1
-        response_data = response.to_bytes(self.my_crypto)
+        response_data = response.to_bytes()
         self.log_message(response, addr, response_data, send=True)
         self.last_sent_response_data = response_data
         return status, response_data
@@ -347,7 +338,7 @@ class IkeSa(object):
 
         # If there is a another request to be sent, serizalize it and return it
         if request:
-            request_data = request.to_bytes(self.my_crypto)
+            request_data = request.to_bytes()
             self.log_message(request, addr, request_data, send=True)
             return True, request_data
         # TODO: Closing the IKE_SA can be done by "tricking" the state machine
@@ -383,7 +374,7 @@ class IkeSa(object):
         # TODO: Use a request queue for simplicity and to avoid problems with
         # state machine
         if request:
-            request_data = request.to_bytes(self.my_crypto)
+            request_data = request.to_bytes()
             self.log_message(request, self.peer_addr, request_data, send=True)
             return request_data
         else:
@@ -450,7 +441,9 @@ class IkeSa(object):
             is_initiator=False,
             message_id=self.peer_msg_id,
             payloads=response_payloads,
-            encrypted_payloads=[])
+            encrypted_payloads=[],
+            crypto=self.my_crypto
+        )
 
         # switch state
         self.state = IkeSa.State.INIT_RES_SENT
@@ -501,13 +494,15 @@ class IkeSa(object):
             is_initiator=True,
             message_id=self.my_msg_id,
             payloads=ike_sa_payloads + [payload_vendor],
-            encrypted_payloads=[])
+            encrypted_payloads=[],
+            crypto=self.my_crypto
+        )
 
         # switch state
         self.state = IkeSa.State.INIT_REQ_SENT
 
         # save the message for later authentication
-        self.ike_sa_init_req_data = self.request.to_bytes(None)
+        self.ike_sa_init_req_data = self.request.to_bytes()
 
         # store the acquire object to be used in the IKE_AUTH exchange
         self.acquire = acquire
@@ -576,6 +571,7 @@ class IkeSa(object):
             message_id=self.my_msg_id,
             payloads=[],
             encrypted_payloads=child_sa_payloads + [payload_idi, payload_auth],
+            crypto=self.my_crypto
         )
 
         # transition
@@ -625,7 +621,7 @@ class IkeSa(object):
         self._process_ike_sa_negotiation_response(response)
 
         # save the message for later authentication
-        self.ike_sa_init_res_data = response.to_bytes(None)
+        self.ike_sa_init_res_data = response.to_bytes()
 
         # return IKE_AUTH request callback
         return self.generate_ike_auth_request()
@@ -677,11 +673,8 @@ class IkeSa(object):
 
         # generate CHILD key material
         child_sa_keyring = self._generate_child_sa_key_material(
-            ike_proposal=self.chosen_proposal,
-            child_proposal=chosen_child_proposal,
-            nonce_i=request_payload_nonce.nonce,
-            nonce_r=response_payload_nonce.nonce,
-            sk_d=self.ike_sa_keyring.sk_d)
+            child_proposal=chosen_child_proposal, nonce_i=request_payload_nonce.nonce,
+            nonce_r=response_payload_nonce.nonce, sk_d=self.ike_sa_keyring.sk_d)
 
         # create the IPsec SAs according to the negotiated CHILD SA
         child_sa = ChildSa(outbound_spi=chosen_child_proposal.spi,
@@ -781,7 +774,10 @@ class IkeSa(object):
             is_initiator=False,
             message_id=self.peer_msg_id,
             payloads=[],
-            encrypted_payloads=response_payloads)
+            encrypted_payloads=response_payloads,
+            crypto=self.my_crypto
+
+        )
 
         # increase msg_id and transition
         self.state = IkeSa.State.ESTABLISHED
@@ -830,11 +826,8 @@ class IkeSa(object):
 
         # generate CHILD key material
         child_sa_keyring = self._generate_child_sa_key_material(
-            ike_proposal=self.chosen_proposal,
-            child_proposal=chosen_child_proposal,
-            nonce_i=request_payload_nonce.nonce,
-            nonce_r=response_payload_nonce.nonce,
-            sk_d=self.ike_sa_keyring.sk_d)
+            child_proposal=chosen_child_proposal, nonce_i=request_payload_nonce.nonce,
+            nonce_r=response_payload_nonce.nonce, sk_d=self.ike_sa_keyring.sk_d)
 
         # Check TSi and TSr are subsets of what we sent
         chosen_tsi = response_payload_tsi.traffic_selectors[0]
@@ -913,7 +906,9 @@ class IkeSa(object):
             is_initiator=self.is_initiator,
             message_id=self.my_msg_id,
             payloads=[],
-            encrypted_payloads=child_sa_payloads + [payload_nonce])
+            encrypted_payloads=child_sa_payloads + [payload_nonce],
+            crypto=self.my_crypto
+        )
 
         # transition
         self.state = IkeSa.State.NEW_CHILD_REQ_SENT
@@ -964,7 +959,9 @@ class IkeSa(object):
             is_initiator=self.is_initiator,
             message_id=self.peer_msg_id,
             payloads=[],
-            encrypted_payloads=response_payloads)
+            encrypted_payloads=response_payloads,
+            crypto=self.my_crypto
+        )
 
     def process_create_child_sa_request(self, request):
         """ Processes a CREATE_CHILD_SA message and returns response
@@ -1023,7 +1020,9 @@ class IkeSa(object):
             is_initiator=self.is_initiator,
             message_id=self.peer_msg_id,
             payloads=[],
-            encrypted_payloads=response_payloads)
+            encrypted_payloads=response_payloads,
+            crypto=self.my_crypto
+        )
 
     def process_create_child_sa_response(self, response):
         """ Processes a CREATE_CHILD_SA response message

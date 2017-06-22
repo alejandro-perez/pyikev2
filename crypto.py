@@ -11,13 +11,11 @@ from hmac import HMAC
 
 import cryptography.hazmat.backends.openssl.backend
 from cryptography.hazmat.primitives.asymmetric import dh
-from cryptography.hazmat.primitives.ciphers import Cipher as CryptographyCipher, algorithms, modes
+from cryptography.hazmat.primitives.ciphers import Cipher as _Cipher, algorithms, modes
 
-from message import Transform
+from message import Transform, InvalidSyntax
 
 __author__ = 'Alejandro Perez <alex@um.es>'
-
-Crypto = namedtuple('Crypto', ['cipher', 'sk_e', 'integrity', 'sk_a', 'prf', 'sk_p'])
 
 
 class EncrError(Exception):
@@ -30,8 +28,9 @@ class Prf(object):
         Transform.PrfId.PRF_HMAC_SHA1: hashlib.sha1,
     }
 
-    def __init__(self, transform_id):
-        self.hasher = self._digestmod_dict[transform_id]
+    def __init__(self, transform):
+        assert(transform.type == Transform.Type.PRF)
+        self.hasher = self._digestmod_dict[transform.id]
 
     @property
     def key_size(self):
@@ -63,9 +62,22 @@ class Cipher:
 
     _backend = cryptography.hazmat.backends.openssl.backend
 
-    def __init__(self, transform_id, negotiated_keylen):
-        self._algorithm = self._algorithm_dict[transform_id]
-        self.negotiated_keylen = negotiated_keylen
+    def __init__(self, transform):
+        assert(transform.type == Transform.Type.ENCR)
+        self._algorithm = self._algorithm_dict[transform.id]
+        self._transform = transform
+        # establish whether transform.keylen attribute is valid
+        if self._transform.keylen is not None:
+            if len(self._algorithm.key_sizes) == 1:
+                raise InvalidSyntax(
+                    'Algorithm {} only accepts one keylen but KEY_LEN attribute is provided.'
+                    ''.format(self._algorithm.name))
+            if transform.keylen not in self._algorithm.key_sizes:
+                raise InvalidSyntax(
+                    'Incorrect key length {} for algorithm {}. Acceptable values are: {}'
+                    ''.format(transform.keylen, self._algorithm.name, self._algorithm.key_sizes))
+        elif len(self._algorithm.key_sizes) > 1:
+            raise('Algorithm {} requires a KEY_LEN attribute'.format(self._algorithm.name))
 
     @property
     def block_size(self):
@@ -73,20 +85,21 @@ class Cipher:
 
     @property
     def key_size(self):
-        return self.negotiated_keylen // 8
+        # if no KEYLEN attribute is present, return the first possible one
+        return (self._transform.keylen or self._algorithm.key_sizes[0]) // 8
 
     def encrypt(self, key, iv, data):
         if len(key) != self.key_size:
             raise EncrError('Key must be of the indicated size {}'.format(self.key_size))
-        cyph = CryptographyCipher(self._algorithm(key), modes.CBC(iv), backend=self._backend)
-        encryptor = cyph.encryptor()
+        _cipher = _Cipher(self._algorithm(key), modes.CBC(iv), backend=self._backend)
+        encryptor = _cipher.encryptor()
         return encryptor.update(data) + encryptor.finalize()
 
     def decrypt(self, key, iv, data):
         if len(key) != self.key_size:
             raise EncrError('Key must be of the indicated size {}'.format(self.key_size))
-        cyph = CryptographyCipher(self._algorithm(key), modes.CBC(iv), backend=self._backend)
-        decryptor = cyph.decryptor()
+        _cipher = _Cipher(self._algorithm(key), modes.CBC(iv), backend=self._backend)
+        decryptor = _cipher.decryptor()
         return decryptor.update(data) + decryptor.finalize()
 
     def generate_iv(self):
@@ -286,8 +299,9 @@ class Integrity:
         Transform.IntegId.AUTH_HMAC_SHA1_96: hashlib.sha1,
     }
 
-    def __init__(self, transform_id):
-        self.hasher = self._digestmod_dict[transform_id]
+    def __init__(self, transform):
+        assert(transform.type == Transform.Type.INTEG)
+        self.hasher = self._digestmod_dict[transform.id]
 
     @property
     def key_size(self):
@@ -295,11 +309,18 @@ class Integrity:
 
     @property
     def hash_size(self):
-        # return self.hasher().digest_size
-        # Hardcoded as we only support _96 algorithms
+        # Hardcoded as we only support _96 algorithms so far
         return 96 // 8
 
     def compute(self, key, data):
         m = HMAC(key, data, digestmod=self.hasher)
-        # Hardcoded as we only support _96 algorithms
-        return m.digest()[:12]
+        return m.digest()[:self.hash_size]
+
+class Crypto:
+    def __init__(self, cipher, sk_e, integrity, sk_a, prf, sk_p):
+        self.cipher = cipher
+        self.sk_e = sk_e
+        self.integrity = integrity
+        self.sk_a = sk_a
+        self.prf = prf
+        self.sk_p = sk_p

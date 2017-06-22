@@ -86,28 +86,29 @@ class TestPayloadSK(TestPayloadMixin, unittest.TestCase):
         payload_class.parse(b'')
 
     def test_encrypt_decrypt(self):
-        integrity = Integrity(Transform.IntegId.AUTH_HMAC_SHA1_96)
-        cipher = Cipher(Transform.EncrId.ENCR_AES_CBC, 256)
+        integrity = Integrity(Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96))
+        cipher = Cipher(Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC, 256))
         encryption_key = b'Mypassword121111' * 2
-
+        iv = cipher.generate_iv()
         crypto = Crypto(cipher, encryption_key, integrity, b'', None, b'')
 
-        payload_sk = PayloadSK.generate(b'Hello there!', crypto)
-        clear = payload_sk.decrypt(crypto)
+        payload_sk = PayloadSK.generate(b'Hello there!', iv, crypto)
+        iv2, clear = payload_sk.decrypt(crypto)
         self.assertEqual(clear, b'Hello there!')
+        self.assertEqual(iv, iv2)
 
 
 class TestTransformWithKeylen(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
         super(TestTransformWithKeylen, self).setUp()
-        self.object = Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96, 128)
+        self.object = Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC, 128)
 
     def test_eq(self):
-        another = Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96, 128)
+        another = Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC, 128)
         self.assertEqual(self.object, another)
 
     def test_not_eq(self):
-        another = Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96, 256)
+        another = Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC, 256)
         self.assertNotEqual(self.object, another)
 
 
@@ -120,7 +121,7 @@ class TestTransformWithoutKeylen(TestPayloadMixin, unittest.TestCase):
 class TestProposal(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
         super(TestProposal, self).setUp()
-        transform1 = Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96, 128)
+        transform1 = Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96)
         transform2 = Transform(Transform.Type.PRF, Transform.PrfId.PRF_HMAC_SHA1)
         self.object = Proposal(
             20, Proposal.Protocol.IKE, b'aspiwhatever',
@@ -136,7 +137,7 @@ class TestProposal(TestPayloadMixin, unittest.TestCase):
             Proposal(20, Proposal.Protocol.IKE, b'aspiwhatever', [])
 
     def test_no_spi(self):
-        transform1 = Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96, 128)
+        transform1 = Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96)
         transform2 = Transform(Transform.Type.PRF, Transform.PrfId.PRF_HMAC_SHA1)
         proposal = Proposal(20, Proposal.Protocol.IKE, b'', [transform1, transform2])
         data = proposal.to_bytes()
@@ -154,8 +155,7 @@ class TestProposal(TestPayloadMixin, unittest.TestCase):
 
     def test_intersection(self):
         proposal = Proposal(20, Proposal.Protocol.IKE, b'aspiwhatever',
-                            [Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96,
-                                       128),
+                            [Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96),
                              Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC, 128),
                              Transform(Transform.Type.PRF, Transform.PrfId.PRF_HMAC_SHA1)])
         intersection = self.object.intersection(proposal)
@@ -164,14 +164,13 @@ class TestProposal(TestPayloadMixin, unittest.TestCase):
 
     def test_is_subset(self):
         proposal = Proposal(20, Proposal.Protocol.IKE, b'aspiwhatever',
-                            [Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96,
-                                       128),
+                            [Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96),
                              Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC, 128),
                              Transform(Transform.Type.PRF, Transform.PrfId.PRF_HMAC_SHA1)])
         self.assertTrue(self.object.is_subset(proposal))
 
     def test_eq(self):
-        transform1 = Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96, 128)
+        transform1 = Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96)
         transform2 = Transform(Transform.Type.PRF, Transform.PrfId.PRF_HMAC_SHA1)
         transform3 = Transform(Transform.Type.PRF, Transform.PrfId.PRF_HMAC_MD5)
         proposal = Proposal(
@@ -195,9 +194,9 @@ class TestPayloadSA(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
         super(TestPayloadSA, self).setUp()
         transform1 = Transform(Transform.Type.INTEG,
-                               Transform.IntegId.AUTH_HMAC_SHA1_96, 128)
+                               Transform.IntegId.AUTH_HMAC_SHA1_96)
         transform2 = Transform(Transform.Type.PRF, Transform.PrfId.PRF_HMAC_SHA1)
-        transform3 = Transform(Transform.Type.PRF, Transform.PrfId.PRF_HMAC_SHA1, 64)
+        transform3 = Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC, 128)
         proposal1 = Proposal(
             20, Proposal.Protocol.IKE, b'aspiwhatever',
             [transform1, transform2]
@@ -319,7 +318,7 @@ class TestMessage(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
         super(TestMessage, self).setUp()
         transform1 = Transform(Transform.Type.INTEG,
-                               Transform.IntegId.AUTH_HMAC_SHA1_96, 128)
+                               Transform.IntegId.AUTH_HMAC_SHA1_96)
         transform2 = Transform(Transform.Type.PRF, Transform.PrfId.PRF_HMAC_SHA1)
         transform3 = Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC,
                                256)
@@ -358,16 +357,21 @@ class TestMessage(TestPayloadMixin, unittest.TestCase):
             PayloadSA([])
 
     def test_encrypted(self):
-        transform1 = Transform(Transform.Type.INTEG,
-                               Transform.IntegId.AUTH_HMAC_SHA1_96, 128)
-        transform2 = Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC,
-                               256)
+        transform1 = Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96)
+        transform2 = Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC, 256)
         proposal1 = Proposal(
             1, Proposal.Protocol.IKE, b'aspiwhatever',
             [transform1, transform2])
 
         payload_sa = PayloadSA([proposal1])
         payload_nonce = PayloadNONCE()
+
+        crypto = Crypto(Cipher(Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC, 256)),
+                        b'a' * 32,
+                        Integrity(
+                            Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96)),
+                        b'a' * 16,
+                        None, b'')
 
         message = Message(
             spi_i=b'12345678',
@@ -380,18 +384,14 @@ class TestMessage(TestPayloadMixin, unittest.TestCase):
             is_initiator=False,
             message_id=0,
             payloads=[],
-            encrypted_payloads=[payload_sa, payload_nonce]
+            encrypted_payloads=[payload_sa, payload_nonce],
+            crypto=crypto
         )
 
-        crypto = Crypto(Cipher(Transform.EncrId.ENCR_AES_CBC, 256), b'a' * 32,
-                        Integrity(Transform.IntegId.AUTH_HMAC_SHA1_96), b'a' * 16,
-                        None, b'')
-
-        a = str(message.to_dict())
-        data = message.to_bytes(crypto)
-        new_message = self.object.parse(data, header_only=False, crypto=crypto)
-        b = str(new_message.to_dict())
-        self.assertEqual(a, b)
+        data = message.to_bytes()
+        new_message = Message.parse(data, crypto=crypto)
+        data2 = new_message.to_bytes()
+        self.assertEqual(data, data2)
 
 
 if __name__ == '__main__':
