@@ -364,7 +364,7 @@ class Xfrm(NetlinkProtocol):
                 dst_selector = ip_network(peer_addr)
 
             # generate an index for outbound policies
-            index = SystemRandom().randint(0, 10000) << 2 | XFRM_POLICY_OUT
+            index = SystemRandom().randint(0, 2**20) << 3 | XFRM_POLICY_OUT
             ipsec_conf['index'] = index
 
             self._create_policy(src_selector, dst_selector, ipsec_conf['my_port'],
