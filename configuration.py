@@ -69,7 +69,7 @@ class Configuration(object):
     """
 
     def __init__(self, my_addr, conf_dict):
-        """ Creates a new Configuration object from a textual dict (e.g. comming fron JSON or YAML)
+        """ Creates a new Configuration object from a textual dict (e.g. coming from JSON or YAML)
         """
         self._configuration = {}
         for key, value in conf_dict.items():

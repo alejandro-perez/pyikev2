@@ -274,7 +274,7 @@ class Xfrm(NetlinkProtocol):
     netlink_family = socket.NETLINK_XFRM
 
     def _create_sa(self, src_selector, dst_selector, src_port, dst_port, spi, ip_proto,
-                   ipsec_proto, mode, src, dst, enc_algorith, sk_e, auth_algorithm, sk_a):
+                   ipsec_proto, mode, src, dst, enc_algorithm, sk_e, auth_algorithm, sk_a):
         usersa = XfrmUserSaInfo(
             sel=XfrmSelector(family=socket.AF_INET,
                              daddr=XfrmAddress.from_ipaddr(dst_selector[0]),
@@ -298,7 +298,7 @@ class Xfrm(NetlinkProtocol):
 
         attributes = {}
         if ipsec_proto == Proposal.Protocol.ESP:
-            attributes[XFRMA_ALG_CRYPT] = XfrmAlgo.build(alg_name=self._cipher_names[enc_algorith],
+            attributes[XFRMA_ALG_CRYPT] = XfrmAlgo.build(alg_name=self._cipher_names[enc_algorithm],
                                                          key=sk_e)
         attributes[XFRMA_ALG_AUTH] = XfrmAlgo.build(alg_name=self._auth_names[auth_algorithm],
                                                     key=sk_a)
