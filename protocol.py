@@ -6,8 +6,10 @@
 import json
 import logging
 import os
+import socket
 from collections import namedtuple
 from ipaddress import ip_address, ip_network
+from select import select
 from struct import pack, unpack
 
 import xfrm
@@ -995,6 +997,7 @@ class IkeSaController:
         self.ike_sas = []
         self.configuration = configuration
         self.xfrm = xfrm.Xfrm()
+        self.my_addr = my_addr
 
         # establish policies
         self.xfrm.flush_policies()
@@ -1074,3 +1077,35 @@ class IkeSaController:
     def process_expire(self, xfrm_expire):
         print("Received expire")
         return None, None
+
+    def main_loop(self):
+        # create network socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        port = 500
+        sock.bind((str(self.my_addr), port))
+        logging.info('Listening from {}:{}'.format(self.my_addr, port))
+
+        # create XFRM socket
+        xfrm_obj = xfrm.Xfrm()
+        xfrm_socket = xfrm_obj.get_socket()
+        logging.info('Listening XFRM events.')
+
+        # do server
+        while True:
+            readeble = select([sock, xfrm_socket], [], [])[0]
+            if sock in readeble:
+                data, addr = sock.recvfrom(4096)
+                data = self.dispatch_message(data, sock.getsockname(), addr)
+                if data:
+                    sock.sendto(data, addr)
+            # TODO: Wrong. _parse_message should not be used here
+            if xfrm_socket in readeble:
+                data = xfrm_socket.recv(4096)
+                header, msg, attributes = xfrm_obj.parse_message(data)
+                reply_data, addr = None, None
+                if header.type == xfrm.XFRM_MSG_ACQUIRE:
+                    reply_data, addr = self.process_acquire(msg, attributes[xfrm.XFRMA_TMPL])
+                elif header.type == xfrm.XFRM_MSG_EXPIRE:
+                    reply_data, addr = self.process_expire(msg)
+                if reply_data:
+                    sock.sendto(reply_data, addr)
