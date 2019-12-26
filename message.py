@@ -270,16 +270,14 @@ class Proposal:
         return Proposal(num, protocol_id, spi, transforms)
 
     def to_bytes(self):
-        data = bytearray(pack('>BBBB', self.num, self.protocol_id, len(self.spi),
-                              len(self.transforms)))
+        data = bytearray(pack('>BBBB', self.num, self.protocol_id, len(self.spi), len(self.transforms)))
         if len(self.spi):
             data += self.spi
 
         for index in range(0, len(self.transforms)):
             transform = self.transforms[index]
             transform_data = transform.to_bytes()
-            data += pack('>BBH', 0 if index == len(self.transforms) - 1 else 3, 0,
-                         len(transform_data) + 4)
+            data += pack('>BBH', 0 if index == len(self.transforms) - 1 else 3, 0, len(transform_data) + 4)
             data += transform_data
 
         return data
@@ -351,8 +349,7 @@ class PayloadSA(Payload):
         data = bytearray()
         for index in range(0, len(self.proposals)):
             proposal_data = self.proposals[index].to_bytes()
-            data += pack('>BBH', 0 if index == len(self.proposals) - 1 else 2, 0,
-                         len(proposal_data) + 4)
+            data += pack('>BBH', 0 if index == len(self.proposals) - 1 else 2, 0, len(proposal_data) + 4)
             data += proposal_data
         return data
 
@@ -465,8 +462,7 @@ class PayloadNOTIFY(Payload):
         else:
             spi = b''
         notification_data = data[4 + spi_size:]
-        return PayloadNOTIFY(protocol_id, notification_type, spi, notification_data,
-                             critical=critical)
+        return PayloadNOTIFY(protocol_id, notification_type, spi, notification_data, critical=critical)
 
     def to_bytes(self):
         data = bytearray(pack('>BBH', self.protocol_id, len(self.spi), self.notification_type))
@@ -803,9 +799,8 @@ class Message:
         Payload.Type.DELETE: PayloadDELETE,
     }
 
-    def __init__(self, spi_i, spi_r, major, minor, exchange_type, is_response,
-                 can_use_higher_version, is_initiator, message_id, payloads, encrypted_payloads,
-                 crypto=None, iv=None):
+    def __init__(self, spi_i, spi_r, major, minor, exchange_type, is_response, can_use_higher_version, is_initiator,
+                 message_id, payloads, encrypted_payloads, crypto=None, iv=None):
         self.spi_i = spi_i
         self.spi_r = spi_r
         self.major = major
