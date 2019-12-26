@@ -338,8 +338,7 @@ class IkeSa(object):
         else:
             return self._process_response(message, addr)
 
-    # TODO: This interface should be using a non-XFRM interface. Acquire should
-    # come from the xfrm.py module
+    # TODO: This interface should be using a non-XFRM interface. Acquire should come from the xfrm.py module
     def process_acquire(self, xfrm_acquire, xfrm_tmpl):
         small_tsi = TrafficSelector.from_network(ip_network(xfrm_acquire.sel.saddr.to_ipaddr()),
                                                  xfrm_acquire.sel.sport, xfrm_acquire.sel.proto)
@@ -355,8 +354,7 @@ class IkeSa(object):
         else:
             logging.warning('Cannot process acquire while waiting for a response.')
 
-        # TODO: Use a request queue for simplicity and to avoid problems with
-        # state machine
+        # TODO: Use a request queue for simplicity and to avoid problems with state machine
         if request:
             request_data = request.to_bytes()
             self.log_message(request, self.peer_addr, request_data, send=True)
@@ -672,6 +670,7 @@ class IkeSa(object):
                             encr_transform, child_sa_keyring.sk_ei,
                             chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
                             child_sa_keyring.sk_ai, mode)
+        logging.info('IKE_SA: {}. Created CHILD_SA with SPIs ({}, {})'.format(hexstring(self.my_spi), hexstring(child_sa.inbound_spi), hexstring(child_sa.outbound_spi)))
 
         # generate the response Payload SA
         chosen_child_proposal.spi = child_sa.inbound_spi
@@ -825,6 +824,7 @@ class IkeSa(object):
                             child_sa.inbound_spi, encr_transform, child_sa_keyring.sk_er,
                             chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
                             child_sa_keyring.sk_ar, request_mode)
+        logging.info('IKE_SA: {}. Created CHILD_SA with SPIs ({}, {})'.format(hexstring(self.my_spi), hexstring(child_sa.inbound_spi), hexstring(child_sa.outbound_spi)))
 
     def process_ike_auth_response(self, response):
         self._check_in_states(response, [IkeSa.State.AUTH_REQ_SENT])
@@ -1015,8 +1015,7 @@ class IkeSaController:
         header = Message.parse(data, header_only=True)
 
         # if IKE_SA_INIT request, then a new IkeSa must be created
-        if (header.exchange_type == Message.Exchange.IKE_SA_INIT
-                and header.is_request):
+        if (header.exchange_type == Message.Exchange.IKE_SA_INIT and header.is_request):
             # look for matching configuration
             ike_conf = self.configuration.get_ike_configuration(peer_addr[0])
             ike_sa = IkeSa(is_initiator=False, peer_spi=header.spi_i, configuration=ike_conf,
