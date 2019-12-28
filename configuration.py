@@ -123,6 +123,7 @@ class Configuration(object):
             'my_subnet': self._load_ip_network(conf_dict.get('my_subnet', self.my_addr)),
             'peer_subnet': self._load_ip_network(conf_dict.get('peer_subnet', peer_ip)),
             'my_port': int(conf_dict.get('my_port', 0)),
+            'lifetime': int(conf_dict.get('lifetime', -1)),
             'peer_port': int(conf_dict.get('peer_port', 0)),
             'ip_proto': self._load_from_dict(conf_dict.get('ip_proto', 'any'),
                                              _ip_proto_name_to_enum),

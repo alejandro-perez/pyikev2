@@ -302,7 +302,6 @@ class Xfrm(NetlinkProtocol):
                                                                                 soft_use_expires_seconds=0,
                                                                                 hard_use_expires_seconds=0),
         )
-
         attributes = {}
         if ipsec_proto == Proposal.Protocol.ESP:
             attributes[XFRMA_ALG_CRYPT] = XfrmAlgo.build(alg_name=self._cipher_names[enc_algorithm], key=sk_e)
@@ -383,10 +382,10 @@ class Xfrm(NetlinkProtocol):
                                 ipsec_conf['mode'], peer_addr, my_addr)
 
     def create_sa(self, src, dst, src_sel, dst_sel, ipsec_protocol, spi, enc_algorith, sk_e,
-                  auth_algorithm, sk_a, mode):
+                  auth_algorithm, sk_a, mode, lifetime=-1):
         self._create_sa(src_sel.get_network(), dst_sel.get_network(), src_sel.get_port(),
                         dst_sel.get_port(), spi, src_sel.ip_proto, ipsec_protocol, mode, src,
-                        dst, enc_algorith, sk_e, auth_algorithm, sk_a)
+                        dst, enc_algorith, sk_e, auth_algorithm, sk_a, lifetime)
 
     def _get_policies(self):
         policy_id = XfrmUserPolicyId()
