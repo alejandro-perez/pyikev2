@@ -16,7 +16,7 @@ import xfrm
 from crypto import Cipher, Crypto, DiffieHellman, Integrity, Prf
 from helpers import SafeIntEnum, hexstring
 from message import (AuthenticationFailed, ChildSaNotFound, IkeSaError, InvalidKePayload, InvalidSelectors,
-                     InvalidSyntax, NoProposalChosen, PayloadNotFound, UnsupportedCriticalPayload)
+                     InvalidSyntax, NoProposalChosen, PayloadNotFound, UnsupportedCriticalPayload, ChildSaError)
 from message import (Message, Payload, PayloadAUTH, PayloadDELETE, PayloadIDi, PayloadIDr, PayloadKE, PayloadNONCE,
                      PayloadNOTIFY, PayloadSA, PayloadTSi, PayloadTSr, PayloadVENDOR, Proposal, TrafficSelector,
                      Transform)
@@ -238,41 +238,28 @@ class IkeSa(object):
                                                                                                    message.message_id))
             return None
 
-        status = False
         hexspi = hexstring(self.my_spi)
         try:
             handler = _handler_dict[message.exchange_type]
             response = handler(message)
-            status = True
         except KeyError:
             logging.error("I don't know how to handle this message. Please, implement a handler for this exchange!")
             return None
-        # TODO: Factorise exception handling
-        except NoProposalChosen as ex:
+        except (IkeSaError, ChildSaError) as ex:
+            exception_2_notify = {
+                NoProposalChosen: PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN,
+                UnsupportedCriticalPayload: PayloadNOTIFY.Type.UNSUPPORTED_CRITICAL_PAYLOAD,
+                InvalidSyntax: PayloadNOTIFY.Type.INVALID_SYNTAX,
+                AuthenticationFailed: PayloadNOTIFY.Type.AUTHENTICATION_FAILED,
+                InvalidSelectors: PayloadNOTIFY.Type.INVALID_SELECTORS,
+                InvalidKePayload: PayloadNOTIFY.Type.INVALID_KE_PAYLOAD,
+                ChildSaNotFound: PayloadNOTIFY.Type.CHILD_SA_NOT_FOUND,
+            }
             logging.error('IKE_SA: {}. {}'.format(hexspi, str(ex)))
-            response = self._generate_ike_error_response(message, PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN)
-        except UnsupportedCriticalPayload as ex:
-            logging.error('IKE_SA: {}. {}'.format(hexspi, str(ex)))
-            response = self._generate_ike_error_response(message, PayloadNOTIFY.Type.UNSUPPORTED_CRITICAL_PAYLOAD)
-        except InvalidSyntax as ex:
-            logging.error('IKE_SA: {}. {}'.format(hexspi, str(ex)))
-            response = self._generate_ike_error_response(message, PayloadNOTIFY.Type.INVALID_SYNTAX)
-        except AuthenticationFailed as ex:
-            logging.error('IKE_SA: {}. {}'.format(hexspi, str(ex)))
-            response = self._generate_ike_error_response(message, PayloadNOTIFY.Type.AUTHENTICATION_FAILED)
-        except InvalidSelectors as ex:
-            logging.error('IKE_SA: {}. {}'.format(hexspi, str(ex)))
-            response = self._generate_ike_error_response(message, PayloadNOTIFY.Type.INVALID_SELECTORS)
-        except InvalidKePayload as ex:
-            logging.error('IKE_SA: {}. {}'.format(hexspi, str(ex)))
-            response = self._generate_ike_error_response(message, PayloadNOTIFY.Type.INVALID_KE_PAYLOAD,
-                                                         notification_data=pack('>H', ex.group))
-        except ChildSaNotFound as ex:
-            logging.error('IKE_SA: {}. {}'.format(hexspi, str(ex)))
-            response = self._generate_ike_error_response(message, PayloadNOTIFY.Type.CHILD_SA_NOT_FOUND)
-        except IkeSaError as ex:
-            logging.error('IKE_SA: {}. {}'.format(hexspi, str(ex)))
-            response = self._generate_ike_error_response(message, PayloadNOTIFY.Type.INVALID_SYNTAX)
+            notification_type = exception_2_notify.get(type(ex), PayloadNOTIFY.Type.INVALID_SYNTAX)
+            notification_data = pack('>H', ex.group) if type(ex) is InvalidKePayload else b''
+            response = self._generate_ike_error_response(message, notification_type, notification_data)
+            self.state = IkeSa.State.DELETED
 
         # if the message is successfully processed, increment expected message
         # ID and store response (for future retransmissions responses)
@@ -280,8 +267,6 @@ class IkeSa(object):
         response_data = response.to_bytes()
         self.log_message(response, addr, response_data, send=True)
         self.last_sent_response_data = response_data
-        if not status:
-            self.state = IkeSa.State.DELETED
         return response_data
 
     def _process_response(self, message, addr):
