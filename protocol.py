@@ -237,17 +237,16 @@ class IkeSa(object):
             logging.error('Message with invalid ID. Expecting: {}. Received: {}. Omitting.'.format(self.peer_msg_id,
                                                                                                    message.message_id))
             return None
-        try:
-            handler = _handler_dict[message.exchange_type]
-        except KeyError:
-            logging.error("I don't know how to handle this message. Please, implement a handler for this exchange!")
-            return None
 
         status = False
         hexspi = hexstring(self.my_spi)
         try:
+            handler = _handler_dict[message.exchange_type]
             response = handler(message)
             status = True
+        except KeyError:
+            logging.error("I don't know how to handle this message. Please, implement a handler for this exchange!")
+            return None
         # TODO: Factorise exception handling
         except NoProposalChosen as ex:
             logging.error('IKE_SA: {}. {}'.format(hexspi, str(ex)))
@@ -297,27 +296,21 @@ class IkeSa(object):
             logging.error('Message with invalid ID. Expecting {}. Omitting.'.format(self.my_msg_id))
             return None
 
-        # process the message
-        try:
-            handler = _handler_dict[message.exchange_type]
-        except KeyError:
-            logging.error("I don't know how to handle this message. Please, implement a handler!")
-            return None
-
         # increment our message ID for future requests
         self.my_msg_id = self.my_msg_id + 1
-        request = None
         try:
+            handler = _handler_dict[message.exchange_type]
             request = handler(message)
+            # If there is a another request to be sent, serizalize it and return it
+            if request:
+                request_data = request.to_bytes()
+                self.log_message(request, addr, request_data, send=True)
+                return request_data
         # TODO: Process notifies and generate exceptions. These exceptions may (or may not) close the IKE_SA
         except IkeSaError as ex:
             logging.error('IKE_SA: {}. {}'.format(hexstring(self.my_spi), str(ex)))
-
-        # If there is a another request to be sent, serizalize it and return it
-        if request:
-            request_data = request.to_bytes()
-            self.log_message(request, addr, request_data, send=True)
-            return request_data
+        except KeyError:
+            logging.error("I don't know how to handle this message. Please, implement a handler!")
 
         return None
 
