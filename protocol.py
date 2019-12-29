@@ -15,14 +15,11 @@ from struct import pack, unpack
 import xfrm
 from crypto import Cipher, Crypto, DiffieHellman, Integrity, Prf
 from helpers import SafeIntEnum, hexstring
-from message import (AuthenticationFailed, ChildSaNotFound, IkeSaError,
-                     InvalidKePayload, InvalidSelectors, InvalidSyntax,
-                     NoProposalChosen, PayloadNotFound,
-                     UnsupportedCriticalPayload)
-from message import (Message, Payload, PayloadAUTH, PayloadDELETE, PayloadIDi,
-                     PayloadIDr, PayloadKE, PayloadNONCE, PayloadNOTIFY,
-                     PayloadSA, PayloadTSi, PayloadTSr, PayloadVENDOR,
-                     Proposal, TrafficSelector, Transform)
+from message import (AuthenticationFailed, ChildSaNotFound, IkeSaError, InvalidKePayload, InvalidSelectors,
+                     InvalidSyntax, NoProposalChosen, PayloadNotFound, UnsupportedCriticalPayload)
+from message import (Message, Payload, PayloadAUTH, PayloadDELETE, PayloadIDi, PayloadIDr, PayloadKE, PayloadNONCE,
+                     PayloadNOTIFY, PayloadSA, PayloadTSi, PayloadTSr, PayloadVENDOR, Proposal, TrafficSelector,
+                     Transform)
 
 __author__ = 'Alejandro Perez <alex@um.es>'
 
@@ -239,16 +236,16 @@ class IkeSa(object):
         # check message_id and handle retransmissions
         if message.message_id == self.peer_msg_id - 1:
             logging.warning('Retransmission detected. Sending last sent message')
-            return True, self.last_sent_response_data
+            return self.last_sent_response_data
         elif message.message_id != self.peer_msg_id:
             logging.error('Message with invalid ID. Expecting: {}. Received: {}. Omitting.'.format(self.peer_msg_id,
                                                                                                    message.message_id))
-            return True, None
+            return None
         try:
             handler = _handler_dict[message.exchange_type]
         except KeyError:
             logging.error("I don't know how to handle this message. Please, implement a handler for this exchange!")
-            return True, None
+            return None
 
         status = False
         hexspi = hexstring(self.my_spi)
@@ -281,13 +278,15 @@ class IkeSa(object):
             logging.error('IKE_SA: {}. {}'.format(hexspi, str(ex)))
             response = self._generate_ike_error_response(message, PayloadNOTIFY.Type.INVALID_SYNTAX)
 
-        # if the message is succesfully processed, increment expected message
+        # if the message is successfully processed, increment expected message
         # ID and store response (for future retransmissions responses)
         self.peer_msg_id = self.peer_msg_id + 1
         response_data = response.to_bytes()
         self.log_message(response, addr, response_data, send=True)
         self.last_sent_response_data = response_data
-        return status, response_data
+        if not status:
+            self.state = IkeSa.State.DELETED
+        return response_data
 
     def _process_response(self, message, addr):
         _handler_dict = {
@@ -300,22 +299,21 @@ class IkeSa(object):
         if message.message_id != self.my_msg_id:
             logging.error('Message with invalid ID. Expecting {}. Omitting.'
                           ''.format(self.my_msg_id))
-            return True, None
+            return None
 
         # process the message
         try:
             handler = _handler_dict[message.exchange_type]
         except KeyError:
             logging.error("I don't know how to handle this message. Please, implement a handler!")
-            return True, None
+            return None
 
         # increment our message ID for future requests
         self.my_msg_id = self.my_msg_id + 1
         request = None
         try:
             request = handler(message)
-        # TODO: Process notifies and generate exceptions.
-        # These exceptions may (or may not) close the IKE_SA
+        # TODO: Process notifies and generate exceptions. These exceptions may (or may not) close the IKE_SA
         except IkeSaError as ex:
             logging.error('IKE_SA: {}. {}'.format(hexstring(self.my_spi), str(ex)))
 
@@ -323,10 +321,9 @@ class IkeSa(object):
         if request:
             request_data = request.to_bytes()
             self.log_message(request, addr, request_data, send=True)
-            return True, request_data
-        # TODO: Closing the IKE_SA can be done by "tricking" the state machine
-        # rather than having this confusing return interface
-        return True, None
+            return request_data
+
+        return None
 
     def process_message(self, data, addr):
         # parse the whole message (including encrypted data)
@@ -1105,7 +1102,7 @@ class IkeSaController:
                 return None
 
         # generate the reply (if any)
-        status, reply = ike_sa.process_message(data, peer_addr)
+        reply = ike_sa.process_message(data, peer_addr)
 
         # if rekeyed, add the new IkeSa
         if ike_sa.state == IkeSa.State.REKEYED:
@@ -1114,10 +1111,11 @@ class IkeSaController:
                                                                                 len(self.ike_sas)))
 
         # if the IKE_SA needs to be closed
-        if not status or ike_sa.state in (IkeSa.State.DELETED,):
+        if ike_sa.state in (IkeSa.State.DELETED,):
             ike_sa.delete_child_sas()
             self.ike_sas.remove(ike_sa)
             logging.info('Deleted IKE_SA with SPI={}. Count={}'.format(hexstring(ike_sa.my_spi), len(self.ike_sas)))
+
         return reply
 
     def process_acquire(self, xfrm_acquire, xfrm_tmpl):
