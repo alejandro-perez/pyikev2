@@ -1021,6 +1021,7 @@ class IkeSa(object):
 
         self._process_create_child_sa_negotiation_res(response)
         self.state = IkeSa.State.ESTABLISHED
+        return None
 
 
 class IkeSaController:
