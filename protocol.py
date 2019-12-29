@@ -30,7 +30,7 @@ __author__ = 'Alejandro Perez <alex@um.es>'
 """
 
 Keyring = namedtuple('Keyring', ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er', 'sk_pi', 'sk_pr'])
-ChildSa = namedtuple('ChildSa', ['inbound_spi', 'outbound_spi', 'protocol'])
+ChildSa = namedtuple('ChildSa', ['inbound_spi', 'outbound_spi', 'proposal', 'tsi', 'tsr', 'mode'])
 Acquire = namedtuple('Acquire', ['tsi', 'tsr', 'index'])
 
 
@@ -84,8 +84,8 @@ class IkeSa(object):
         self.new_ike_sa = None
         self.xfrm = xfrm.Xfrm()
 
-    def _generate_ike_sa_key_material(self, ike_proposal, nonce_i, nonce_r, spi_i, spi_r,
-                                      shared_secret, old_sk_d=None):
+    def _generate_ike_sa_key_material(self, ike_proposal, nonce_i, nonce_r, spi_i, spi_r, shared_secret,
+                                      old_sk_d=None):
         """ Generates IKE_SA key material based on the proposal and DH
         """
         prf = Prf(ike_proposal.get_transform(Transform.Type.PRF))
@@ -119,8 +119,8 @@ class IkeSa(object):
 
     def delete_child_sas(self):
         for child_sa in self.child_sas:
-            self.xfrm.delete_sa(self.peer_addr, child_sa.protocol, child_sa.outbound_spi)
-            self.xfrm.delete_sa(self.my_addr, child_sa.protocol, child_sa.inbound_spi)
+            self.xfrm.delete_sa(self.peer_addr, child_sa.proposal.protocol_id, child_sa.outbound_spi)
+            self.xfrm.delete_sa(self.my_addr, child_sa.proposal.protocol_id, child_sa.inbound_spi)
 
     def _generate_child_sa_key_material(self, child_proposal, nonce_i, nonce_r, sk_d):
         """ Generates CHILD_SA key material
@@ -251,7 +251,6 @@ class IkeSa(object):
             return True, None
 
         status = False
-        response = None
         hexspi = hexstring(self.my_spi)
         try:
             response = handler(message)
@@ -353,14 +352,28 @@ class IkeSa(object):
             request = self.generate_create_child_sa_request(acquire)
         else:
             logging.warning('Cannot process acquire while waiting for a response.')
+            return None
 
-        # TODO: Use a request queue for simplicity and to avoid problems with state machine
         if request:
             request_data = request.to_bytes()
             self.log_message(request, self.peer_addr, request_data, send=True)
             return request_data
-        else:
+
+        return None
+
+    def process_expire(self, spi):
+        """ Creates a rekey CREATE_CHILD_SA message for creating a new CHILD
+        """
+        if self.state != IkeSa.State.ESTABLISHED:
+            logging.warning('Cannot process expire while waiting for a response')
             return None
+
+        request = self.generate_rekey_child_sa_request(spi)
+        if request:
+            request_data = request.to_bytes()
+            self.log_message(self.request, self.peer_addr, request_data, send=True)
+            return request_data
+        return None
 
     def _process_ike_sa_negotiation_request(self, request, encrypted=False, old_sk_d=None):
         """ Process a IKE_SA negotiation request (SA, Ni, KEi), and returns
@@ -512,8 +525,7 @@ class IkeSa(object):
 
         # genereate USE_TRANSPORT_MODE notify if needed
         if ipsec_conf['mode'] == xfrm.Mode.TRANSPORT:
-            result.append(PayloadNOTIFY(Proposal.Protocol.NONE,
-                                        PayloadNOTIFY.Type.USE_TRANSPORT_MODE, b'', b''))
+            result.append(PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.USE_TRANSPORT_MODE, b'', b''))
         return result
 
     def generate_ike_auth_request(self):
@@ -644,27 +656,26 @@ class IkeSa(object):
         chosen_child_proposal = self._select_best_child_sa_proposal(request_payload_sa, ipsec_conf)
 
         # generate CHILD key material
-        child_sa_keyring = self._generate_child_sa_key_material(
-            child_proposal=chosen_child_proposal, nonce_i=request_payload_nonce.nonce,
-            nonce_r=response_payload_nonce.nonce, sk_d=self.ike_sa_keyring.sk_d)
+        child_sa_keyring = self._generate_child_sa_key_material(child_proposal=chosen_child_proposal,
+                                                                nonce_i=request_payload_nonce.nonce,
+                                                                nonce_r=response_payload_nonce.nonce,
+                                                                sk_d=self.ike_sa_keyring.sk_d)
 
         # create the IPsec SAs according to the negotiated CHILD SA
-        child_sa = ChildSa(outbound_spi=chosen_child_proposal.spi,
-                           inbound_spi=os.urandom(4),
-                           protocol=chosen_child_proposal.protocol_id)
+        child_sa = ChildSa(outbound_spi=chosen_child_proposal.spi, inbound_spi=os.urandom(4),
+                           proposal=chosen_child_proposal, tsi=chosen_tsi, tsr=chosen_tsr, mode=mode)
+
         self.child_sas.append(child_sa)
         if ipsec_conf['ipsec_proto'] == Proposal.Protocol.ESP:
             encr_transform = chosen_child_proposal.get_transform(Transform.Type.ENCR).id
         else:
             encr_transform = None
-        self.xfrm.create_sa(self.my_addr, self.peer_addr, chosen_tsr, chosen_tsi,
-                            chosen_child_proposal.protocol_id, child_sa.outbound_spi,
-                            encr_transform, child_sa_keyring.sk_er,
+        self.xfrm.create_sa(self.my_addr, self.peer_addr, chosen_tsr, chosen_tsi, chosen_child_proposal.protocol_id,
+                            child_sa.outbound_spi, encr_transform, child_sa_keyring.sk_er,
                             chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
                             child_sa_keyring.sk_ar, mode, ipsec_conf['lifetime'])
-        self.xfrm.create_sa(self.peer_addr, self.my_addr, chosen_tsi, chosen_tsr,
-                            chosen_child_proposal.protocol_id, child_sa.inbound_spi,
-                            encr_transform, child_sa_keyring.sk_ei,
+        self.xfrm.create_sa(self.peer_addr, self.my_addr, chosen_tsi, chosen_tsr, chosen_child_proposal.protocol_id,
+                            child_sa.inbound_spi, encr_transform, child_sa_keyring.sk_ei,
                             chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
                             child_sa_keyring.sk_ai, mode, ipsec_conf['lifetime'])
         logging.info('IKE_SA: {}. Created CHILD_SA with SPIs ({}, {})'.format(hexstring(self.my_spi),
@@ -797,9 +808,10 @@ class IkeSa(object):
             raise NoProposalChosen('Responder did not choose a valid proposal')
 
         # generate CHILD key material
-        child_sa_keyring = self._generate_child_sa_key_material(
-            child_proposal=chosen_child_proposal, nonce_i=request_payload_nonce.nonce,
-            nonce_r=response_payload_nonce.nonce, sk_d=self.ike_sa_keyring.sk_d)
+        child_sa_keyring = self._generate_child_sa_key_material(child_proposal=chosen_child_proposal,
+                                                                nonce_i=request_payload_nonce.nonce,
+                                                                nonce_r=response_payload_nonce.nonce,
+                                                                sk_d=self.ike_sa_keyring.sk_d)
 
         # Check TSi and TSr are subsets of what we sent
         chosen_tsi = response_payload_tsi.traffic_selectors[0]
@@ -810,9 +822,8 @@ class IkeSa(object):
             raise InvalidSelectors('Responder did not select a subset of our proposed TS.')
 
         # create the IPsec SAs according to the negotiated CHILD SA
-        child_sa = ChildSa(outbound_spi=chosen_child_proposal.spi,
-                           inbound_spi=request_payload_sa.proposals[0].spi,
-                           protocol=chosen_child_proposal.protocol_id)
+        child_sa = ChildSa(outbound_spi=chosen_child_proposal.spi, inbound_spi=request_payload_sa.proposals[0].spi,
+                           proposal=chosen_child_proposal, tsi=chosen_tsi, tsr=chosen_tsr, mode=request_mode)
         self.child_sas.append(child_sa)
 
         encr_transform = None
@@ -888,6 +899,55 @@ class IkeSa(object):
 
         return self.request
 
+    def generate_rekey_child_sa_request(self, spi):
+        """ Creates a rekey CREATE_CHILD_SA message for rekeying a new CHILD
+        """
+        assert (self.state == IkeSa.State.ESTABLISHED)
+
+        payloads = []
+        try:
+            rekeyed_child_sa = next(x for x in self.child_sas if x.outbound_spi == spi or x.inbound_spi == spi)
+        except StopIteration:
+            logging.warning("Received expire for unknown CHILD_SA with spi {}".format(hexstring(spi)))
+            return None
+
+        # generate Payload TSi, TSr
+        payloads.append(PayloadTSi([rekeyed_child_sa.tsi]))
+        payloads.append(PayloadTSr([rekeyed_child_sa.tsr]))
+
+        # generate Payload SA
+        proposal = rekeyed_child_sa.proposal
+        proposal.spi = os.urandom(4)
+        payloads.append(PayloadSA([proposal]))
+
+        # genereate USE_TRANSPORT_MODE notify if needed
+        if rekeyed_child_sa.mode == xfrm.Mode.TRANSPORT:
+            payloads.append(PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.USE_TRANSPORT_MODE, b'', b''))
+
+        payloads.append(
+            PayloadNOTIFY(proposal.protocol_id, PayloadNOTIFY.Type.REKEY_SA, rekeyed_child_sa.inbound_spi, b''))
+
+        payloads.append(PayloadNONCE())
+
+        # generate the message
+        self.request = Message(spi_i=self.spi_i,
+                               spi_r=self.spi_r,
+                               major=2,
+                               minor=0,
+                               exchange_type=Message.Exchange.CREATE_CHILD_SA,
+                               is_response=False,
+                               can_use_higher_version=False,
+                               is_initiator=self.is_initiator,
+                               message_id=self.my_msg_id,
+                               payloads=[],
+                               encrypted_payloads=payloads,
+                               crypto=self.my_crypto)
+
+        # transition
+        self.state = IkeSa.State.REK_CHILD_REQ_SENT
+
+        return self.request
+
     def process_informational_request(self, request):
         """ Processes an INFORMATIONAL request
         """
@@ -910,8 +970,8 @@ class IkeSa(object):
                     child_sa = next(x for x in self.child_sas if x.outbound_spi == del_spi)
                 except StopIteration:
                     raise ChildSaNotFound('The indicated SPI could not be found', spi=del_spi)
-                self.xfrm.delete_sa(self.peer_addr, child_sa.protocol, child_sa.outbound_spi)
-                self.xfrm.delete_sa(self.my_addr, child_sa.protocol, child_sa.inbound_spi)
+                self.xfrm.delete_sa(self.peer_addr, child_sa.proposal.protocol_id, child_sa.outbound_spi)
+                self.xfrm.delete_sa(self.my_addr, child_sa.proposal.protocol_id, child_sa.inbound_spi)
                 self.child_sas.remove(child_sa)
                 response_payloads.append(PayloadDELETE(delete_payload.protocol_id, [child_sa.inbound_spi]))
         # If there is no DELETE payload, this is just a keep alive and we return no payloads
@@ -944,8 +1004,7 @@ class IkeSa(object):
 
         # if this is a IKE_REKEY
         if proposal.protocol_id == Proposal.Protocol.IKE:
-            logging.info('IKE_SA: {}. Received request for rekeying current '
-                         'IKE_SA'.format(hexstring(self.my_spi)))
+            logging.info('IKE_SA: {}. Received request for rekeying current IKE_SA'.format(hexstring(self.my_spi)))
             self.new_ike_sa = IkeSa(False, proposal.spi, self.configuration, self.my_addr, self.peer_addr)
             # take over the existing child sas
             self.new_ike_sa.child_sas = self.child_sas
@@ -964,8 +1023,7 @@ class IkeSa(object):
                 # use only the first notification
                 rekey_spi = rekey_notify[0].spi
                 try:
-                    rekeyed_child_sa = next(
-                        x for x in self.child_sas if x.outbound_spi == rekey_spi)
+                    rekeyed_child_sa = next(x for x in self.child_sas if x.outbound_spi == rekey_spi)
                 except StopIteration:
                     raise ChildSaNotFound('The indicated SPI could not be found', spi=rekey_spi)
                 response_payloads.append(
@@ -1017,6 +1075,13 @@ class IkeSaController:
     def _get_ike_sa_by_peer_addr(self, peer_addr):
         return next(x for x in self.ike_sas if x.peer_addr == peer_addr)
 
+    def _get_ike_sa_by_child_sa_spi(self, spi):
+        for ike_sa in self.ike_sas:
+            for child_sa in ike_sa.child_sas:
+                if child_sa.inbound_spi == spi or child_sa.outbound_spi == spi:
+                    return ike_sa
+        return None
+
     def dispatch_message(self, data, my_addr, peer_addr):
         header = Message.parse(data, header_only=True)
 
@@ -1045,15 +1110,14 @@ class IkeSaController:
         # if rekeyed, add the new IkeSa
         if ike_sa.state == IkeSa.State.REKEYED:
             self.ike_sas.append(ike_sa.new_ike_sa)
-            logging.info('IKE SA with SPI={} created by rekey. Count={}'
-                         ''.format(hexstring(ike_sa.new_ike_sa.my_spi), len(self.ike_sas)))
+            logging.info('IKE SA with SPI={} created by rekey. Count={}'.format(hexstring(ike_sa.new_ike_sa.my_spi),
+                                                                                len(self.ike_sas)))
 
         # if the IKE_SA needs to be closed
         if not status or ike_sa.state in (IkeSa.State.DELETED,):
             ike_sa.delete_child_sas()
             self.ike_sas.remove(ike_sa)
-            logging.info('Deleted IKE_SA with SPI={}. Count={}'
-                         ''.format(hexstring(ike_sa.my_spi), len(self.ike_sas)))
+            logging.info('Deleted IKE_SA with SPI={}. Count={}'.format(hexstring(ike_sa.my_spi), len(self.ike_sas)))
         return reply
 
     def process_acquire(self, xfrm_acquire, xfrm_tmpl):
@@ -1077,12 +1141,16 @@ class IkeSaController:
         request = ike_sa.process_acquire(xfrm_acquire, xfrm_tmpl)
 
         # look for ipsec configuration
-        return request, (str(peer_addr), 500)
+        return request, (str(ike_sa.peer_addr), 500)
 
     def process_expire(self, xfrm_expire):
-        spi = hexstring(xfrm_expire.state.id.spi)
+        spi = bytes(xfrm_expire.state.id.spi)
         hard = xfrm_expire.hard
-        logging.info('Received EXPIRE for spi {}. Hard={}'.format(spi, hard))
+        logging.info('Received EXPIRE for spi {}. Hard={}'.format(hexstring(spi), hard))
+        ike_sa = self._get_ike_sa_by_child_sa_spi(spi)
+        if (ike_sa):
+            request = ike_sa.process_expire(spi)
+            return request, (str(ike_sa.peer_addr), 500)
         return None, None
 
     def main_loop(self):
