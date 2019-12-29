@@ -23,8 +23,7 @@ from message import (Message, Payload, PayloadAUTH, PayloadDELETE, PayloadIDi, P
 
 __author__ = 'Alejandro Perez <alex@um.es>'
 
-""" TODO: Protocol exceptions should be defined here, as they are not used in message.py
-"""
+# TODO: Implement tests for this with valid and invalid exchange sequences
 
 Keyring = namedtuple('Keyring', ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er', 'sk_pi', 'sk_pr'])
 ChildSa = namedtuple('ChildSa', ['inbound_spi', 'outbound_spi', 'proposal', 'tsi', 'tsr', 'mode'])
@@ -293,6 +292,7 @@ class IkeSa(object):
                 return request_data
         # TODO: Process notifies and generate exceptions. These exceptions may (or may not) close the IKE_SA
         except IkeSaError as ex:
+            # TODO: Should exceptions at this level close the IKE_SA?
             logging.error('IKE_SA: {}. {}'.format(hexstring(self.my_spi), str(ex)))
         except KeyError:
             logging.error("I don't know how to handle this message. Please, implement a handler!")
@@ -1059,8 +1059,8 @@ class IkeSaController:
             ike_sa = IkeSa(is_initiator=False, peer_spi=header.spi_i, configuration=ike_conf,
                            my_addr=ip_address(my_addr[0]), peer_addr=ip_address(peer_addr[0]))
             self.ike_sas.append(ike_sa)
-            logging.info('Starting the creation of IKE SA with SPI={}. '
-                         'Count={}'.format(hexstring(ike_sa.my_spi), len(self.ike_sas)))
+            logging.info('Starting the creation of IKE SA with SPI={}. Count={}'.format(hexstring(ike_sa.my_spi),
+                                                                                        len(self.ike_sas)))
         # else, look for the IkeSa in the dict
         else:
             my_spi = header.spi_r if header.is_initiator else header.spi_i
