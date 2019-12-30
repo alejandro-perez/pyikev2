@@ -4,6 +4,7 @@
 """ This module defines the classes for the protocol handling.
 """
 import socket
+from copy import copy, deepcopy
 from ipaddress import ip_address, ip_network
 
 import xfrm
@@ -89,12 +90,9 @@ class Configuration(object):
             'psk': conf_dict.get('psk', 'whatever').encode(),
             'id': PayloadID(PayloadID.Type.ID_FQDN, conf_dict.get('id', default_id).encode()),
             'peer_id': PayloadID(PayloadID.Type.ID_FQDN, conf_dict.get('id', default_id).encode()),
-            'encr': self._load_crypto_algs('encr', conf_dict.get('encr', ['aes256']),
-                                           _encr_name_to_transform),
-            'integ': self._load_crypto_algs('integ', conf_dict.get('integ', ['sha1']),
-                                            _integ_name_to_transform),
-            'prf': self._load_crypto_algs('prf', conf_dict.get('prf', ['sha1']),
-                                          _prf_name_to_transform),
+            'encr': self._load_crypto_algs('encr', conf_dict.get('encr', ['aes256']), _encr_name_to_transform),
+            'integ': self._load_crypto_algs('integ', conf_dict.get('integ', ['sha1']), _integ_name_to_transform),
+            'prf': self._load_crypto_algs('prf', conf_dict.get('prf', ['sha1']), _prf_name_to_transform),
             'dh': self._load_crypto_algs('dh', conf_dict.get('dh', ['2']), _dh_name_to_transform),
         }
 
@@ -121,19 +119,16 @@ class Configuration(object):
     def _load_ipsec_conf(self, peer_ip, conf_dict):
         return {
             'my_subnet': self._load_ip_network(conf_dict.get('my_subnet', self.my_addr)),
+            'index': int(conf_dict.get('index', -1)),
             'peer_subnet': self._load_ip_network(conf_dict.get('peer_subnet', peer_ip)),
             'my_port': int(conf_dict.get('my_port', 0)),
             'lifetime': int(conf_dict.get('lifetime', -1)),
             'peer_port': int(conf_dict.get('peer_port', 0)),
-            'ip_proto': self._load_from_dict(conf_dict.get('ip_proto', 'any'),
-                                             _ip_proto_name_to_enum),
+            'ip_proto': self._load_from_dict(conf_dict.get('ip_proto', 'any'), _ip_proto_name_to_enum),
             'mode': self._load_from_dict(conf_dict.get('mode', 'transport'), _mode_name_to_enum),
-            'ipsec_proto': self._load_from_dict(conf_dict.get('ipsec_proto', 'esp'),
-                                                _ipsec_proto_name_to_enum),
-            'encr': self._load_crypto_algs('encr', conf_dict.get('encr', ['aes256']),
-                                           _encr_name_to_transform),
-            'integ': self._load_crypto_algs('integ', conf_dict.get('integ', ['sha1']),
-                                            _integ_name_to_transform),
+            'ipsec_proto': self._load_from_dict(conf_dict.get('ipsec_proto', 'esp'), _ipsec_proto_name_to_enum),
+            'encr': self._load_crypto_algs('encr', conf_dict.get('encr', ['aes256']), _encr_name_to_transform),
+            'integ': self._load_crypto_algs('integ', conf_dict.get('integ', ['sha1']), _integ_name_to_transform),
         }
 
     def get_ike_configuration(self, addr):
@@ -156,6 +151,6 @@ class Configuration(object):
         if type(names) is not list:
             raise ConfigurationError('{} should be a list.'.format(key))
         for x in names:
-            transform = self._load_from_dict(str(x), name_to_transform)
+            transform = self._load_from_dict(str(x), deepcopy(name_to_transform))
             transforms.append(transform)
         return transforms
