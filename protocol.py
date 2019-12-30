@@ -568,6 +568,28 @@ class IkeSa(object):
         """
         self._check_in_states(response, [IkeSa.State.INIT_REQ_SENT])
 
+        # check there are no notifies
+        if response.get_notifies(PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN):
+            logging.error("IKE_SA: {}. Could not establish IKE_SA due to NO_PROPOSAL_CHOSEN".format(hexstring(self.my_spi)))
+            self.state = self.State.DELETED
+            return None
+
+        # Recover from INVALID_KE_PAYLOAD
+        invalid_ke = response.get_notifies(PayloadNOTIFY.Type.INVALID_KE_PAYLOAD)
+        if invalid_ke:
+            invalid_ke = invalid_ke[0]
+            logging.error("IKE_SA: {}. Could not establish IKE_SA due to INVALID_KE_PAYLOAD".format(hexstring(self.my_spi)))
+            # # create DH and Paylaod KE
+            my_dh_group = unpack('>H', invalid_ke.notification_data)[0]
+            self.dh = DiffieHellman(my_dh_group)
+            new_payload_ke = PayloadKE(my_dh_group, self.dh.public_key)
+
+            payload_ke = self.request.get_payload(Payload.Type.KE)
+            payload_ke.dh_group = new_payload_ke.dh_group
+            payload_ke.ke_data = new_payload_ke.ke_data
+            self.ike_sa_init_req_data = self.request.to_bytes()
+            return self.request
+
         # process the IKE_SA negotiation payloads
         self._process_ike_sa_negotiation_response(response)
 
