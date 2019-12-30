@@ -308,15 +308,7 @@ class IkeSa(object):
         else:
             return self._process_response(message, addr)
 
-    # TODO: This interface should be using a non-XFRM interface. Acquire should come from the xfrm.py module
-    def process_acquire(self, xfrm_acquire, xfrm_tmpl):
-        small_tsi = TrafficSelector.from_network(ip_network(xfrm_acquire.sel.saddr.to_ipaddr()),
-                                                 xfrm_acquire.sel.sport, xfrm_acquire.sel.proto)
-        small_tsr = TrafficSelector.from_network(ip_network(xfrm_acquire.sel.daddr.to_ipaddr()),
-                                                 xfrm_acquire.sel.dport, xfrm_acquire.sel.proto)
-        acquire = Acquire(small_tsi, small_tsr, xfrm_acquire.policy.index)
-
-        request = None
+    def process_acquire(self, acquire):
         if self.state == IkeSa.State.INITIAL:
             request = self.generate_ike_sa_init_request(acquire)
         elif self.state == IkeSa.State.ESTABLISHED:
@@ -516,6 +508,7 @@ class IkeSa(object):
         auth_data = self._generate_psk_auth_payload(self.ike_sa_init_req_data,
                                                     ike_sa_init_res.get_payload(Payload.Type.NONCE).nonce,
                                                     payload_idi, self.my_crypto.sk_p)
+
         payload_auth = PayloadAUTH(PayloadAUTH.Method.PSK, auth_data)
 
         # generate the message
@@ -1107,7 +1100,12 @@ class IkeSaController:
             logging.info('Starting the creation of IKE SA with SPI={}. Count={}'
                          ''.format(hexstring(ike_sa.my_spi), len(self.ike_sas)))
 
-        request = ike_sa.process_acquire(xfrm_acquire, xfrm_tmpl)
+        small_tsi = TrafficSelector.from_network(ip_network(xfrm_acquire.sel.saddr.to_ipaddr()),
+                                                 xfrm_acquire.sel.sport, xfrm_acquire.sel.proto)
+        small_tsr = TrafficSelector.from_network(ip_network(xfrm_acquire.sel.daddr.to_ipaddr()),
+                                                 xfrm_acquire.sel.dport, xfrm_acquire.sel.proto)
+        acquire = Acquire(small_tsi, small_tsr, xfrm_acquire.policy.index)
+        request = ike_sa.process_acquire(acquire)
 
         # look for ipsec configuration
         return request, (str(ike_sa.peer_addr), 500)
