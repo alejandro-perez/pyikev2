@@ -38,7 +38,7 @@ class NoProposalChosen(IkeSaError):
 
 class InvalidKePayload(IkeSaError):
     def __init__(self, msg, group):
-        super(InvalidKePayload, self).__init__(self, msg)
+        super().__init__(msg)
         self.group = group
 
 
@@ -56,7 +56,7 @@ class PayloadNotFound(IkeSaError):
 
 class ChildSaNotFound(ChildSaError):
     def __init__(self, msg, spi):
-        super(ChildSaNotFound, self).__init__(self, msg)
+        super().__init__(msg)
         self.spi = spi
 
 

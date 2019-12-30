@@ -254,7 +254,7 @@ class IkeSa(object):
                 InvalidKePayload: PayloadNOTIFY.Type.INVALID_KE_PAYLOAD,
                 ChildSaNotFound: PayloadNOTIFY.Type.CHILD_SA_NOT_FOUND,
             }
-            logging.error('IKE_SA: {}. {}'.format(hexspi, str(ex)))
+            logging.error('IKE_SA: {}. {}'.format(hexspi, ex))
             notification_type = exception_2_notify.get(type(ex), PayloadNOTIFY.Type.INVALID_SYNTAX)
             notification_data = pack('>H', ex.group) if type(ex) is InvalidKePayload else b''
             response = self._generate_ike_error_response(message, notification_type, notification_data)
