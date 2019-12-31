@@ -12,11 +12,11 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from configuration import Configuration
-from message import TrafficSelector, Transform
+from message import TrafficSelector, Transform, Proposal
 from protocol import IkeSa, Acquire
 
 logging.indent = 2
-logging.basicConfig(level=logging.INFO,
+logging.basicConfig(level=logging.DEBUG,
                     format='[%(asctime)s.%(msecs)03d] [%(levelname)-6s] %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S')
 
@@ -115,3 +115,18 @@ class TestIkeSa(TestCase):
         self.assertEqual(self.ike_sa1.state, IkeSa.State.INIT_REQ_SENT)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.DELETED)
         self.assertEqual(ike_sa3.state, IkeSa.State.INIT_RES_SENT)
+
+    @patch('xfrm.Xfrm')
+    def test_ike_auth_no_proposal_chosen(self, MockClass1):
+        self.ike_sa1.configuration['protect'][0]['ipsec_proto'] = Proposal.Protocol.AH
+        small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
+        small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
+        acquire = Acquire(small_tsi, small_tsr, 1)
+        msg_data = self.ike_sa1.process_acquire(acquire)
+        msg_data = self.ike_sa2.process_message(msg_data, self.ip1)
+        msg_data = self.ike_sa1.process_message(msg_data, self.ip2)
+        msg_data = self.ike_sa2.process_message(msg_data, self.ip1)
+        self.assertIsNone(self.ike_sa1.process_message(msg_data, self.ip2))
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.DELETED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.DELETED)
+
