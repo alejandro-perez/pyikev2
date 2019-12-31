@@ -81,6 +81,11 @@ class TestIkeSa(TestCase):
         self.assertIsNone(self.ike_sa1.process_message(msg_data, self.ip2))
         self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        acquire = Acquire(small_tsi, small_tsr, 1)
+        msg_data = self.ike_sa1.process_acquire(acquire)
+        msg_data = self.ike_sa2.process_message(msg_data, self.ip1)
+        self.ike_sa1.process_message(msg_data, self.ip2)
+
 
     @patch('xfrm.Xfrm')
     def test_ike_sa_init_no_proposal_chosen(self, MockClass1):
