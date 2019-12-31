@@ -290,9 +290,7 @@ class IkeSa(object):
                 request_data = request.to_bytes()
                 self.log_message(request, addr, request_data, send=True)
                 return request_data
-        # TODO: Process notifies and generate exceptions. These exceptions may (or may not) close the IKE_SA
         except IkeSaError as ex:
-            # TODO: Should exceptions at this level close the IKE_SA?
             logging.error('IKE_SA: {}. {}'.format(hexstring(self.my_spi), str(ex)))
             self.state = IkeSa.State.DELETED
         except KeyError:
