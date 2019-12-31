@@ -294,6 +294,7 @@ class IkeSa(object):
         except IkeSaError as ex:
             # TODO: Should exceptions at this level close the IKE_SA?
             logging.error('IKE_SA: {}. {}'.format(hexstring(self.my_spi), str(ex)))
+            self.state = IkeSa.State.DELETED
         except KeyError:
             logging.error("I don't know how to handle this message. Please, implement a handler!")
 
