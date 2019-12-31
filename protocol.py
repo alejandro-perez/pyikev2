@@ -277,7 +277,8 @@ class IkeSa(object):
 
         # if message ID is not the expected one, log and omit
         if message.message_id != self.my_msg_id:
-            logging.error('Message with invalid ID. Expecting {}. Omitting.'.format(self.my_msg_id))
+            logging.error('Message with invalid ID. Expecting: {}. Received: {}. Omitting.'.format(self.my_msg_id,
+                                                                                                   message.message_id))
             return None
 
         # increment our message ID for future requests
