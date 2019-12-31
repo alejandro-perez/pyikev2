@@ -480,6 +480,9 @@ class PayloadNOTIFY(Payload):
             ('notification_data', hexstring(self.notification_data))]))
         return result
 
+    def is_error(self):
+        return self.notification_type < 16384
+
 
 class PayloadID(Payload):
     type = None
