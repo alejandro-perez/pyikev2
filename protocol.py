@@ -362,7 +362,7 @@ class IkeSa(object):
         # check that DH groups match and generate response Paylaod KE
         my_dh_group = self.chosen_proposal.get_transform(Transform.Type.DH).id
         if my_dh_group != payload_ke.dh_group:
-            raise InvalidKePayload('Invalid DH group used. I requested {}'.format(my_dh_group), group=my_dh_group)
+            raise InvalidKePayload('Invalid DH group used. I want {}'.format(my_dh_group), group=my_dh_group)
         dh = DiffieHellman(payload_ke.dh_group)
         dh.compute_secret(payload_ke.ke_data)
         logging.debug('Generated DH shared secret: {}'.format(hexstring(dh.shared_secret)))
@@ -564,22 +564,24 @@ class IkeSa(object):
             shared_secret=self.dh.shared_secret,
             old_sk_d=old_sk_d)
 
+    def check_error_notifies(self, message, encrypted=False):
+        error_notifies = [x for x in message.get_payloads(Payload.Type.NOTIFY, encrypted=encrypted) if x.is_error()]
+        if error_notifies:
+            message = "Could not establish IKE_SA due to error notification received: {}".format(
+                PayloadNOTIFY.Type.safe_name(error_notifies[0].notification_type))
+            raise IkeSaError(message)
+
     def process_ike_sa_init_response(self, response):
         """ Processes a IKE_SA_INIT response message
         """
         self._check_in_states(response, [IkeSa.State.INIT_REQ_SENT])
 
-        # check there are no notifies
-        if response.get_notifies(PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN):
-            logging.error("IKE_SA: {}. Could not establish IKE_SA due to NO_PROPOSAL_CHOSEN".format(hexstring(self.my_spi)))
-            self.state = self.State.DELETED
-            return None
-
         # Recover from INVALID_KE_PAYLOAD
         invalid_ke = response.get_notifies(PayloadNOTIFY.Type.INVALID_KE_PAYLOAD)
         if invalid_ke:
             invalid_ke = invalid_ke[0]
-            logging.error("IKE_SA: {}. Could not establish IKE_SA due to INVALID_KE_PAYLOAD".format(hexstring(self.my_spi)))
+            logging.warning("IKE_SA: {}. INVALID_KE_PAYLOAD notification received. Trying with the suggested group"
+                            "".format(hexstring(self.my_spi)))
             # # create DH and Paylaod KE
             my_dh_group = unpack('>H', invalid_ke.notification_data)[0]
             self.dh = DiffieHellman(my_dh_group)
@@ -590,6 +592,9 @@ class IkeSa(object):
             payload_ke.ke_data = new_payload_ke.ke_data
             self.ike_sa_init_req_data = self.request.to_bytes()
             return self.request
+
+        # Check error notifications
+        self.check_error_notifies(response)
 
         # process the IKE_SA negotiation payloads
         self._process_ike_sa_negotiation_response(response)
@@ -826,6 +831,9 @@ class IkeSa(object):
 
     def process_ike_auth_response(self, response):
         self._check_in_states(response, [IkeSa.State.AUTH_REQ_SENT])
+
+        # check there are no notifies
+        self.check_error_notifies(response, encrypted=True)
 
         # get some relevant payloads from the message
         response_payload_idr = response.get_payload(Payload.Type.IDr, True)
