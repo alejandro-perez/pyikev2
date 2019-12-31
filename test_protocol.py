@@ -17,9 +17,9 @@ from message import TrafficSelector, Transform, Proposal, Message, Payload, Payl
 from protocol import IkeSa, Acquire
 
 logging.indent = 2
-logging.basicConfig(level=logging.DEBUG,
-                    format='[%(asctime)s.%(msecs)03d] [%(levelname)-6s] %(message)s',
-                    datefmt='%Y-%m-%d %H:%M:%S')
+# logging.basicConfig(level=logging.DEBUG,
+#                     format='[%(asctime)s.%(msecs)03d] [%(levelname)-6s] %(message)s',
+#                     datefmt='%Y-%m-%d %H:%M:%S')
 
 
 class TestIkeSa(TestCase):
@@ -72,6 +72,7 @@ class TestIkeSa(TestCase):
 
     @patch('xfrm.Xfrm')
     def test_ok_transport(self, MockClass1):
+        # initial exchanges
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         acquire = Acquire(small_tsi, small_tsr, 1)
@@ -83,6 +84,10 @@ class TestIkeSa(TestCase):
         self.assertIsNone(request)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 1)
+        self.assertEqual(len(self.ike_sa2.child_sas), 1)
+
+        # create additional CHILD_SA
         acquire = Acquire(small_tsi, small_tsr, 1)
         request = self.ike_sa1.process_acquire(acquire)
         response = self.ike_sa2.process_message(request, self.ip1)
@@ -90,6 +95,8 @@ class TestIkeSa(TestCase):
         self.assertIsNone(request)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 2)
+        self.assertEqual(len(self.ike_sa2.child_sas), 2)
 
     @patch('xfrm.Xfrm')
     def test_ike_sa_init_no_proposal_chosen(self, MockClass1):
@@ -103,6 +110,8 @@ class TestIkeSa(TestCase):
         self.assertIsNone(request)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.DELETED)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.DELETED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 0)
+        self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
     @patch('xfrm.Xfrm')
     def test_ike_sa_init_invalid_ke(self, MockClass1):
@@ -119,6 +128,9 @@ class TestIkeSa(TestCase):
         self.assertEqual(self.ike_sa1.state, IkeSa.State.INIT_REQ_SENT)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.DELETED)
         self.assertEqual(ike_sa3.state, IkeSa.State.INIT_RES_SENT)
+        self.assertEqual(len(self.ike_sa1.child_sas), 0)
+        self.assertEqual(len(self.ike_sa2.child_sas), 0)
+        self.assertEqual(len(ike_sa3.child_sas), 0)
 
     @patch('xfrm.Xfrm')
     def test_ike_auth_no_proposal_chosen(self, MockClass1):
@@ -134,6 +146,8 @@ class TestIkeSa(TestCase):
         self.assertIsNone(request)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.DELETED)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.DELETED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 0)
+        self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
     @patch('xfrm.Xfrm')
     def test_ike_auth_invalid_ts(self, MockClass1):
@@ -149,6 +163,8 @@ class TestIkeSa(TestCase):
         self.assertIsNone(request)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.DELETED)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.DELETED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 0)
+        self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
     @patch('xfrm.Xfrm')
     def test_ike_auth_invalid_auth_type(self, MockClass1):
@@ -167,6 +183,8 @@ class TestIkeSa(TestCase):
         self.assertIsNone(request)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.DELETED)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.DELETED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 0)
+        self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
     @patch('xfrm.Xfrm')
     def test_ike_auth_invalid_auth_data(self, MockClass1):
@@ -185,6 +203,8 @@ class TestIkeSa(TestCase):
         self.assertIsNone(request)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.DELETED)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.DELETED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 0)
+        self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
     @patch('xfrm.Xfrm')
     def test_ike_auth_invalid_mode(self, MockClass1):
@@ -200,6 +220,8 @@ class TestIkeSa(TestCase):
         self.assertIsNone(request)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.DELETED)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.DELETED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 0)
+        self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
     @patch('xfrm.Xfrm')
     def test_retransmit(self, MockClass1):
@@ -213,10 +235,14 @@ class TestIkeSa(TestCase):
         self.assertIsNone(self.ike_sa1.process_message(response, self.ip1))
         self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 1)
+        self.assertEqual(len(self.ike_sa2.child_sas), 1)
         response2 = self.ike_sa2.process_message(request, self.ip1)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
         self.assertEqual(response, response2)
+        self.assertEqual(len(self.ike_sa1.child_sas), 1)
+        self.assertEqual(len(self.ike_sa2.child_sas), 1)
 
     @patch('xfrm.Xfrm')
     def test_invalid_message_id_on_request(self, MockClass1):
@@ -230,6 +256,8 @@ class TestIkeSa(TestCase):
         self.assertIsNone(self.ike_sa1.process_message(response, self.ip1))
         self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 1)
+        self.assertEqual(len(self.ike_sa2.child_sas), 1)
         message = Message.parse(request, crypto=self.ike_sa1.my_crypto)
         message.message_id = 100
         new_request = message.to_bytes()
@@ -237,6 +265,8 @@ class TestIkeSa(TestCase):
         self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
         self.assertIsNone(response)
+        self.assertEqual(len(self.ike_sa1.child_sas), 1)
+        self.assertEqual(len(self.ike_sa2.child_sas), 1)
 
     @patch('xfrm.Xfrm')
     def test_invalid_message_id_on_response(self, MockClass1):
@@ -252,6 +282,8 @@ class TestIkeSa(TestCase):
         self.assertIsNone(request)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.INIT_REQ_SENT)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.INIT_RES_SENT)
+        self.assertEqual(len(self.ike_sa1.child_sas), 0)
+        self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
     @patch('xfrm.Xfrm')
     def test_invalid_exchange_type_on_request(self, MockClass1):
@@ -268,6 +300,8 @@ class TestIkeSa(TestCase):
         self.assertIsNone(response)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.AUTH_REQ_SENT)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.INIT_RES_SENT)
+        self.assertEqual(len(self.ike_sa1.child_sas), 0)
+        self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
     @patch('xfrm.Xfrm')
     def test_invalid_exchange_type_on_response(self, MockClass1):
@@ -283,4 +317,6 @@ class TestIkeSa(TestCase):
         self.assertIsNone(request)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.INIT_REQ_SENT)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.INIT_RES_SENT)
+        self.assertEqual(len(self.ike_sa1.child_sas), 0)
+        self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
