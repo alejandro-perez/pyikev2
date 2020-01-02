@@ -273,6 +273,7 @@ class IkeSa(object):
             Message.Exchange.IKE_SA_INIT: self.process_ike_sa_init_response,
             Message.Exchange.IKE_AUTH: self.process_ike_auth_response,
             Message.Exchange.CREATE_CHILD_SA: self.process_create_child_sa_response,
+            Message.Exchange.INFORMATIONAL: self.process_informational_response,
         }
 
         # if message ID is not the expected one, log and omit
@@ -328,12 +329,16 @@ class IkeSa(object):
             logging.warning('Cannot process expire while waiting for a response')
             return None
 
-        request = self.generate_rekey_child_sa_request(spi)
-        if request:
-            request_data = request.to_bytes()
-            self.log_message(self.request, self.peer_addr, request_data, send=True)
-            return request_data
-        return None
+        try:
+            rekeyed_child_sa = next(x for x in self.child_sas if x.outbound_spi == spi or x.inbound_spi == spi)
+        except StopIteration:
+            logging.warning("Received expire for unknown CHILD_SA with spi {}".format(hexstring(spi)))
+            return None
+
+        request = self.generate_rekey_child_sa_request(rekeyed_child_sa)
+        request_data = request.to_bytes()
+        self.log_message(self.request, self.peer_addr, request_data, send=True)
+        return request_data
 
     def _process_ike_sa_negotiation_request(self, request, encrypted=False, old_sk_d=None):
         """ Process a IKE_SA negotiation request (SA, Ni, KEi), and returns
@@ -904,17 +909,12 @@ class IkeSa(object):
 
         return self.request
 
-    def generate_rekey_child_sa_request(self, spi):
+    def generate_rekey_child_sa_request(self, rekeyed_child_sa):
         """ Creates a rekey CREATE_CHILD_SA message for rekeying a new CHILD
         """
         assert (self.state == IkeSa.State.ESTABLISHED)
 
         payloads = []
-        try:
-            rekeyed_child_sa = next(x for x in self.child_sas if x.outbound_spi == spi or x.inbound_spi == spi)
-        except StopIteration:
-            logging.warning("Received expire for unknown CHILD_SA with spi {}".format(hexstring(spi)))
-            return None
 
         # generate Payload TSi, TSr
         payloads.append(PayloadTSi([rekeyed_child_sa.tsi]))
@@ -950,37 +950,58 @@ class IkeSa(object):
 
         # transition
         self.state = IkeSa.State.REK_CHILD_REQ_SENT
+        self.rekeyed_child_sa = rekeyed_child_sa
+
+        return self.request
+
+    def generate_delete_child_sa_request(self, child_sa):
+        """ Creates an INFORMATIONAL message for deleting a CHILD_SA
+        """
+        assert (self.state == IkeSa.State.ESTABLISHED)
+
+        payload_delete = PayloadDELETE(Proposal.Protocol.NONE, [child_sa.inbound_spi])
+
+        # generate the message
+        self.request = Message(spi_i=self.spi_i,
+                               spi_r=self.spi_r,
+                               major=2,
+                               minor=0,
+                               exchange_type=Message.Exchange.INFORMATIONAL,
+                               is_response=False,
+                               can_use_higher_version=False,
+                               is_initiator=self.is_initiator,
+                               message_id=self.my_msg_id,
+                               payloads=[],
+                               encrypted_payloads=[payload_delete],
+                               crypto=self.my_crypto)
+
+        # transition
+        self.state = IkeSa.State.DEL_CHILD_REQ_SENT
 
         return self.request
 
     def process_informational_request(self, request):
         """ Processes an INFORMATIONAL request
         """
+        self._check_established_or_rekeyed(request)
         response_payloads = []
-        try:
-            delete_payload = request.get_payload(Payload.Type.DELETE, True)
-            # if protocol is IKE, just mark the IKE SA for removal and return
-            # emtpy INFORMATIONAL exchange
+        for delete_payload in request.get_payloads(Payload.Type.DELETE, True):
+            # if protocol is IKE, just mark the IKE SA for removal and return  emtpy INFORMATIONAL exchange
             if delete_payload.protocol_id == Proposal.Protocol.IKE:
-                self._check_established_or_rekeyed(request)
                 self.state = IkeSa.State.DELETED
-
-            # if protocol is either AH or ESP, delete the Child SAs and return
-            # the inbound SPI
+            # if protocol is either AH or ESP, delete the Child SAs and return the inbound SPI
             else:
-                self._check_established(request)
-                del_spi = delete_payload.spis[0]
-                try:
-                    child_sa = next(x for x in self.child_sas if x.outbound_spi == del_spi)
-                except StopIteration:
-                    raise ChildSaNotFound('The indicated SPI could not be found', spi=del_spi)
-                self.xfrm.delete_sa(self.peer_addr, child_sa.proposal.protocol_id, child_sa.outbound_spi)
-                self.xfrm.delete_sa(self.my_addr, child_sa.proposal.protocol_id, child_sa.inbound_spi)
-                self.child_sas.remove(child_sa)
-                response_payloads.append(PayloadDELETE(delete_payload.protocol_id, [child_sa.inbound_spi]))
-        # If there is no DELETE payload, this is just a keep alive and we return no payloads
-        except PayloadNotFound:
-            pass
+                for del_spi in delete_payload.spis:
+                    try:
+                        child_sa = next(x for x in self.child_sas if x.outbound_spi == del_spi)
+                        self.xfrm.delete_sa(self.peer_addr, child_sa.proposal.protocol_id, child_sa.outbound_spi)
+                        self.xfrm.delete_sa(self.my_addr, child_sa.proposal.protocol_id, child_sa.inbound_spi)
+                        self.child_sas.remove(child_sa)
+                        response_payloads.append(PayloadDELETE(delete_payload.protocol_id, [child_sa.inbound_spi]))
+                        logging.info('IKE_SA: {}. Removing ChildSA: {}'.format(hexstring(self.my_spi), hexstring(del_spi)))
+                    except StopIteration:
+                        logging.warning('IKE_SA: {}. The indicated SPI could not be found when attempting to delete a '
+                                        'Child SA: {}'.format(hexstring(self.my_spi), hexstring(del_spi)))
 
         return Message(spi_i=request.spi_i,
                        spi_r=request.spi_r,
@@ -998,7 +1019,6 @@ class IkeSa(object):
     def process_create_child_sa_request(self, request):
         """ Processes a CREATE_CHILD_SA message and returns response
         """
-        # TODO: Use different functions for CREATE_CHILD, REKEY_CHILD... They are very different
         self._check_established(request)
 
         # determine whether this concerns to IKE_SA or CHILD_SA
@@ -1048,11 +1068,15 @@ class IkeSa(object):
                        encrypted_payloads=response_payloads,
                        crypto=self.my_crypto)
 
+    def get_child_sa(self, spi):
+        try:
+            return next(x for x in self.child_sas if spi == x.inbound_spi or spi == x.outbound_spi)
+        except:
+            return None
+
     def process_create_child_sa_response(self, response):
         """ Processes a CREATE_CHILD_SA response message
         """
-        # TODO: Use different functions for CREATE_CHILD, REKEY_CHILD...
-        # They are very different
         self._check_in_states(response, [IkeSa.State.NEW_CHILD_REQ_SENT, IkeSa.State.REK_CHILD_REQ_SENT])
 
         self.abort_on_error_notifies(response, True, ignore=[PayloadNOTIFY.Type.INVALID_SELECTORS,
@@ -1062,9 +1086,37 @@ class IkeSa(object):
 
         if self.state == IkeSa.State.NEW_CHILD_REQ_SENT:
             self.state = IkeSa.State.ESTABLISHED
+            return None
         elif self.state == IkeSa.State.REK_CHILD_REQ_SENT:
-            self.state = IkeSa.State.DEL_CHILD_REQ_SENT
-        return None
+            self.state = IkeSa.State.ESTABLISHED
+            self.deleting_child_sa = self.rekeyed_child_sa
+            return self.generate_delete_child_sa_request(self.rekeyed_child_sa)
+
+    def process_informational_response(self, response):
+        """ Processes a CREATE_CHILD_SA response message
+        """
+        self._check_in_states(response, [IkeSa.State.DEL_CHILD_REQ_SENT, IkeSa.State.DEL_IKE_SA_REQ_SENT])
+
+        self.abort_on_error_notifies(response, True)
+
+        if self.state == IkeSa.State.DEL_CHILD_REQ_SENT:
+            # we check that the counterpart has been deleted
+            payload_delete = response.get_payload(Payload.Type.DELETE, True)
+            if not payload_delete:
+                raise InvalidSyntax('Received unexpected number of DELETE payloads')
+            if len(payload_delete.spis) != 1:
+                raise InvalidSyntax('Received unexpected number of SPIs in DELETE payload')
+            if (payload_delete.spis[0] != self.deleting_child_sa.outbound_spi):
+                raise InvalidSyntax('Received unexpected SPI value in DELETE payload')
+            self.xfrm.delete_sa(self.peer_addr, self.deleting_child_sa.proposal.protocol_id, self.deleting_child_sa.outbound_spi)
+            self.xfrm.delete_sa(self.my_addr, self.deleting_child_sa.proposal.protocol_id, self.deleting_child_sa.inbound_spi)
+            self.child_sas.remove(self.deleting_child_sa)
+            logging.info('IKE_SA: {}. Removing ChildSA: {}'.format(hexstring(self.my_spi), hexstring(self.deleting_child_sa.inbound_spi)))
+            self.state = IkeSa.State.ESTABLISHED
+            return None
+        elif self.state == IkeSa.State.REK_CHILD_REQ_SENT:
+            self.state = IkeSa.State.DELETED
+            return self.generate_delete_child_sa_request(self.rekeyed_child_sa)
 
 class IkeSaController:
     def __init__(self, my_addr, configuration):
