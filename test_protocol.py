@@ -57,7 +57,7 @@ class TestIkeSa(TestCase):
                         "ip_proto": "tcp",
                         "mode": "transport",
                         "lifetime": 5,
-                        "peer_port": 0,
+                        "peer_port": 23,
                         "ipsec_proto": "esp",
                         "encr": ["aes256", "aes128"]
                     }]

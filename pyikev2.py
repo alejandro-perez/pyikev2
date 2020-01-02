@@ -46,7 +46,7 @@ except KeyError:
 
 # set logger
 logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
-                    format='[%(asctime)s.%(msecs)03d] [%(levelname)-6s] %(message)s',
+                    format='[%(asctime)s.%(msecs)03d] [%(levelname)-7s] %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S')
 logging.indent = None if args.no_indent else 2
 
