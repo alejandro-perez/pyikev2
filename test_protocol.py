@@ -395,3 +395,34 @@ class TestIkeSa(TestCase):
         self.assertIsNone(request)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+
+    @patch('xfrm.Xfrm')
+    def test_delete_child_sa(self, MockClass1):
+        self.test_ok_transport()
+        request = self.ike_sa1.generate_delete_child_sa_request(self.ike_sa1.child_sas[0])
+        request = request.to_bytes()
+        response = self.ike_sa2.process_message(request, self.ike_sa1.my_addr)
+        request = self.ike_sa1.process_message(response, self.ike_sa2.my_addr)
+        self.assertIsNone(request)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 1)
+        self.assertEqual(len(self.ike_sa2.child_sas), 1)
+
+    @patch('xfrm.Xfrm')
+    def test_delete_child_sa_invalid_spi_on_response(self, MockClass1):
+        self.test_ok_transport()
+        request = self.ike_sa1.generate_delete_child_sa_request(self.ike_sa1.child_sas[0])
+        request = request.to_bytes()
+        response = self.ike_sa2.process_message(request, self.ike_sa1.my_addr)
+
+        message = Message.parse(response, crypto=self.ike_sa1.peer_crypto)
+        message.get_payload(Payload.Type.DELETE, True).spis = []
+        response = message.to_bytes()
+
+        request = self.ike_sa1.process_message(response, self.ike_sa2.my_addr)
+        self.assertIsNone(request)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.DELETED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 1)
+        self.assertEqual(len(self.ike_sa2.child_sas), 1)
