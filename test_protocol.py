@@ -224,6 +224,26 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
     @patch('xfrm.Xfrm')
+    def test_ike_auth_missing_payload(self, MockClass1):
+        small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
+        small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
+        acquire = Acquire(small_tsi, small_tsr, 1)
+        request = self.ike_sa1.process_acquire(acquire)
+        response = self.ike_sa2.process_message(request, self.ip1)
+        request = self.ike_sa1.process_message(response, self.ip2)
+        message = Message.parse(request, crypto=self.ike_sa1.my_crypto)
+        payload_sa = message.get_payload(Payload.Type.SA, True)
+        message.encrypted_payloads.remove(payload_sa)
+        new_request = message.to_bytes()
+        response = self.ike_sa2.process_message(new_request, self.ip1)
+        request = self.ike_sa1.process_message(response, self.ip2)
+        self.assertIsNone(request)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 0)
+        self.assertEqual(len(self.ike_sa2.child_sas), 0)
+
+    @patch('xfrm.Xfrm')
     def test_retransmit(self, MockClass1):
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
@@ -320,3 +340,51 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa1.child_sas), 0)
         self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
+    @patch('xfrm.Xfrm')
+    def test_create_child_invalid_ts(self, MockClass1):
+        # initial exchanges
+        small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
+        small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
+        acquire = Acquire(small_tsi, small_tsr, 1)
+        request = self.ike_sa1.process_acquire(acquire)
+        response = self.ike_sa2.process_message(request, self.ip1)
+        request = self.ike_sa1.process_message(response, self.ip2)
+        response = self.ike_sa2.process_message(request, self.ip1)
+        request = self.ike_sa1.process_message(response, self.ip2)
+        self.assertIsNone(request)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 1)
+        self.assertEqual(len(self.ike_sa2.child_sas), 1)
+
+        # create additional CHILD_SA
+        self.ike_sa2.configuration['protect'][0]['my_subnet'] = ip_network("10.0.0.0/24")
+        acquire = Acquire(small_tsi, small_tsr, 1)
+        request = self.ike_sa1.process_acquire(acquire)
+        response = self.ike_sa2.process_message(request, self.ip1)
+        request = self.ike_sa1.process_message(response, self.ip2)
+        self.assertIsNone(request)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 1)
+        self.assertEqual(len(self.ike_sa2.child_sas), 1)
+
+    @patch('xfrm.Xfrm')
+    def test_rekey_child_sa(self, MockClass1):
+        self.test_ok_transport()
+        request = self.ike_sa1.process_expire(self.ike_sa1.child_sas[0].inbound_spi)
+        response = self.ike_sa2.process_message(request, self.ike_sa1.my_addr)
+        request = self.ike_sa1.process_message(response, self.ike_sa1.peer_addr)
+        self.assertIsNone(request)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.DEL_CHILD_REQ_SENT)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 3)
+        self.assertEqual(len(self.ike_sa2.child_sas), 3)
+
+    @patch('xfrm.Xfrm')
+    def test_rekey_child_sa_invalid_spi(self, MockClass1):
+        self.test_ok_transport()
+        request = self.ike_sa1.process_expire(b'')
+        self.assertIsNone(request)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
