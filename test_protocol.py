@@ -17,9 +17,9 @@ from message import TrafficSelector, Transform, Proposal, Message, Payload, Payl
 from protocol import IkeSa, Acquire
 
 logging.indent = 2
-# logging.basicConfig(level=logging.DEBUG,
-#                     format='[%(asctime)s.%(msecs)03d] [%(levelname)-6s] %(message)s',
-#                     datefmt='%Y-%m-%d %H:%M:%S')
+logging.basicConfig(level=logging.DEBUG,
+                    format='[%(asctime)s.%(msecs)03d] [%(levelname)-6s] %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S')
 
 
 class TestIkeSa(TestCase):
@@ -144,13 +144,13 @@ class TestIkeSa(TestCase):
         response = self.ike_sa2.process_message(request, self.ip1)
         request = self.ike_sa1.process_message(response, self.ip2)
         self.assertIsNone(request)
-        self.assertEqual(self.ike_sa1.state, IkeSa.State.DELETED)
-        self.assertEqual(self.ike_sa2.state, IkeSa.State.DELETED)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
         self.assertEqual(len(self.ike_sa1.child_sas), 0)
         self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
     @patch('xfrm.Xfrm')
-    def test_ike_auth_invalid_ts(self, MockClass1):
+    def test_ike_auth_invalid_mode(self, MockClass1):
         self.ike_sa2.configuration['protect'][0]['mode'] = xfrm.Mode.TUNNEL
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
@@ -161,8 +161,8 @@ class TestIkeSa(TestCase):
         response = self.ike_sa2.process_message(request, self.ip1)
         request = self.ike_sa1.process_message(response, self.ip2)
         self.assertIsNone(request)
-        self.assertEqual(self.ike_sa1.state, IkeSa.State.DELETED)
-        self.assertEqual(self.ike_sa2.state, IkeSa.State.DELETED)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
         self.assertEqual(len(self.ike_sa1.child_sas), 0)
         self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
@@ -207,7 +207,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
     @patch('xfrm.Xfrm')
-    def test_ike_auth_invalid_mode(self, MockClass1):
+    def test_ike_auth_invalid_ts(self, MockClass1):
         self.ike_sa2.configuration['protect'][0]['my_subnet'] = ip_network("10.0.0.0/24")
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
@@ -218,8 +218,8 @@ class TestIkeSa(TestCase):
         response = self.ike_sa2.process_message(request, self.ip1)
         request = self.ike_sa1.process_message(response, self.ip2)
         self.assertIsNone(request)
-        self.assertEqual(self.ike_sa1.state, IkeSa.State.DELETED)
-        self.assertEqual(self.ike_sa2.state, IkeSa.State.DELETED)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
         self.assertEqual(len(self.ike_sa1.child_sas), 0)
         self.assertEqual(len(self.ike_sa2.child_sas), 0)
 

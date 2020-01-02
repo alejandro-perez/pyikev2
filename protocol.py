@@ -563,12 +563,11 @@ class IkeSa(object):
             shared_secret=self.dh.shared_secret,
             old_sk_d=old_sk_d)
 
-    def check_error_notifies(self, message, encrypted=False):
-        error_notifies = [x for x in message.get_payloads(Payload.Type.NOTIFY, encrypted=encrypted) if x.is_error()]
-        if error_notifies:
-            message = "Could not establish IKE_SA due to error notification received: {}".format(
-                PayloadNOTIFY.Type.safe_name(error_notifies[0].notification_type))
-            raise IkeSaError(message)
+    def abort_on_error_notifies(self, message, encrypted=False, ignore=None):
+        for notification in message.get_payloads(Payload.Type.NOTIFY, encrypted=encrypted):
+            if notification.is_error() and (ignore is None or notification.notification_type not in ignore):
+                raise IkeSaError('Could not establish IKE_SA due to error notification received: {}'.format(
+                    PayloadNOTIFY.Type.safe_name(notification.notification_type)))
 
     def process_ike_sa_init_response(self, response):
         """ Processes a IKE_SA_INIT response message
@@ -593,7 +592,7 @@ class IkeSa(object):
             return self.request
 
         # Check error notifications
-        self.check_error_notifies(response)
+        self.abort_on_error_notifies(response)
 
         # process the IKE_SA negotiation payloads
         self._process_ike_sa_negotiation_response(response)
@@ -721,8 +720,16 @@ class IkeSa(object):
             raise AuthenticationFailed('Invalid AUTH data received')
 
         # process the CHILD_SA creation negotiation
-        response_payloads = self._process_create_child_sa_negotiation_req(request)
-
+        try:
+            response_payloads = self._process_create_child_sa_negotiation_req(request)
+        except NoProposalChosen as ex:
+            response_payloads = [
+                PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN, b'', b'')]
+            logging.warning('IKE_SA: {}. CHILD_SA negotiation failed because "{}".'.format(hexstring(self.my_spi), ex))
+        except InvalidSelectors as ex:
+            response_payloads = [
+                PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.INVALID_SELECTORS, b'', b'')]
+            logging.warning('IKE_SA: {}. CHILD_SA negotiation failed because of INVALID_SELECTORS: "{}"'.format(hexstring(self.my_spi), ex))
         # generate IDr
         response_payload_idr = PayloadIDr(self.configuration['id'].id_type, self.configuration['id'].id_data)
 
@@ -755,6 +762,13 @@ class IkeSa(object):
         return response
 
     def _process_create_child_sa_negotiation_res(self, response):
+        error_notification = (response.get_notifies(PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN, True)
+                              or response.get_notifies(PayloadNOTIFY.Type.INVALID_SELECTORS, True))
+        if error_notification:
+            logging.warning('IKE_SA: {}. CHILD_SA negotiation failed because {}. Skipping creation of CHILD_SA.'.format(
+                hexstring(self.my_spi), PayloadNOTIFY.Type.safe_name(error_notification[0].notification_type)))
+            return
+
         # get some relevant payloads from the message
         response_payload_sa = response.get_payload(Payload.Type.SA, True)
         response_payload_tsi = response.get_payload(Payload.Type.TSi, True)
@@ -832,7 +846,8 @@ class IkeSa(object):
         self._check_in_states(response, [IkeSa.State.AUTH_REQ_SENT])
 
         # check there are no notifies
-        self.check_error_notifies(response, encrypted=True)
+        self.abort_on_error_notifies(response, encrypted=True, ignore=[PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN,
+                                                                       PayloadNOTIFY.Type.INVALID_SELECTORS])
 
         # get some relevant payloads from the message
         response_payload_idr = response.get_payload(Payload.Type.IDr, True)
