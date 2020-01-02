@@ -26,9 +26,7 @@ __author__ = 'Alejandro Perez <alex@um.es>'
 # TODO: Implement tests for this with valid and invalid exchange sequences
 
 Keyring = namedtuple('Keyring', ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er', 'sk_pi', 'sk_pr'])
-ChildSa = namedtuple('ChildSa', ['inbound_spi', 'outbound_spi', 'proposal', 'tsi', 'tsr', 'mode'])
-Acquire = namedtuple('Acquire', ['tsi', 'tsr', 'index'])
-
+ChildSa = namedtuple('ChildSa', ['inbound_spi', 'outbound_spi', 'proposal', 'tsi', 'tsr', 'mode', 'ipsec_conf'])
 ChildSa.__str__ = lambda x: '({}, {})'.format(hexstring(x.inbound_spi), hexstring(x.outbound_spi))
 
 
@@ -78,6 +76,7 @@ class IkeSa(object):
         self.ike_sa_init_req_data = None
         self.ike_sa_init_res_data = None
         self.request = None
+        self.creating_child_sa = None
         self.acquire = None
         self.new_ike_sa = None
         self.xfrm = xfrm.Xfrm()
@@ -328,11 +327,19 @@ class IkeSa(object):
         else:
             return self._process_response(message, addr)
 
-    def process_acquire(self, acquire):
+    def process_acquire(self, tsi, tsr, index):
+        try:
+            ipsec_conf = next(x for x in self.configuration['protect'] if x['index'] == index)
+        except StopIteration:
+            self.log_warning('Could not find a matching "protect" configuration for received ACQUIRE.')
+            return None
+        # Create the ChildSa object with the values we know so far
+        child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, proposal=None, tsi=tsi, tsr=tsr,
+                           mode=ipsec_conf['mode'], ipsec_conf=ipsec_conf)
         if self.state == IkeSa.State.INITIAL:
-            request = self.generate_ike_sa_init_request(acquire)
+            request = self.generate_ike_sa_init_request(child_sa)
         elif self.state == IkeSa.State.ESTABLISHED:
-            request = self.generate_create_child_sa_request(acquire)
+            request = self.generate_create_child_sa_request(child_sa)
         else:
             self.log_warning('Cannot process acquire while waiting for a response.')
             return None
@@ -353,7 +360,11 @@ class IkeSa(object):
             self.log_warning("Received expire for unknown CHILD_SA with spi {}".format(hexstring(spi)))
             return None
 
-        request = self.generate_rekey_child_sa_request(rekeyed_child_sa)
+        # Create the ChildSa object with the values we know so far
+        child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, proposal=None, tsi=rekeyed_child_sa.tsi,
+                           tsr=rekeyed_child_sa.tsr, mode=rekeyed_child_sa.mode,
+                           ipsec_conf=rekeyed_child_sa.ipsec_conf)
+        request = self.generate_create_child_sa_request(child_sa, rekeyed_child_sa)
         request_data = request.to_bytes()
         self.log_message(self.request, self.peer_addr, request_data, send=True)
         return request_data
@@ -446,7 +457,7 @@ class IkeSa(object):
 
         return [payload_sa, payload_nonce, payload_ke]
 
-    def generate_ike_sa_init_request(self, acquire):
+    def generate_ike_sa_init_request(self, child_sa):
         """ Creates a IKE_SA_INIT message
         """
         # check state
@@ -478,8 +489,8 @@ class IkeSa(object):
         # save the message for later authentication
         self.ike_sa_init_req_data = self.request.to_bytes()
 
-        # store the acquire object to be used in the IKE_AUTH exchange
-        self.acquire = acquire
+        # store the child sa to be used in the IKE_AUTH exchange
+        self.creating_child_sa = child_sa
 
         # return request
         return self.request
@@ -492,23 +503,21 @@ class IkeSa(object):
     def spi_r(self):
         return self.peer_spi if self.is_initiator else self.my_spi
 
-    def _generate_child_sa_negotiation_req(self, acquire):
+    def _generate_child_sa_negotiation_req(self, child_sa):
         result = []
-        # get the ipsec configuration
-        ipsec_conf = next(x for x in self.configuration['protect'] if x['index'] == acquire.index)
 
         # generate Payload TSi, TSr
-        tsi, tsr = self._ipsec_conf_2_ts(ipsec_conf)
-        result.append(PayloadTSi([acquire.tsi, tsi]))
-        result.append(PayloadTSr([acquire.tsr, tsr]))
+        tsi, tsr = self._ipsec_conf_2_ts(child_sa.ipsec_conf)
+        result.append(PayloadTSi([child_sa.tsi, tsi]))
+        result.append(PayloadTSr([child_sa.tsr, tsr]))
 
         # generate Payload SA
-        proposal = self._ipsec_conf_2_proposal(ipsec_conf)
+        proposal = self._ipsec_conf_2_proposal(child_sa.ipsec_conf)
         proposal.spi = os.urandom(4)
         result.append(PayloadSA([proposal]))
 
         # genereate USE_TRANSPORT_MODE notify if needed
-        if ipsec_conf['mode'] == xfrm.Mode.TRANSPORT:
+        if child_sa.mode == xfrm.Mode.TRANSPORT:
             result.append(PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.USE_TRANSPORT_MODE, b'', b''))
         return result
 
@@ -518,7 +527,7 @@ class IkeSa(object):
         assert (self.state == IkeSa.State.INIT_REQ_SENT)
 
         # generate the CHILD_SA negotiation payloads
-        child_sa_payloads = self._generate_child_sa_negotiation_req(self.acquire)
+        child_sa_payloads = self._generate_child_sa_negotiation_req(self.creating_child_sa)
 
         # generate IDi
         payload_idi = PayloadIDi(self.configuration['id'].id_type, self.configuration['id'].id_data)
@@ -674,7 +683,8 @@ class IkeSa(object):
 
             # create the IPsec SAs according to the negotiated CHILD SA
             child_sa = ChildSa(outbound_spi=chosen_child_proposal.spi, inbound_spi=os.urandom(4),
-                               proposal=chosen_child_proposal, tsi=chosen_tsr, tsr=chosen_tsi, mode=mode)
+                               proposal=chosen_child_proposal, tsi=chosen_tsr, tsr=chosen_tsi, mode=mode,
+                               ipsec_conf=ipsec_conf)
 
             self.child_sas.append(child_sa)
             if ipsec_conf['ipsec_proto'] == Proposal.Protocol.ESP:
@@ -839,11 +849,12 @@ class IkeSa(object):
             raise InvalidSelectors('Responder did not select a subset of our proposed TS.')
 
         # recover ipsec configuration from Acquire's Index
-        ipsec_conf = next(x for x in self.configuration['protect'] if x['index'] == self.acquire.index)
+        ipsec_conf = self.creating_child_sa.ipsec_conf
 
         # create the IPsec SAs according to the negotiated CHILD SA
         child_sa = ChildSa(outbound_spi=chosen_child_proposal.spi, inbound_spi=request_payload_sa.proposals[0].spi,
-                           proposal=chosen_child_proposal, tsi=chosen_tsi, tsr=chosen_tsr, mode=request_mode)
+                           proposal=chosen_child_proposal, tsi=chosen_tsi, tsr=chosen_tsr, mode=request_mode,
+                           ipsec_conf=ipsec_conf)
         self.child_sas.append(child_sa)
 
         encr_transform = None
@@ -888,16 +899,19 @@ class IkeSa(object):
         self.state = IkeSa.State.ESTABLISHED
         return None
 
-    def generate_create_child_sa_request(self, acquire):
-        """ Creates a CREATE_CHILD_SA request message for creating a new CHILD
+    def generate_create_child_sa_request(self, child_sa, rekeyed_child_sa=None):
+        """ Creates a CREATE_CHILD_SA request message for creating a new CHILD or rekeying an existing one
         """
         assert (self.state == IkeSa.State.ESTABLISHED)
 
         # preserve the acquire for the response
-        self.acquire = acquire
+        self.creating_child_sa = child_sa
 
         # generate the CHILD_SA negotiation payloads
-        child_sa_payloads = self._generate_child_sa_negotiation_req(self.acquire)
+        child_sa_payloads = self._generate_child_sa_negotiation_req(child_sa)
+        if rekeyed_child_sa is not None:
+            child_sa_payloads.append(PayloadNOTIFY(rekeyed_child_sa.proposal.protocol_id, PayloadNOTIFY.Type.REKEY_SA,
+                                                   rekeyed_child_sa.inbound_spi, b''))
 
         # generate Payload NONCE
         payload_nonce = PayloadNONCE()
@@ -917,52 +931,8 @@ class IkeSa(object):
                                crypto=self.my_crypto)
 
         # transition
-        self.state = IkeSa.State.NEW_CHILD_REQ_SENT
-
-        return self.request
-
-    def generate_rekey_child_sa_request(self, rekeyed_child_sa):
-        """ Creates a rekey CREATE_CHILD_SA message for rekeying a new CHILD
-        """
-        assert (self.state == IkeSa.State.ESTABLISHED)
-
-        payloads = []
-
-        # generate Payload TSi, TSr
-        payloads.append(PayloadTSi([rekeyed_child_sa.tsi]))
-        payloads.append(PayloadTSr([rekeyed_child_sa.tsr]))
-
-        # generate Payload SA
-        proposal = rekeyed_child_sa.proposal
-        proposal.spi = os.urandom(4)
-        payloads.append(PayloadSA([proposal]))
-
-        # generate USE_TRANSPORT_MODE notify if needed
-        if rekeyed_child_sa.mode == xfrm.Mode.TRANSPORT:
-            payloads.append(PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.USE_TRANSPORT_MODE, b'', b''))
-
-        payloads.append(
-            PayloadNOTIFY(proposal.protocol_id, PayloadNOTIFY.Type.REKEY_SA, rekeyed_child_sa.inbound_spi, b''))
-
-        payloads.append(PayloadNONCE())
-
-        # generate the message
-        self.request = Message(spi_i=self.spi_i,
-                               spi_r=self.spi_r,
-                               major=2,
-                               minor=0,
-                               exchange_type=Message.Exchange.CREATE_CHILD_SA,
-                               is_response=False,
-                               can_use_higher_version=False,
-                               is_initiator=self.is_initiator,
-                               message_id=self.my_msg_id,
-                               payloads=[],
-                               encrypted_payloads=payloads,
-                               crypto=self.my_crypto)
-
-        # transition
-        self.state = IkeSa.State.REK_CHILD_REQ_SENT
-        self.rekeyed_child_sa = rekeyed_child_sa
+        self.state = (IkeSa.State.NEW_CHILD_REQ_SENT if rekeyed_child_sa is None
+                      else IkeSa.State.REK_CHILD_REQ_SENT)
 
         return self.request
 
@@ -989,7 +959,6 @@ class IkeSa(object):
 
         # transition
         self.state = IkeSa.State.DEL_CHILD_REQ_SENT
-        self.deleting_child_sa = child_sa
         return self.request
 
     def process_informational_request(self, request):
@@ -1097,8 +1066,10 @@ class IkeSa(object):
             self.state = IkeSa.State.ESTABLISHED
             return None
         elif self.state == IkeSa.State.REK_CHILD_REQ_SENT:
+            rekeyed_child_sa = self.get_child_sa(
+                self.request.get_notifies(PayloadNOTIFY.Type.REKEY_SA, True)[0].spi)
             self.state = IkeSa.State.ESTABLISHED
-            return self.generate_delete_child_sa_request(self.rekeyed_child_sa)
+            return self.generate_delete_child_sa_request(rekeyed_child_sa)
 
     def process_informational_response(self, response):
         """ Processes a CREATE_CHILD_SA response message
@@ -1107,27 +1078,26 @@ class IkeSa(object):
         self.abort_on_error_notifies(response, True)
 
         if self.state == IkeSa.State.DEL_CHILD_REQ_SENT:
+            deleting_child_sa = self.get_child_sa(self.request.get_payload(Payload.Type.DELETE, True).spis[0])
             # delete our side of the
-            self.xfrm.delete_sa(self.peer_addr, self.deleting_child_sa.proposal.protocol_id,
-                                self.deleting_child_sa.outbound_spi)
-            self.xfrm.delete_sa(self.my_addr, self.deleting_child_sa.proposal.protocol_id,
-                                self.deleting_child_sa.inbound_spi)
-            self.child_sas.remove(self.deleting_child_sa)
-            self.log_info('Removing CHILD_SA {}'.format(self.deleting_child_sa))
+            self.xfrm.delete_sa(self.peer_addr, deleting_child_sa.proposal.protocol_id, deleting_child_sa.outbound_spi)
+            self.xfrm.delete_sa(self.my_addr, deleting_child_sa.proposal.protocol_id, deleting_child_sa.inbound_spi)
+            self.child_sas.remove(deleting_child_sa)
+            self.log_info('Removing CHILD_SA {}'.format(deleting_child_sa))
             # we check that the counterpart has been deleted
             payload_delete = response.get_payload(Payload.Type.DELETE, True)
             if not payload_delete:
                 raise InvalidSyntax('Received unexpected number of DELETE payloads')
             if len(payload_delete.spis) != 1:
                 raise InvalidSyntax('Received unexpected number of SPIs in DELETE payload')
-            if (payload_delete.spis[0] != self.deleting_child_sa.outbound_spi):
+            if (payload_delete.spis[0] != deleting_child_sa.outbound_spi):
                 raise InvalidSyntax('Received unexpected SPI value in DELETE payload')
             self.state = IkeSa.State.ESTABLISHED
             return None
 
-        elif self.state == IkeSa.State.REK_CHILD_REQ_SENT:
+        elif self.state == IkeSa.State.DEL_IKE_SA_REQ_SENT:
             self.state = IkeSa.State.DELETED
-            return self.generate_delete_child_sa_request(self.rekeyed_child_sa)
+            return None
 
 
 class IkeSaController:
@@ -1195,7 +1165,7 @@ class IkeSaController:
 
         return reply
 
-    def process_acquire(self, xfrm_acquire, xfrm_tmpl):
+    def process_acquire(self, xfrm_acquire):
         peer_addr = xfrm_acquire.id.daddr.to_ipaddr()
         logging.debug('Received acquire for {}'.format(peer_addr))
 
@@ -1217,8 +1187,7 @@ class IkeSaController:
                                                  xfrm_acquire.sel.sport, xfrm_acquire.sel.proto)
         small_tsr = TrafficSelector.from_network(ip_network(xfrm_acquire.sel.daddr.to_ipaddr()),
                                                  xfrm_acquire.sel.dport, xfrm_acquire.sel.proto)
-        acquire = Acquire(small_tsi, small_tsr, xfrm_acquire.policy.index)
-        request = ike_sa.process_acquire(acquire)
+        request = ike_sa.process_acquire(small_tsi, small_tsr, xfrm_acquire.policy.index)
 
         # look for ipsec configuration
         return request, (str(ike_sa.peer_addr), 500)
@@ -1259,7 +1228,7 @@ class IkeSaController:
                 header, msg, attributes = xfrm_obj.parse_message(data)
                 reply_data, addr = None, None
                 if header.type == xfrm.XFRM_MSG_ACQUIRE:
-                    reply_data, addr = self.process_acquire(msg, attributes[xfrm.XFRMA_TMPL])
+                    reply_data, addr = self.process_acquire(msg)
                 elif header.type == xfrm.XFRM_MSG_EXPIRE:
                     reply_data, addr = self.process_expire(msg)
                 if reply_data:

@@ -14,7 +14,7 @@ from unittest.mock import patch
 import xfrm
 from configuration import Configuration
 from message import TrafficSelector, Transform, Proposal, Message, Payload, PayloadAUTH
-from protocol import IkeSa, Acquire
+from protocol import IkeSa
 
 logging.indent = 2
 logging.basicConfig(level=logging.DEBUG,
@@ -75,8 +75,7 @@ class TestIkeSa(TestCase):
         # initial exchanges
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
-        acquire = Acquire(small_tsi, small_tsr, 1)
-        request = self.ike_sa1.process_acquire(acquire)
+        request = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
         response = self.ike_sa2.process_message(request, self.ip1)
         request = self.ike_sa1.process_message(response, self.ip2)
         response = self.ike_sa2.process_message(request, self.ip1)
@@ -88,8 +87,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 1)
 
         # create additional CHILD_SA
-        acquire = Acquire(small_tsi, small_tsr, 1)
-        request = self.ike_sa1.process_acquire(acquire)
+        request = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
         response = self.ike_sa2.process_message(request, self.ip1)
         request = self.ike_sa1.process_message(response, self.ip2)
         self.assertIsNone(request)
@@ -103,8 +101,7 @@ class TestIkeSa(TestCase):
         self.ike_sa1.configuration['dh'][0].id = Transform.DhId.DH_1
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
-        acquire = Acquire(small_tsi, small_tsr, 1)
-        request = self.ike_sa1.process_acquire(acquire)
+        request = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
         response = self.ike_sa2.process_message(request, self.ip1)
         request = self.ike_sa1.process_message(response, self.ip2)
         self.assertIsNone(request)
@@ -118,8 +115,7 @@ class TestIkeSa(TestCase):
         self.ike_sa1.configuration['dh'].insert(0, Transform(Transform.Type.DH, Transform.DhId.DH_1))
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
-        acquire = Acquire(small_tsi, small_tsr, 1)
-        request = self.ike_sa1.process_acquire(acquire)
+        request = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
         response = self.ike_sa2.process_message(request, self.ip1)
         request = self.ike_sa1.process_message(response, self.ip2)
         ike_sa3 = IkeSa(is_initiator=False, peer_spi=self.ike_sa1.my_spi, my_addr=self.ip2, peer_addr=self.ip1,
@@ -137,8 +133,7 @@ class TestIkeSa(TestCase):
         self.ike_sa1.configuration['protect'][0]['ipsec_proto'] = Proposal.Protocol.AH
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
-        acquire = Acquire(small_tsi, small_tsr, 1)
-        request = self.ike_sa1.process_acquire(acquire)
+        request = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
         response = self.ike_sa2.process_message(request, self.ip1)
         request = self.ike_sa1.process_message(response, self.ip2)
         response = self.ike_sa2.process_message(request, self.ip1)
@@ -154,8 +149,7 @@ class TestIkeSa(TestCase):
         self.ike_sa2.configuration['protect'][0]['mode'] = xfrm.Mode.TUNNEL
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
-        acquire = Acquire(small_tsi, small_tsr, 1)
-        request = self.ike_sa1.process_acquire(acquire)
+        request = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
         response = self.ike_sa2.process_message(request, self.ip1)
         request = self.ike_sa1.process_message(response, self.ip2)
         response = self.ike_sa2.process_message(request, self.ip1)
@@ -170,8 +164,7 @@ class TestIkeSa(TestCase):
     def test_ike_auth_invalid_auth_type(self, MockClass1):
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
-        acquire = Acquire(small_tsi, small_tsr, 1)
-        request = self.ike_sa1.process_acquire(acquire)
+        request = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
         response = self.ike_sa2.process_message(request, self.ip1)
         request = self.ike_sa1.process_message(response, self.ip2)
         message = Message.parse(request, crypto=self.ike_sa1.my_crypto)
@@ -190,8 +183,7 @@ class TestIkeSa(TestCase):
     def test_ike_auth_invalid_auth_data(self, MockClass1):
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
-        acquire = Acquire(small_tsi, small_tsr, 1)
-        request = self.ike_sa1.process_acquire(acquire)
+        request = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
         response = self.ike_sa2.process_message(request, self.ip1)
         request = self.ike_sa1.process_message(response, self.ip2)
         message = Message.parse(request, crypto=self.ike_sa1.my_crypto)
@@ -211,8 +203,7 @@ class TestIkeSa(TestCase):
         self.ike_sa2.configuration['protect'][0]['my_subnet'] = ip_network("10.0.0.0/24")
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
-        acquire = Acquire(small_tsi, small_tsr, 1)
-        request = self.ike_sa1.process_acquire(acquire)
+        request = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
         response = self.ike_sa2.process_message(request, self.ip1)
         request = self.ike_sa1.process_message(response, self.ip2)
         response = self.ike_sa2.process_message(request, self.ip1)
@@ -227,8 +218,7 @@ class TestIkeSa(TestCase):
     def test_ike_auth_missing_payload(self, MockClass1):
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
-        acquire = Acquire(small_tsi, small_tsr, 1)
-        request = self.ike_sa1.process_acquire(acquire)
+        request = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
         response = self.ike_sa2.process_message(request, self.ip1)
         request = self.ike_sa1.process_message(response, self.ip2)
         message = Message.parse(request, crypto=self.ike_sa1.my_crypto)
@@ -247,8 +237,7 @@ class TestIkeSa(TestCase):
     def test_retransmit(self, MockClass1):
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
-        acquire = Acquire(small_tsi, small_tsr, 1)
-        request = self.ike_sa1.process_acquire(acquire)
+        request = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
         response = self.ike_sa2.process_message(request, self.ip1)
         request = self.ike_sa1.process_message(response, self.ip2)
         response = self.ike_sa2.process_message(request, self.ip1)
@@ -268,8 +257,7 @@ class TestIkeSa(TestCase):
     def test_invalid_message_id_on_request(self, MockClass1):
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
-        acquire = Acquire(small_tsi, small_tsr, 1)
-        request = self.ike_sa1.process_acquire(acquire)
+        request = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
         response = self.ike_sa2.process_message(request, self.ip1)
         request = self.ike_sa1.process_message(response, self.ip2)
         response = self.ike_sa2.process_message(request, self.ip1)
@@ -292,8 +280,7 @@ class TestIkeSa(TestCase):
     def test_invalid_message_id_on_response(self, MockClass1):
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
-        acquire = Acquire(small_tsi, small_tsr, 1)
-        request = self.ike_sa1.process_acquire(acquire)
+        request = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
         response = self.ike_sa2.process_message(request, self.ip1)
         message = Message.parse(response, crypto=self.ike_sa2.my_crypto)
         message.message_id = 100
@@ -309,8 +296,7 @@ class TestIkeSa(TestCase):
     def test_invalid_exchange_type_on_request(self, MockClass1):
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
-        acquire = Acquire(small_tsi, small_tsr, 1)
-        request = self.ike_sa1.process_acquire(acquire)
+        request = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
         response = self.ike_sa2.process_message(request, self.ip1)
         request = self.ike_sa1.process_message(response, self.ip2)
         message = Message.parse(request, crypto=self.ike_sa1.my_crypto)
@@ -327,8 +313,7 @@ class TestIkeSa(TestCase):
     def test_invalid_exchange_type_on_response(self, MockClass1):
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
-        acquire = Acquire(small_tsi, small_tsr, 1)
-        request = self.ike_sa1.process_acquire(acquire)
+        request = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
         response = self.ike_sa2.process_message(request, self.ip1)
         message = Message.parse(response)
         message.exchange_type = 100
@@ -345,8 +330,7 @@ class TestIkeSa(TestCase):
         # initial exchanges
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
-        acquire = Acquire(small_tsi, small_tsr, 1)
-        request = self.ike_sa1.process_acquire(acquire)
+        request = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
         response = self.ike_sa2.process_message(request, self.ip1)
         request = self.ike_sa1.process_message(response, self.ip2)
         response = self.ike_sa2.process_message(request, self.ip1)
@@ -359,8 +343,7 @@ class TestIkeSa(TestCase):
 
         # create additional CHILD_SA
         self.ike_sa2.configuration['protect'][0]['my_subnet'] = ip_network("10.0.0.0/24")
-        acquire = Acquire(small_tsi, small_tsr, 1)
-        request = self.ike_sa1.process_acquire(acquire)
+        request = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
         response = self.ike_sa2.process_message(request, self.ip1)
         request = self.ike_sa1.process_message(response, self.ip2)
         self.assertIsNone(request)
@@ -373,8 +356,8 @@ class TestIkeSa(TestCase):
     def test_rekey_child_sa(self, MockClass1):
         self.test_ok_transport()
         request = self.ike_sa1.process_expire(self.ike_sa1.child_sas[0].inbound_spi)
-        response = self.ike_sa2.process_message(request, self.ike_sa1.my_addr)
-        request = self.ike_sa1.process_message(response, self.ike_sa1.peer_addr)
+        response = self.ike_sa2.process_message(request, self.ike_sa2.my_addr)
+        request = self.ike_sa1.process_message(response, self.ike_sa1.my_addr)
         self.assertIsNotNone(request)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.DEL_CHILD_REQ_SENT)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
@@ -387,6 +370,26 @@ class TestIkeSa(TestCase):
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
         self.assertEqual(len(self.ike_sa1.child_sas), 2)
         self.assertEqual(len(self.ike_sa2.child_sas), 2)
+
+    @patch('xfrm.Xfrm')
+    def test_rekey_child_sa_from_responder(self, MockClass1):
+        self.test_ok_transport()
+        request = self.ike_sa2.process_expire(self.ike_sa2.child_sas[0].inbound_spi)
+        response = self.ike_sa1.process_message(request, self.ike_sa2.my_addr)
+        request = self.ike_sa2.process_message(response, self.ike_sa1.my_addr)
+        self.assertIsNotNone(request)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.DEL_CHILD_REQ_SENT)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 3)
+        self.assertEqual(len(self.ike_sa2.child_sas), 3)
+        response = self.ike_sa1.process_message(request, self.ike_sa2.my_addr)
+        request = self.ike_sa2.process_message(response, self.ike_sa2.peer_addr)
+        self.assertIsNone(request)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 2)
+        self.assertEqual(len(self.ike_sa2.child_sas), 2)
+
 
     @patch('xfrm.Xfrm')
     def test_rekey_child_sa_invalid_spi(self, MockClass1):
