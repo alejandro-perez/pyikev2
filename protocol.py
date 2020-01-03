@@ -311,9 +311,9 @@ class IkeSa(object):
         return None
 
     def process_message(self, data, addr=None):
-        # parse the whole message (including encrypted data)
         if addr is None:
             addr = self.peer_addr
+        # parse the whole message (including encrypted data)
         message = Message.parse(data, header_only=False, crypto=self.peer_crypto)
         self.log_message(message, addr, data, send=False)
         if message.is_request:
@@ -343,7 +343,7 @@ class IkeSa(object):
         return request_data
 
     def process_expire(self, spi, hard=False):
-        """ Creates a rekey CREATE_CHILD_SA message for creating a new CHILD
+        """ Creates a rekey CREATE_CHILD_SA message for creating a new CHILD or an INFORMATIONAL for deleting it
         """
         if self.state != IkeSa.State.ESTABLISHED:
             self.log_warning('Cannot process expire while waiting for a response')
@@ -376,6 +376,22 @@ class IkeSa(object):
             return None
         self.log_info('Starting DEAD-PEER-DETECTION')
         request = self.generate_dead_peer_detection_request()
+        request_data = request.to_bytes()
+        self.log_message(self.request, self.peer_addr, request_data, send=True)
+        return request_data
+
+    def process_expire_ike_sa(self, hard):
+        """ Creates an empty INFORMATIONAL message for Dead Peer Detection
+        """
+        if self.state != IkeSa.State.ESTABLISHED:
+            self.log_warning('Cannot process expire IKE_SA while waiting for a response')
+            return None
+
+        if hard:
+            request = self.generate_delete_ike_sa_request()
+        else:
+            request = self.generate_rekey_ike_sa_request()
+
         request_data = request.to_bytes()
         self.log_message(self.request, self.peer_addr, request_data, send=True)
         return request_data
@@ -1006,6 +1022,7 @@ class IkeSa(object):
         for delete_payload in delete_payloads:
             # if protocol is IKE, just mark the IKE SA for removal and return  emtpy INFORMATIONAL exchange
             if delete_payload.protocol_id == Proposal.Protocol.IKE:
+                self.log_info('Deleting this IKE_SA')
                 self.state = IkeSa.State.DELETED
             # if protocol is either AH or ESP, delete the Child SAs and return the inbound SPI
             else:
@@ -1125,6 +1142,7 @@ class IkeSa(object):
 
         elif self.state == IkeSa.State.DEL_IKE_SA_REQ_SENT:
             self.state = IkeSa.State.DELETED
+            self.log_info('Deleting this IKE_SA')
             return None
 
         elif self.state == IkeSa.State.DPD_REQ_SENT:
@@ -1151,6 +1169,27 @@ class IkeSa(object):
 
         # transition
         self.state = IkeSa.State.DPD_REQ_SENT
+        return self.request
+
+    def generate_delete_ike_sa_request(self):
+        assert (self.state == IkeSa.State.ESTABLISHED)
+
+        # generate the message
+        self.request = Message(spi_i=self.spi_i,
+                               spi_r=self.spi_r,
+                               major=2,
+                               minor=0,
+                               exchange_type=Message.Exchange.INFORMATIONAL,
+                               is_response=False,
+                               can_use_higher_version=False,
+                               is_initiator=self.is_initiator,
+                               message_id=self.my_msg_id,
+                               payloads=[],
+                               encrypted_payloads=[PayloadDELETE(Proposal.Protocol.IKE, [])],
+                               crypto=self.my_crypto)
+
+        # transition
+        self.state = IkeSa.State.DEL_IKE_SA_REQ_SENT
         return self.request
 
 

@@ -498,3 +498,11 @@ class TestIkeSa(TestCase):
         self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
 
+    @patch('xfrm.Xfrm')
+    def test_delete_ike_sa(self, MockClass1):
+        self.test_initial_exchanges_transport()
+        delete_req = self.ike_sa1.process_expire_ike_sa(hard=True)
+        delete_res = self.ike_sa2.process_message(delete_req)
+        req = self.ike_sa1.process_message(delete_res)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.DELETED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.DELETED)
