@@ -54,6 +54,7 @@ class IkeSa(object):
         REK_IKE_SA_REQ_SENT = 13
         DEL_CHILD_REQ_SENT = 14
         DEL_IKE_SA_REQ_SENT = 15
+        DPD_REQ_SENT = 16
 
         # Closing states
         REKEYED = 20
@@ -369,6 +370,18 @@ class IkeSa(object):
             return request_data
 
         return None
+
+    def process_dead_peer_detection_timer(self):
+        """ Creates an empty INFORMATIONAL message for Dead Peer Detection
+        """
+        if self.state != IkeSa.State.ESTABLISHED:
+            self.log_warning('Cannot send DPD while waiting for a response')
+            return None
+        self.log_info('Starting DEAD-PEER-DETECTION')
+        request = self.generate_dead_peer_detection_request()
+        request_data = request.to_bytes()
+        self.log_message(self.request, self.peer_addr, request_data, send=True)
+        return request_data
 
     def _process_ike_sa_negotiation_request(self, request, encrypted=False, old_sk_d=None):
         """ Process a IKE_SA negotiation request (SA, Ni, KEi), and returns
@@ -989,7 +1002,11 @@ class IkeSa(object):
         """
         self._check_established_or_rekeyed(request)
         response_payloads = []
-        for delete_payload in request.get_payloads(Payload.Type.DELETE, True):
+        delete_payloads = request.get_payloads(Payload.Type.DELETE, True)
+        if not delete_payloads:
+            self.log_info('Peer requested DEAD-PEER-DETECTION')
+
+        for delete_payload in delete_payloads:
             # if protocol is IKE, just mark the IKE SA for removal and return  emtpy INFORMATIONAL exchange
             if delete_payload.protocol_id == Proposal.Protocol.IKE:
                 self.state = IkeSa.State.DELETED
@@ -1041,7 +1058,7 @@ class IkeSa(object):
             self.new_ike_sa.state = IkeSa.State.ESTABLISHED
             self.state = IkeSa.State.REKEYED
 
-        # if it concerns to CHILD_SAs
+        # if it is a to CHILD_SAs
         else:
             response_payloads = self._process_create_child_sa_negotiation_req(request)
 
@@ -1090,7 +1107,8 @@ class IkeSa(object):
     def process_informational_response(self, response):
         """ Processes a CREATE_CHILD_SA response message
         """
-        self._check_in_states(response, [IkeSa.State.DEL_CHILD_REQ_SENT, IkeSa.State.DEL_IKE_SA_REQ_SENT])
+        self._check_in_states(response, [IkeSa.State.DEL_CHILD_REQ_SENT, IkeSa.State.DEL_IKE_SA_REQ_SENT,
+                                         IkeSa.State.DPD_REQ_SENT])
         self.abort_on_error_notifies(response, True)
 
         if self.state == IkeSa.State.DEL_CHILD_REQ_SENT:
@@ -1111,6 +1129,32 @@ class IkeSa(object):
         elif self.state == IkeSa.State.DEL_IKE_SA_REQ_SENT:
             self.state = IkeSa.State.DELETED
             return None
+
+        elif self.state == IkeSa.State.DPD_REQ_SENT:
+            self.state = IkeSa.State.ESTABLISHED
+
+    def generate_dead_peer_detection_request(self):
+        """ Creates an INFORMATIONAL message for Dead Peer Detection
+        """
+        assert (self.state == IkeSa.State.ESTABLISHED)
+
+        # generate the message
+        self.request = Message(spi_i=self.spi_i,
+                               spi_r=self.spi_r,
+                               major=2,
+                               minor=0,
+                               exchange_type=Message.Exchange.INFORMATIONAL,
+                               is_response=False,
+                               can_use_higher_version=False,
+                               is_initiator=self.is_initiator,
+                               message_id=self.my_msg_id,
+                               payloads=[],
+                               encrypted_payloads=[],
+                               crypto=self.my_crypto)
+
+        # transition
+        self.state = IkeSa.State.DPD_REQ_SENT
+        return self.request
 
 
 class IkeSaController:

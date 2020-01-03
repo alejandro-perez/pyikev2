@@ -459,7 +459,6 @@ class TestIkeSa(TestCase):
     @patch('xfrm.Xfrm')
     def test_simultaneous_rekey_child_rekey_child(self, MockClass1):
         self.test_initial_exchanges_transport()
-        logging.debug("==========================================")
         self.assertEqual(len(self.ike_sa1.child_sas), 1)
         self.assertEqual(len(self.ike_sa2.child_sas), 1)
         rekey_request_alice = self.ike_sa1.process_expire(self.ike_sa1.child_sas[0].inbound_spi)
@@ -482,4 +481,20 @@ class TestIkeSa(TestCase):
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
         self.assertEqual(len(self.ike_sa1.child_sas), 2)
         self.assertEqual(len(self.ike_sa2.child_sas), 2)
+
+    @patch('xfrm.Xfrm')
+    def test_dead_peer_detection(self, MockClass1):
+        self.test_initial_exchanges_transport()
+        dpd_req = self.ike_sa1.process_dead_peer_detection_timer()
+        dpd_res = self.ike_sa2.process_message(dpd_req)
+        request = self.ike_sa1.process_message(dpd_res)
+        self.assertIsNone(request)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        dpd_req = self.ike_sa2.process_dead_peer_detection_timer()
+        dpd_res = self.ike_sa1.process_message(dpd_req)
+        request = self.ike_sa2.process_message(dpd_res)
+        self.assertIsNone(request)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
 
