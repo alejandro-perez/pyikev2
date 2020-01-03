@@ -6,6 +6,7 @@
 import json
 import logging
 import os
+import random
 import socket
 from collections import namedtuple
 from ipaddress import ip_address, ip_network
@@ -15,7 +16,7 @@ from struct import pack, unpack
 import xfrm
 from crypto import Cipher, Crypto, DiffieHellman, Integrity, Prf
 from helpers import SafeIntEnum, hexstring
-from message import (AuthenticationFailed, ChildSaNotFound, IkeSaError, InvalidKePayload, InvalidSyntax,
+from message import (AuthenticationFailed, ChildSaNotFound, IkeSaError, InvalidKePayload,
                      NoProposalChosen, TemporaryFailure, TsUnacceptable)
 from message import (Message, Payload, PayloadAUTH, PayloadDELETE, PayloadIDi, PayloadIDr, PayloadKE, PayloadNONCE,
                      PayloadNOTIFY, PayloadSA, PayloadTSi, PayloadTSr, PayloadVENDOR, Proposal, TrafficSelector,
@@ -710,16 +711,17 @@ class IkeSa(object):
                 encr_transform = chosen_child_proposal.get_transform(Transform.Type.ENCR).id
             else:
                 encr_transform = None
+            lifetime = ipsec_conf['lifetime'] + random.randint(0, 5)
             self.xfrm.create_sa(self.my_addr, self.peer_addr, chosen_tsr, chosen_tsi,
                                 chosen_child_proposal.protocol_id,
                                 child_sa.outbound_spi, encr_transform, child_sa_keyring.sk_er,
                                 chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
-                                child_sa_keyring.sk_ar, mode, ipsec_conf['lifetime'])
+                                child_sa_keyring.sk_ar, mode, lifetime)
             self.xfrm.create_sa(self.peer_addr, self.my_addr, chosen_tsi, chosen_tsr,
                                 chosen_child_proposal.protocol_id,
                                 child_sa.inbound_spi, encr_transform, child_sa_keyring.sk_ei,
                                 chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
-                                child_sa_keyring.sk_ai, mode, ipsec_conf['lifetime'])
+                                child_sa_keyring.sk_ai, mode, lifetime)
             self.log_info('Created CHILD_SA {}'.format(child_sa))
 
             # generate the response Payload SA
@@ -880,14 +882,15 @@ class IkeSa(object):
         encr_transform = None
         if chosen_child_proposal.protocol_id == Proposal.Protocol.ESP:
             encr_transform = chosen_child_proposal.get_transform(Transform.Type.ENCR).id
+        lifetime = ipsec_conf['lifetime'] + random.randint(0, 5)
         self.xfrm.create_sa(self.my_addr, self.peer_addr, chosen_tsi, chosen_tsr, chosen_child_proposal.protocol_id,
                             child_sa.outbound_spi, encr_transform, child_sa_keyring.sk_ei,
                             chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
-                            child_sa_keyring.sk_ai, request_mode, ipsec_conf['lifetime'])
+                            child_sa_keyring.sk_ai, request_mode, lifetime)
         self.xfrm.create_sa(self.peer_addr, self.my_addr, chosen_tsr, chosen_tsi, chosen_child_proposal.protocol_id,
                             child_sa.inbound_spi, encr_transform, child_sa_keyring.sk_er,
                             chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
-                            child_sa_keyring.sk_ar, request_mode, ipsec_conf['lifetime'])
+                            child_sa_keyring.sk_ar, request_mode, lifetime)
         self.log_info('Created CHILD_SA {}'.format(child_sa))
 
     def process_ike_auth_response(self, response):
