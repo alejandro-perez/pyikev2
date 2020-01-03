@@ -364,12 +364,9 @@ class IkeSa(object):
         else:
             request = self.generate_delete_child_sa_request(child_sa)
 
-        if request:
-            request_data = request.to_bytes()
-            self.log_message(self.request, self.peer_addr, request_data, send=True)
-            return request_data
-
-        return None
+        request_data = request.to_bytes()
+        self.log_message(self.request, self.peer_addr, request_data, send=True)
+        return request_data
 
     def process_dead_peer_detection_timer(self):
         """ Creates an empty INFORMATIONAL message for Dead Peer Detection
