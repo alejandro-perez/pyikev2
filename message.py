@@ -20,10 +20,6 @@ class IkeSaError(Exception):
     pass
 
 
-class ChildSaError(Exception):
-    pass
-
-
 class InvalidSyntax(IkeSaError):
     pass
 
@@ -46,18 +42,23 @@ class AuthenticationFailed(IkeSaError):
     pass
 
 
-class InvalidSelectors(IkeSaError):
-    pass
-
-
 class PayloadNotFound(IkeSaError):
     pass
 
 
-class ChildSaNotFound(ChildSaError):
-    def __init__(self, msg, spi):
+class TemporaryFailure(IkeSaError):
+    pass
+
+
+class TsUnacceptable(IkeSaError):
+    pass
+
+
+class ChildSaNotFound(IkeSaError):
+    def __init__(self, msg, spi, protocol):
         super().__init__(msg)
         self.spi = spi
+        self.protocol = protocol
 
 
 class Payload:
@@ -450,6 +451,24 @@ class PayloadNOTIFY(Payload):
         self.notification_type = notification_type
         self.spi = spi
         self.notification_data = notification_data
+
+    @classmethod
+    def from_exception(cls, ex):
+        exception_2_notify = {
+            NoProposalChosen: PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN,
+            UnsupportedCriticalPayload: PayloadNOTIFY.Type.UNSUPPORTED_CRITICAL_PAYLOAD,
+            InvalidSyntax: PayloadNOTIFY.Type.INVALID_SYNTAX,
+            AuthenticationFailed: PayloadNOTIFY.Type.AUTHENTICATION_FAILED,
+            TsUnacceptable: PayloadNOTIFY.Type.TS_UNACCEPTABLE,
+            InvalidKePayload: PayloadNOTIFY.Type.INVALID_KE_PAYLOAD,
+            ChildSaNotFound: PayloadNOTIFY.Type.CHILD_SA_NOT_FOUND,
+            TemporaryFailure: PayloadNOTIFY.Type.TEMPORARY_FAILURE
+        }
+        notification_type = exception_2_notify.get(type(ex), PayloadNOTIFY.Type.INVALID_SYNTAX)
+        notification_data = pack('>H', ex.group) if type(ex) is InvalidKePayload else b''
+        notification_protocol = ex.protocol if type(ex) is ChildSaNotFound else Proposal.Protocol.NONE
+        notification_spi = ex.spi if type(ex) is ChildSaNotFound else b''
+        return PayloadNOTIFY(notification_protocol, notification_type, notification_spi, notification_data)
 
     @classmethod
     def parse(cls, data, critical=False):
