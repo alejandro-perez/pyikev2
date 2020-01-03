@@ -102,8 +102,7 @@ class IkeSa(object):
     def log_debug(self, message):
         self.log_msg(logging.DEBUG, message)
 
-    def _generate_ike_sa_key_material(self, ike_proposal, nonce_i, nonce_r, spi_i, spi_r, shared_secret,
-                                      old_sk_d=None):
+    def generate_ike_sa_key_material(self, ike_proposal, nonce_i, nonce_r, spi_i, spi_r, shared_secret, old_sk_d=None):
         """ Generates IKE_SA key material based on the proposal and DH
         """
         prf = Prf(ike_proposal.get_transform(Transform.Type.PRF))
@@ -138,7 +137,7 @@ class IkeSa(object):
             self.xfrm.delete_sa(self.peer_addr, child_sa.proposal.protocol_id, child_sa.outbound_spi)
             self.xfrm.delete_sa(self.my_addr, child_sa.proposal.protocol_id, child_sa.inbound_spi)
 
-    def _generate_child_sa_key_material(self, child_proposal, nonce_i, nonce_r, sk_d):
+    def generate_child_sa_key_material(self, child_proposal, nonce_i, nonce_r, sk_d):
         """ Generates CHILD_SA key material
         """
         encr_key_size = 0
@@ -194,7 +193,7 @@ class IkeSa(object):
                                                 ipsec_conf['ip_proto'])
         return conf_tsi, conf_tsr
 
-    def _get_ipsec_configuration(self, payload_tsi, payload_tsr, payload_sa):
+    def _get_ipsec_configuration(self, payload_tsi, payload_tsr):
         """ Find matching IPsec configuration.
             It iterates over the received TS in reversed order and returns the
             first configuration that is larger or smaller than the proposed
@@ -391,7 +390,7 @@ class IkeSa(object):
         # generate payload NONCE
         response_payload_nonce = PayloadNONCE()
 
-        # check that DH groups match and generate response Paylaod KE
+        # check that DH groups match and generate response Payload KE
         my_dh_group = self.chosen_proposal.get_transform(Transform.Type.DH).id
         if my_dh_group != payload_ke.dh_group:
             raise InvalidKePayload('Invalid DH group used. I want {}'.format(my_dh_group), group=my_dh_group)
@@ -401,11 +400,11 @@ class IkeSa(object):
         response_payload_ke = PayloadKE(dh.group, dh.public_key)
 
         # generate IKE SA key material
-        self.ike_sa_keyring = self._generate_ike_sa_key_material(ike_proposal=self.chosen_proposal,
-                                                                 nonce_i=payload_nonce.nonce,
-                                                                 nonce_r=response_payload_nonce.nonce,
-                                                                 spi_i=self.peer_spi, spi_r=self.my_spi,
-                                                                 shared_secret=dh.shared_secret, old_sk_d=old_sk_d)
+        self.ike_sa_keyring = self.generate_ike_sa_key_material(ike_proposal=self.chosen_proposal,
+                                                                nonce_i=payload_nonce.nonce,
+                                                                nonce_r=response_payload_nonce.nonce,
+                                                                spi_i=self.peer_spi, spi_r=self.my_spi,
+                                                                shared_secret=dh.shared_secret, old_sk_d=old_sk_d)
 
         return [response_payload_sa, response_payload_nonce, response_payload_ke]
 
@@ -585,7 +584,7 @@ class IkeSa(object):
         self.log_debug('Generated DH shared secret: {}'.format(hexstring(self.dh.shared_secret)))
 
         # generate IKE SA key material
-        self.ike_sa_keyring = self._generate_ike_sa_key_material(
+        self.ike_sa_keyring = self.generate_ike_sa_key_material(
             ike_proposal=self.chosen_proposal,
             nonce_i=self.request.get_payload(Payload.Type.NONCE, encrypted).nonce,
             nonce_r=payload_nonce.nonce,
@@ -679,8 +678,7 @@ class IkeSa(object):
 
             # Find matching IPsec configuration and narrow TS (reverse order as we are responders)
             ipsec_conf, chosen_tsr, chosen_tsi = self._get_ipsec_configuration(request_payload_tsr,
-                                                                               request_payload_tsi,
-                                                                               request_payload_sa)
+                                                                               request_payload_tsi)
 
             # check which mode peer wants and compare to ours
             mode = xfrm.Mode.TUNNEL
@@ -696,10 +694,10 @@ class IkeSa(object):
             chosen_child_proposal = self._select_best_child_sa_proposal(request_payload_sa, ipsec_conf)
 
             # generate CHILD key material
-            child_sa_keyring = self._generate_child_sa_key_material(child_proposal=chosen_child_proposal,
-                                                                    nonce_i=request_payload_nonce.nonce,
-                                                                    nonce_r=response_payload_nonce.nonce,
-                                                                    sk_d=self.ike_sa_keyring.sk_d)
+            child_sa_keyring = self.generate_child_sa_key_material(child_proposal=chosen_child_proposal,
+                                                                   nonce_i=request_payload_nonce.nonce,
+                                                                   nonce_r=response_payload_nonce.nonce,
+                                                                   sk_d=self.ike_sa_keyring.sk_d)
 
             # create the IPsec SAs according to the negotiated CHILD SA
             child_sa = ChildSa(outbound_spi=chosen_child_proposal.spi, inbound_spi=os.urandom(4),
@@ -857,10 +855,10 @@ class IkeSa(object):
             raise NoProposalChosen('Responder did not choose a valid proposal')
 
         # generate CHILD key material
-        child_sa_keyring = self._generate_child_sa_key_material(child_proposal=chosen_child_proposal,
-                                                                nonce_i=request_payload_nonce.nonce,
-                                                                nonce_r=response_payload_nonce.nonce,
-                                                                sk_d=self.ike_sa_keyring.sk_d)
+        child_sa_keyring = self.generate_child_sa_key_material(child_proposal=chosen_child_proposal,
+                                                               nonce_i=request_payload_nonce.nonce,
+                                                               nonce_r=response_payload_nonce.nonce,
+                                                               sk_d=self.ike_sa_keyring.sk_d)
 
         # Check TSi and TSr are subsets of what we sent
         chosen_tsi = response_payload_tsi.traffic_selectors[0]
