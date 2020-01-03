@@ -1082,7 +1082,7 @@ class IkeSa(object):
             rekeyed_child_sa = self.get_child_sa(rekeyed_spi)
             # CHILD_SA might have been deleted while we were waiting for our response
             if rekeyed_child_sa is None:
-                self.log_warning('CHILD_SA {} is already deleted. Skipping DELETE exchange'
+                self.log_warning('CHILD_SA {} was already deleted. Not starting a DELETE exchange'
                                  ''.format(hexstring(rekeyed_spi)))
                 return None
             return self.generate_delete_child_sa_request(rekeyed_child_sa)
@@ -1097,21 +1097,16 @@ class IkeSa(object):
             my_delete_spi = self.request.get_payload(Payload.Type.DELETE, True).spis[0]
             deleting_child_sa = self.get_child_sa(my_delete_spi)
             if deleting_child_sa is None:
-                self.log_warning('CHILD_SA {} was already deleted by the peer. Omitting deletion'
+                self.log_warning('CHILD_SA {} was already deleted by the peer. Omitting actual deletion'
                                  ''.format(hexstring(my_delete_spi)))
-            # delete our side of the
-            self.xfrm.delete_sa(self.peer_addr, deleting_child_sa.proposal.protocol_id, deleting_child_sa.outbound_spi)
-            self.xfrm.delete_sa(self.my_addr, deleting_child_sa.proposal.protocol_id, deleting_child_sa.inbound_spi)
-            self.child_sas.remove(deleting_child_sa)
-            self.log_info('Removing CHILD_SA {}'.format(deleting_child_sa))
-            # we check that the counterpart has been deleted
-            payload_delete = response.get_payload(Payload.Type.DELETE, True)
-            if not payload_delete:
-                raise InvalidSyntax('Received unexpected number of DELETE payloads')
-            if len(payload_delete.spis) != 1:
-                raise InvalidSyntax('Received unexpected number of SPIs in DELETE payload')
-            if (payload_delete.spis[0] != deleting_child_sa.outbound_spi):
-                raise InvalidSyntax('Received unexpected SPI value in DELETE payload')
+            else:
+                # delete our side of the
+                self.xfrm.delete_sa(self.peer_addr, deleting_child_sa.proposal.protocol_id,
+                                    deleting_child_sa.outbound_spi)
+                self.xfrm.delete_sa(self.my_addr, deleting_child_sa.proposal.protocol_id,
+                                    deleting_child_sa.inbound_spi)
+                self.child_sas.remove(deleting_child_sa)
+                self.log_info('Removing CHILD_SA {}'.format(deleting_child_sa))
             self.state = IkeSa.State.ESTABLISHED
             return None
 
