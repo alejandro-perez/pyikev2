@@ -472,6 +472,7 @@ class IkeSa(object):
     def _generate_ike_sa_negotiation_request(self):
         # create the Payload SA
         my_proposal = self._ike_conf_2_proposal()
+        my_proposal.spi = self.my_spi
         payload_sa = PayloadSA([my_proposal])
 
         # generate payload NONCE
@@ -518,6 +519,37 @@ class IkeSa(object):
 
         # store the child sa to be used in the IKE_AUTH exchange
         self.creating_child_sa = child_sa
+
+        # return request
+        return self.request
+
+    def generate_rekey_ike_sa_request(self):
+        """ Creates a IKE_SA_INIT message
+        """
+        # check state
+        assert (self.state == IkeSa.State.ESTABLISHED)
+
+        self.new_ike_sa = IkeSa(True, b'', self.configuration, self.my_addr, self.peer_addr)
+
+        # generate the IKE SA negotiation payloads
+        ike_sa_payloads = self.new_ike_sa._generate_ike_sa_negotiation_request()
+
+        # generate the message
+        self.request = Message(spi_i=self.my_spi,
+                               spi_r=self.peer_spi,
+                               major=2,
+                               minor=0,
+                               exchange_type=Message.Exchange.CREATE_CHILD_SA,
+                               is_response=False,
+                               can_use_higher_version=False,
+                               is_initiator=True,
+                               message_id=self.my_msg_id,
+                               payloads=[],
+                               encrypted_payloads=ike_sa_payloads,
+                               crypto=self.my_crypto)
+
+        # switch state
+        self.state = IkeSa.State.REK_IKE_SA_REQ_SENT
 
         # return request
         return self.request
@@ -586,7 +618,7 @@ class IkeSa(object):
 
         return self.request
 
-    def _process_ike_sa_negotiation_response(self, response, encrypted=False, old_sk_d=None):
+    def _process_ike_sa_negotiation_response(self, response, nonce, encrypted=False, old_sk_d=None):
         """ Process a IKE_SA negotiation response (SA, Ni, KEi)
             It sets self.chosen_proposal and self.ike_sa_keyring as a result
         """
@@ -594,12 +626,12 @@ class IkeSa(object):
         payload_nonce = response.get_payload(Payload.Type.NONCE, encrypted)
         payload_ke = response.get_payload(Payload.Type.KE, encrypted)
 
-        # update peer spi
-        self.peer_spi = response.spi_r
-
         # select the peers proposal.
         # TODO: Must check that peer actually selected a subset
         self.chosen_proposal = payload_sa.proposals[0]
+
+        # update peer spi (take it from the payload SA if old_sa_d is not none ie. IKE_SA rekey)
+        self.peer_spi = response.spi_r if old_sk_d is None else self.chosen_proposal.spi
 
         # if this is a rekey, hence spi is not empty, send ours
         # if self.chosen_proposal.spi:
@@ -612,7 +644,7 @@ class IkeSa(object):
         # generate IKE SA key material
         self.ike_sa_keyring = self.generate_ike_sa_key_material(
             ike_proposal=self.chosen_proposal,
-            nonce_i=self.request.get_payload(Payload.Type.NONCE, encrypted).nonce,
+            nonce_i=nonce,
             nonce_r=payload_nonce.nonce,
             spi_i=self.my_spi,
             spi_r=self.peer_spi,
@@ -650,7 +682,7 @@ class IkeSa(object):
         self.abort_on_error_notifies(response)
 
         # process the IKE_SA negotiation payloads
-        self._process_ike_sa_negotiation_response(response)
+        self._process_ike_sa_negotiation_response(response, self.request.get_payload(Payload.Type.NONCE).nonce)
 
         # save the message for later authentication
         self.ike_sa_init_res_data = response.to_bytes()
@@ -1098,25 +1130,38 @@ class IkeSa(object):
     def process_create_child_sa_response(self, response):
         """ Processes a CREATE_CHILD_SA response message
         """
-        self._check_in_states(response, [IkeSa.State.NEW_CHILD_REQ_SENT, IkeSa.State.REK_CHILD_REQ_SENT])
+        self._check_in_states(response, [IkeSa.State.NEW_CHILD_REQ_SENT, IkeSa.State.REK_CHILD_REQ_SENT,
+                                         IkeSa.State.REK_IKE_SA_REQ_SENT])
         self.abort_on_error_notifies(response, True, ignore=[PayloadNOTIFY.Type.TS_UNACCEPTABLE,
                                                              PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN,
                                                              PayloadNOTIFY.Type.CHILD_SA_NOT_FOUND,
-                                                             PayloadNOTIFY.Type.TEMPORARY_FAILURE])
+                                                             PayloadNOTIFY.Type.TEMPORARY_FAILURE,
+                                                             PayloadNOTIFY.Type.INVALID_KE_PAYLOAD])
 
-        self._process_create_child_sa_negotiation_res(response)
-
-        if self.state == IkeSa.State.NEW_CHILD_REQ_SENT:
-            self.state = IkeSa.State.ESTABLISHED
-            return None
-        elif self.state == IkeSa.State.REK_CHILD_REQ_SENT:
-            self.state = IkeSa.State.ESTABLISHED
-            # CHILD_SA might have been deleted while we were waiting for our response
-            if self.rekeying_child_sa not in self.child_sas:
-                self.log_warning('CHILD_SA {} was already deleted. Not starting a DELETE exchange'
-                                 ''.format(self.rekeying_child_sa))
+        if self.state == IkeSa.State.REK_IKE_SA_REQ_SENT:
+            # process the IKE_SA negotiation payloads
+            self.new_ike_sa._process_ike_sa_negotiation_response(response, self.request.get_payload(Payload.Type.NONCE,
+                                                                                                    True).nonce,
+                                                                 encrypted=True,
+                                                                 old_sk_d=self.ike_sa_keyring.sk_d)
+            self.new_ike_sa.child_sas = self.child_sas
+            self.child_sas = []
+            self.state = IkeSa.State.REKEYED
+            self.new_ike_sa.state = IkeSa.State.ESTABLISHED
+            return self.generate_delete_ike_sa_request()
+        else:
+            self._process_create_child_sa_negotiation_res(response)
+            if self.state == IkeSa.State.NEW_CHILD_REQ_SENT:
+                self.state = IkeSa.State.ESTABLISHED
                 return None
-            return self.generate_delete_child_sa_request(self.rekeying_child_sa)
+            elif self.state == IkeSa.State.REK_CHILD_REQ_SENT:
+                self.state = IkeSa.State.ESTABLISHED
+                # CHILD_SA might have been deleted while we were waiting for our response
+                if self.rekeying_child_sa not in self.child_sas:
+                    self.log_warning('CHILD_SA {} was already deleted. Not starting a DELETE exchange'
+                                     ''.format(self.rekeying_child_sa))
+                    return None
+                return self.generate_delete_child_sa_request(self.rekeying_child_sa)
 
     def process_informational_response(self, response):
         """ Processes a CREATE_CHILD_SA response message
@@ -1172,7 +1217,7 @@ class IkeSa(object):
         return self.request
 
     def generate_delete_ike_sa_request(self):
-        assert (self.state == IkeSa.State.ESTABLISHED)
+        assert (self.state in (IkeSa.State.ESTABLISHED, IkeSa.State.REKEYED))
 
         # generate the message
         self.request = Message(spi_i=self.spi_i,

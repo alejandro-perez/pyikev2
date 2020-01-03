@@ -785,8 +785,7 @@ class PayloadDELETE(Payload):
         return PayloadDELETE(protocol_id, spis, critical=critical)
 
     def to_bytes(self):
-        data = bytearray(pack('>BBH', self.protocol_id, len(self.spis[0]) if self.spis else 0,
-                              len(self.spis)))
+        data = bytearray(pack('>BBH', self.protocol_id, len(self.spis[0]) if self.spis else 0, len(self.spis)))
         for spi in self.spis:
             data += spi
         return data
@@ -914,15 +913,13 @@ class Message:
                 payload_sk = message.payloads.pop()
 
                 # check integrity
-                checksum = crypto.integrity.compute(crypto.sk_a,
-                                                    data[:-crypto.integrity.hash_size])
+                checksum = crypto.integrity.compute(crypto.sk_a, data[:-crypto.integrity.hash_size])
                 if checksum != data[-crypto.integrity.hash_size:]:
                     raise InvalidSyntax('CHECKSUM ERROR')
 
                 # parse decrypted payloads and remove Payload SK
                 message.iv, decrypted_data = payload_sk.decrypt(crypto)
-                message.encrypted_payloads = cls._parse_payloads(decrypted_data,
-                                                                 payload_sk.next_payload_type)
+                message.encrypted_payloads = cls._parse_payloads(decrypted_data, payload_sk.next_payload_type)
 
         return message
 
@@ -975,8 +972,7 @@ class Message:
 
         # calculate checksum (if payload SK is present)
         if self.crypto is not None:
-            checksum = self.crypto.integrity.compute(self.crypto.sk_a,
-                                                     data[:-self.crypto.integrity.hash_size])
+            checksum = self.crypto.integrity.compute(self.crypto.sk_a, data[:-self.crypto.integrity.hash_size])
             pack_into('>{}s'.format(len(checksum)), data, len(data) - len(checksum), checksum)
 
         return data

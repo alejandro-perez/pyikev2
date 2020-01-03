@@ -506,3 +506,25 @@ class TestIkeSa(TestCase):
         req = self.ike_sa1.process_message(delete_res)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.DELETED)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.DELETED)
+
+    @patch('xfrm.Xfrm')
+    def test_rekey_ike_sa(self, MockClass1):
+        self.test_initial_exchanges_transport()
+        rekey_req = self.ike_sa1.process_expire_ike_sa(hard=False)
+        rekey_res = self.ike_sa2.process_message(rekey_req)
+        delete_req = self.ike_sa1.process_message(rekey_res)
+        self.assertEqual(len(self.ike_sa1.child_sas), 0)
+        rekey_request = self.ike_sa1.new_ike_sa.process_expire(self.ike_sa1.new_ike_sa.child_sas[0].inbound_spi)
+        rekey_response = self.ike_sa2.new_ike_sa.process_message(rekey_request)
+        self.assertIsNotNone(rekey_req)
+
+    @patch('xfrm.Xfrm')
+    def test_rekey_ike_sa_from_responder(self, MockClass1):
+        self.test_initial_exchanges_transport()
+        rekey_req = self.ike_sa2.process_expire_ike_sa(hard=False)
+        rekey_res = self.ike_sa1.process_message(rekey_req)
+        delete_req = self.ike_sa2.process_message(rekey_res)
+        self.assertEqual(len(self.ike_sa2.child_sas), 0)
+        rekey_request = self.ike_sa2.new_ike_sa.process_expire(self.ike_sa2.new_ike_sa.child_sas[0].inbound_spi)
+        rekey_response = self.ike_sa1.new_ike_sa.process_message(rekey_request)
+        self.assertIsNotNone(rekey_req)
