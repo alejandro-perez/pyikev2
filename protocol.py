@@ -77,6 +77,8 @@ class IkeSa(object):
         self.ike_sa_init_res_data = None
         self.request = None
         self.creating_child_sa = None
+        self.rekeying_child_sa = None
+        self.deleting_child_sa = None
         self.acquire = None
         self.new_ike_sa = None
         self.xfrm = xfrm.Xfrm()
@@ -640,11 +642,28 @@ class IkeSa(object):
         """ This method process a CREATE CHILD SA negotiation request
         """
         # get some relevant payloads from the message
+        response_payloads = []
         try:
-            response_payloads = []
             request_payload_sa = request.get_payload(Payload.Type.SA, True)
             request_payload_tsi = request.get_payload(Payload.Type.TSi, True)
             request_payload_tsr = request.get_payload(Payload.Type.TSr, True)
+
+            # handle REKEY specifics
+            rekey_notify = request.get_notifies(PayloadNOTIFY.Type.REKEY_SA, encrypted=True)
+            if rekey_notify:
+                # use only the first notification
+                rekeyed_child_sa = self.get_child_sa(rekey_notify[0].spi)
+                if rekeyed_child_sa is None:
+                    raise ChildSaNotFound('The indicated SPI could not be found', spi=rekey_notify[0].spi,
+                                          protocol=rekey_notify[0].protocol_id)
+                # if we are deleting that SA, return TEMPORARY_FAILURE
+                if self.state == IkeSa.State.DEL_CHILD_REQ_SENT and rekeyed_child_sa == self.deleting_child_sa:
+                    raise TemporaryFailure('The indicated SPI is already being deleted')
+                # if we are rekeying that SA, note there will be a redundant SA
+                if self.state == IkeSa.State.REK_CHILD_REQ_SENT and rekeyed_child_sa == self.rekeying_child_sa:
+                    self.log_warning('REDUNDANT CHILD BEING CREATED')
+                response_payloads.append(PayloadNOTIFY(request_payload_sa.proposals[0].protocol_id,
+                                                       PayloadNOTIFY.Type.REKEY_SA, rekeyed_child_sa.inbound_spi, b''))
 
             # source of nonces is different for the initial exchange
             if request.exchange_type == Message.Exchange.IKE_AUTH:
@@ -712,7 +731,7 @@ class IkeSa(object):
             response_payloads.append(PayloadTSr([chosen_tsr]))
 
             return response_payloads
-        except (TsUnacceptable, NoProposalChosen) as ex:
+        except (TsUnacceptable, NoProposalChosen, ChildSaNotFound, TemporaryFailure) as ex:
             self.log_warning('CHILD_SA negotiation failed. {}'.format(ex))
             return [PayloadNOTIFY.from_exception(ex)]
         # Generic error happening while negotiating the CHILD_SA should be reported as NO_PROPOSAL_CHOSEN
@@ -911,6 +930,7 @@ class IkeSa(object):
         # generate the CHILD_SA negotiation payloads
         child_sa_payloads = self._generate_child_sa_negotiation_req(child_sa)
         if rekeyed_child_sa is not None:
+            self.rekeying_child_sa = rekeyed_child_sa
             child_sa_payloads.append(PayloadNOTIFY(rekeyed_child_sa.proposal.protocol_id, PayloadNOTIFY.Type.REKEY_SA,
                                                    rekeyed_child_sa.inbound_spi, b''))
 
@@ -960,6 +980,7 @@ class IkeSa(object):
 
         # transition
         self.state = IkeSa.State.DEL_CHILD_REQ_SENT
+        self.deleting_child_sa = child_sa
         return self.request
 
     def process_informational_request(self, request):
@@ -1021,27 +1042,7 @@ class IkeSa(object):
 
         # if it concerns to CHILD_SAs
         else:
-            # if this is a rekey, check if CHILD SA exists and add notification
-            response_payloads = []
-            try:
-                rekey_notify = request.get_notifies(PayloadNOTIFY.Type.REKEY_SA, encrypted=True)
-                if rekey_notify:
-                    # use only the first notification
-                    rekeyed_child_sa = self.get_child_sa(rekey_notify[0].spi)
-                    if rekeyed_child_sa is None:
-                        raise ChildSaNotFound('The indicated SPI could not be found', spi=rekey_notify[0].spi,
-                                              protocol=rekey_notify[0].protocol_id)
-                    # if we are deleting that SA, return TEMPORARY_FAILURE
-                    if self.state == IkeSa.State.DEL_CHILD_REQ_SENT:
-                        deleting_spi = self.request.get_payload(Payload.Type.DELETE, True).spis[0]
-                        if deleting_spi == rekeyed_child_sa.inbound_spi:
-                            raise TemporaryFailure('The indicated SPI is already being deleted')
-                    response_payloads.append(PayloadNOTIFY(proposal.protocol_id, PayloadNOTIFY.Type.REKEY_SA,
-                                                           rekeyed_child_sa.inbound_spi, b''))
-                response_payloads += self._process_create_child_sa_negotiation_req(request)
-            except IkeSaError as ex:
-                self.log_warning('Rekeying CHILD_SA negotiation failed. {}'.format(ex))
-                response_payloads = [PayloadNOTIFY.from_exception(ex)]
+            response_payloads = self._process_create_child_sa_negotiation_req(request)
 
         return Message(spi_i=request.spi_i,
                        spi_r=request.spi_r,
@@ -1078,14 +1079,12 @@ class IkeSa(object):
             return None
         elif self.state == IkeSa.State.REK_CHILD_REQ_SENT:
             self.state = IkeSa.State.ESTABLISHED
-            rekeyed_spi = self.request.get_notifies(PayloadNOTIFY.Type.REKEY_SA, True)[0].spi
-            rekeyed_child_sa = self.get_child_sa(rekeyed_spi)
             # CHILD_SA might have been deleted while we were waiting for our response
-            if rekeyed_child_sa is None:
+            if self.rekeying_child_sa not in self.child_sas:
                 self.log_warning('CHILD_SA {} was already deleted. Not starting a DELETE exchange'
-                                 ''.format(hexstring(rekeyed_spi)))
+                                 ''.format(self.rekeying_child_sa))
                 return None
-            return self.generate_delete_child_sa_request(rekeyed_child_sa)
+            return self.generate_delete_child_sa_request(self.rekeying_child_sa)
 
     def process_informational_response(self, response):
         """ Processes a CREATE_CHILD_SA response message
@@ -1094,19 +1093,17 @@ class IkeSa(object):
         self.abort_on_error_notifies(response, True)
 
         if self.state == IkeSa.State.DEL_CHILD_REQ_SENT:
-            my_delete_spi = self.request.get_payload(Payload.Type.DELETE, True).spis[0]
-            deleting_child_sa = self.get_child_sa(my_delete_spi)
-            if deleting_child_sa is None:
+            if self.deleting_child_sa not in self.child_sas:
                 self.log_warning('CHILD_SA {} was already deleted by the peer. Omitting actual deletion'
-                                 ''.format(hexstring(my_delete_spi)))
+                                 ''.format(self.deleting_child_sa))
             else:
                 # delete our side of the
-                self.xfrm.delete_sa(self.peer_addr, deleting_child_sa.proposal.protocol_id,
-                                    deleting_child_sa.outbound_spi)
-                self.xfrm.delete_sa(self.my_addr, deleting_child_sa.proposal.protocol_id,
-                                    deleting_child_sa.inbound_spi)
-                self.child_sas.remove(deleting_child_sa)
-                self.log_info('Removing CHILD_SA {}'.format(deleting_child_sa))
+                self.xfrm.delete_sa(self.peer_addr, self.deleting_child_sa.proposal.protocol_id,
+                                    self.deleting_child_sa.outbound_spi)
+                self.xfrm.delete_sa(self.my_addr, self.deleting_child_sa.proposal.protocol_id,
+                                    self.deleting_child_sa.inbound_spi)
+                self.child_sas.remove(self.deleting_child_sa)
+                self.log_info('Removing CHILD_SA {}'.format(self.deleting_child_sa))
             self.state = IkeSa.State.ESTABLISHED
             return None
 
