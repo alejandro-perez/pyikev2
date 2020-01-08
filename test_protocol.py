@@ -18,7 +18,7 @@ from protocol import IkeSa
 
 logging.indent = 2
 logging.basicConfig(level=logging.DEBUG,
-                    format='[%(asctime)s.%(msecs)03d] [%(levelname)-6s] %(message)s',
+                    format='[%(asctime)s.%(msecs)03d] [%(levelname)-7s] %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S')
 
 
@@ -394,9 +394,9 @@ class TestIkeSa(TestCase):
         create_child_sa_req = self.ike_sa1.process_expire(self.ike_sa1.child_sas[0].inbound_spi)
         create_child_sa_res = self.ike_sa2.process_message(create_child_sa_req)
         delete_child_sa_req = self.ike_sa1.process_message(create_child_sa_res)
-        self.assertIsNotNone(delete_child_sa_req)
+        self.assertIsNone(delete_child_sa_req)
         self.assertMessageHasNotification(create_child_sa_res, self.ike_sa2, PayloadNOTIFY.Type.CHILD_SA_NOT_FOUND)
-        self.assertEqual(self.ike_sa1.state, IkeSa.State.DEL_CHILD_REQ_SENT)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
 
     @patch('xfrm.Xfrm')
@@ -435,8 +435,9 @@ class TestIkeSa(TestCase):
         delete_response = self.ike_sa1.process_message(delete_request)
         self.assertMessageHasNotification(rekey_response, self.ike_sa2, PayloadNOTIFY.Type.TEMPORARY_FAILURE)
         delete_request_alice = self.ike_sa1.process_message(rekey_response)
-        self.ike_sa2.process_message(delete_response)
+        request_bob = self.ike_sa2.process_message(delete_response)
         self.assertIsNone(delete_request_alice)
+        self.assertIsNone(request_bob)
         self.assertEqual(len(self.ike_sa1.child_sas), 0)
         self.assertEqual(len(self.ike_sa2.child_sas), 0)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
@@ -465,33 +466,29 @@ class TestIkeSa(TestCase):
         rekey_request_bob = self.ike_sa2.process_expire(self.ike_sa2.child_sas[0].inbound_spi)
         rekey_response_bob = self.ike_sa2.process_message(rekey_request_alice)
         rekey_response_alice = self.ike_sa1.process_message(rekey_request_bob)
+        self.assertMessageHasNotification(rekey_response_alice, self.ike_sa1, PayloadNOTIFY.Type.TEMPORARY_FAILURE)
+        self.assertMessageHasNotification(rekey_response_bob, self.ike_sa2, PayloadNOTIFY.Type.TEMPORARY_FAILURE)
         delete_request_alice = self.ike_sa1.process_message(rekey_response_bob)
         delete_request_bob = self.ike_sa2.process_message(rekey_response_alice)
-        self.assertEqual(len(self.ike_sa1.child_sas), 3)
-        self.assertEqual(len(self.ike_sa2.child_sas), 3)
-        delete_response_alice = self.ike_sa1.process_message(delete_request_bob)
-        delete_response_bob = self.ike_sa2.process_message(delete_request_alice)
-        self.assertEqual(self.ike_sa1.state, IkeSa.State.DEL_CHILD_REQ_SENT)
-        self.assertEqual(self.ike_sa2.state, IkeSa.State.DEL_CHILD_REQ_SENT)
-        self.assertEqual(len(self.ike_sa1.child_sas), 2)
-        self.assertEqual(len(self.ike_sa2.child_sas), 2)
-        self.ike_sa1.process_message(delete_response_bob)
-        self.ike_sa2.process_message(delete_response_alice)
+        self.assertEqual(len(self.ike_sa1.child_sas), 1)
+        self.assertEqual(len(self.ike_sa2.child_sas), 1)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
-        self.assertEqual(len(self.ike_sa1.child_sas), 2)
-        self.assertEqual(len(self.ike_sa2.child_sas), 2)
+        self.assertIsNone(delete_request_alice)
+        self.assertIsNone(delete_request_bob)
 
     @patch('xfrm.Xfrm')
     def test_dead_peer_detection(self, MockClass1):
         self.test_initial_exchanges_transport()
-        dpd_req = self.ike_sa1.process_dead_peer_detection_timer()
+        self.ike_sa1.start_dpd_at = 0
+        dpd_req = self.ike_sa1.check_dead_peer_detection_timer()
         dpd_res = self.ike_sa2.process_message(dpd_req)
         request = self.ike_sa1.process_message(dpd_res)
         self.assertIsNone(request)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
-        dpd_req = self.ike_sa2.process_dead_peer_detection_timer()
+        self.ike_sa2.start_dpd_at = 0
+        dpd_req = self.ike_sa2.check_dead_peer_detection_timer()
         dpd_res = self.ike_sa1.process_message(dpd_req)
         request = self.ike_sa2.process_message(dpd_res)
         self.assertIsNone(request)
@@ -501,7 +498,8 @@ class TestIkeSa(TestCase):
     @patch('xfrm.Xfrm')
     def test_delete_ike_sa(self, MockClass1):
         self.test_initial_exchanges_transport()
-        delete_req = self.ike_sa1.process_expire_ike_sa(hard=True)
+        self.ike_sa1.rekey_ike_sa_at = 0
+        delete_req = self.ike_sa1.check_rekey_ike_sa_timer(hard=True)
         delete_res = self.ike_sa2.process_message(delete_req)
         req = self.ike_sa1.process_message(delete_res)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.DELETED)
@@ -510,21 +508,58 @@ class TestIkeSa(TestCase):
     @patch('xfrm.Xfrm')
     def test_rekey_ike_sa(self, MockClass1):
         self.test_initial_exchanges_transport()
-        rekey_req = self.ike_sa1.process_expire_ike_sa(hard=False)
+        self.ike_sa1.rekey_ike_sa_at = 0
+        rekey_req = self.ike_sa1.check_rekey_ike_sa_timer(hard=False)
         rekey_res = self.ike_sa2.process_message(rekey_req)
         delete_req = self.ike_sa1.process_message(rekey_res)
         self.assertEqual(len(self.ike_sa1.child_sas), 0)
         rekey_request = self.ike_sa1.new_ike_sa.process_expire(self.ike_sa1.new_ike_sa.child_sas[0].inbound_spi)
         rekey_response = self.ike_sa2.new_ike_sa.process_message(rekey_request)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.DEL_AFTER_REKEY_IKE_SA_REQ_SENT)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.REKEYED)
         self.assertIsNotNone(rekey_req)
 
     @patch('xfrm.Xfrm')
     def test_rekey_ike_sa_from_responder(self, MockClass1):
         self.test_initial_exchanges_transport()
-        rekey_req = self.ike_sa2.process_expire_ike_sa(hard=False)
+        self.ike_sa2.rekey_ike_sa_at = 0
+        rekey_req = self.ike_sa2.check_rekey_ike_sa_timer(hard=False)
         rekey_res = self.ike_sa1.process_message(rekey_req)
         delete_req = self.ike_sa2.process_message(rekey_res)
         self.assertEqual(len(self.ike_sa2.child_sas), 0)
         rekey_request = self.ike_sa2.new_ike_sa.process_expire(self.ike_sa2.new_ike_sa.child_sas[0].inbound_spi)
         rekey_response = self.ike_sa1.new_ike_sa.process_message(rekey_request)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.DEL_AFTER_REKEY_IKE_SA_REQ_SENT)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.REKEYED)
         self.assertIsNotNone(rekey_req)
+
+    @patch('xfrm.Xfrm')
+    def test_simultaneous_rekey_ike_sa(self, MockClass1):
+        self.test_initial_exchanges_transport()
+        self.ike_sa1.rekey_ike_sa_at = 0
+        self.ike_sa2.rekey_ike_sa_at = 0
+        rekey_req_alice = self.ike_sa1.check_rekey_ike_sa_timer(hard=False)
+        rekey_req_bob = self.ike_sa2.check_rekey_ike_sa_timer(hard=False)
+        rekey_res_alice = self.ike_sa1.process_message(rekey_req_bob)
+        rekey_res_bob = self.ike_sa2.process_message(rekey_req_alice)
+        self.assertMessageHasNotification(rekey_res_alice, self.ike_sa1, PayloadNOTIFY.Type.TEMPORARY_FAILURE)
+        self.assertMessageHasNotification(rekey_res_bob, self.ike_sa2, PayloadNOTIFY.Type.TEMPORARY_FAILURE)
+        delete_req_alice = self.ike_sa1.process_message(rekey_res_bob)
+        delete_req_bob = self.ike_sa2.process_message(rekey_res_alice)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.DEL_IKE_SA_REQ_SENT)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.DEL_IKE_SA_REQ_SENT)
+
+    @patch('xfrm.Xfrm')
+    def test_simultaneous_rekey_ike_sa_rekey_child(self, MockClass1):
+        self.test_initial_exchanges_transport()
+        self.ike_sa1.rekey_ike_sa_at = 0
+        rekey_ike_sa_req = self.ike_sa1.check_rekey_ike_sa_timer(hard=False)
+        rekey_child_sa_req = self.ike_sa2.process_expire(self.ike_sa2.child_sas[0].inbound_spi, hard=False)
+        rekey_ike_sa_res = self.ike_sa2.process_message(rekey_ike_sa_req)
+        rekey_child_sa_res = self.ike_sa1.process_message(rekey_child_sa_req)
+        self.assertMessageHasNotification(rekey_child_sa_res, self.ike_sa1, PayloadNOTIFY.Type.TEMPORARY_FAILURE)
+        self.assertMessageHasNotification(rekey_ike_sa_res, self.ike_sa2, PayloadNOTIFY.Type.TEMPORARY_FAILURE)
+        delete_ike_sa_req = self.ike_sa1.process_message(rekey_ike_sa_res)
+        delete_child_sa_req = self.ike_sa2.process_message(rekey_child_sa_res)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.DEL_IKE_SA_REQ_SENT)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
