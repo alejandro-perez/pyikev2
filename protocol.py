@@ -13,7 +13,7 @@ import traceback
 from collections import namedtuple
 from ipaddress import ip_address, ip_network
 from select import select
-from struct import pack, unpack
+from struct import unpack
 
 import xfrm
 from crypto import Cipher, Crypto, DiffieHellman, Integrity, Prf

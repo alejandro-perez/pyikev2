@@ -34,7 +34,8 @@ class TestIkeSa(TestCase):
                     "id": "alice@openikev2",
                     "psk": "testing",
                     "dh": [14],
-                    "integ": ["sha256"],
+                    "integ": ["sha512"],
+                    "prf": ["sha512"],
                     "protect": [{
                         "index": 1,
                         "ip_proto": "tcp",
@@ -53,6 +54,8 @@ class TestIkeSa(TestCase):
                     "id": "bob@openikev2",
                     "psk": "testing",
                     "dh": [14],
+                    "integ": ["sha512"],
+                    "prf": ["sha512"],
                     "protect": [{
                         "index": 2,
                         "ip_proto": "tcp",
