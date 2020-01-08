@@ -64,8 +64,6 @@ class IkeSa(object):
 
     MAX_RETRANSMISSIONS = 3
     RETRANSMISSION_DELAY = 2
-    DPD_DELAY = 60
-    IKE_SA_LIFETIME = 8
 
     def __init__(self, is_initiator, peer_spi, configuration, my_addr, peer_addr):
         self.state = IkeSa.State.INITIAL
@@ -93,8 +91,8 @@ class IkeSa(object):
         self.xfrm = xfrm.Xfrm()
         self.retransmit_at = 0
         self.retransmissions = 0
-        self.start_dpd_at = time.time() + IkeSa.DPD_DELAY
-        self.rekey_ike_sa_at = time.time() + IkeSa.IKE_SA_LIFETIME + random.randint(0, 5)
+        self.start_dpd_at = time.time() + configuration['dpd']
+        self.rekey_ike_sa_at = time.time() + configuration['lifetime'] + random.randint(0, 5)
 
     def __str__(self):
         return hexstring(self.my_spi)
@@ -336,7 +334,7 @@ class IkeSa(object):
             return None
 
         # receiving any kind of message from the peer resets the DPD timer
-        self.start_dpd_at = time.time() + IkeSa.DPD_DELAY
+        self.start_dpd_at = time.time() + self.configuration['dpd']
         if message.is_request:
             return self._process_request(message, addr)
         else:
@@ -348,6 +346,7 @@ class IkeSa(object):
         except StopIteration:
             self.log_warning('Could not find a matching "protect" configuration for received ACQUIRE.')
             return None
+        self.log_info("Received acquire from policy with index={}".format(index))
         # Create the ChildSa object with the values we know so far
         child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, proposal=None, tsi=tsi, tsr=tsr,
                            mode=ipsec_conf['mode'], ipsec_conf=ipsec_conf)
@@ -373,6 +372,7 @@ class IkeSa(object):
             self.log_warning("Received expire for unknown CHILD_SA with spi {}".format(hexstring(spi)))
             return None
 
+        self.log_info("Received expire for CHILD_SA {}. Hard={}".format(child_sa, hard))
         # if this is a soft expire, rekey the CHILD SA
         if not hard:
             # Create the ChildSa object with the values we know so far
@@ -399,6 +399,7 @@ class IkeSa(object):
         """ Creates an empty INFORMATIONAL message for Dead Peer Detection
         """
         if self.rekey_ike_sa_at < time.time() and self.state == IkeSa.State.ESTABLISHED:
+            self.log_info("Received expire for IKE_SA. Hard={}".format(hard))
             if hard:
                 request = self.generate_delete_ike_sa_request()
             else:
@@ -782,7 +783,7 @@ class IkeSa(object):
                 encr_transform = chosen_child_proposal.get_transform(Transform.Type.ENCR).id
             else:
                 encr_transform = None
-            lifetime = ipsec_conf['lifetime'] + random.randint(0, 5)
+            lifetime = ipsec_conf['lifetime'] + random.randint(0, 5) if ipsec_conf['lifetime'] != -1 else -1
             self.xfrm.create_sa(self.my_addr, self.peer_addr, chosen_tsr, chosen_tsi,
                                 chosen_child_proposal.protocol_id,
                                 child_sa.outbound_spi, encr_transform, child_sa_keyring.sk_er,
@@ -793,7 +794,7 @@ class IkeSa(object):
                                 child_sa.inbound_spi, encr_transform, child_sa_keyring.sk_ei,
                                 chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
                                 child_sa_keyring.sk_ai, mode, lifetime)
-            self.log_info('Created CHILD_SA {}'.format(child_sa))
+            self.log_info('Created CHILD_SA {} with lifetime = {}'.format(child_sa, lifetime))
 
             # generate the response Payload SA
             chosen_child_proposal.spi = child_sa.inbound_spi
@@ -837,7 +838,6 @@ class IkeSa(object):
                 self.retransmissions += 1
                 self.retransmit_at = self.retransmit_at + self.retransmissions * IkeSa.RETRANSMISSION_DELAY
                 ordinal = lambda n: "%d%s" % (n, "tsnrhtdd"[(n / 10 % 10 != 1) * (n % 10 < 4) * n % 10::4])
-
                 self.log_info('Retransmitting last request for {} time'.format(ordinal(self.retransmissions)))
                 return self.request.to_bytes()
         return None
@@ -969,7 +969,7 @@ class IkeSa(object):
         encr_transform = None
         if chosen_child_proposal.protocol_id == Proposal.Protocol.ESP:
             encr_transform = chosen_child_proposal.get_transform(Transform.Type.ENCR).id
-        lifetime = ipsec_conf['lifetime'] + random.randint(0, 5)
+        lifetime = ipsec_conf['lifetime'] + random.randint(0, 5) if ipsec_conf['lifetime'] != -1 else -1
         self.xfrm.create_sa(self.my_addr, self.peer_addr, chosen_tsi, chosen_tsr, chosen_child_proposal.protocol_id,
                             child_sa.outbound_spi, encr_transform, child_sa_keyring.sk_ei,
                             chosen_child_proposal.get_transform(Transform.Type.INTEG).id,

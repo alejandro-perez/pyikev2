@@ -88,6 +88,8 @@ class Configuration(object):
         default_id = 'https://github.com/alejandro-perez/pyikev2'
         result = {
             'psk': conf_dict.get('psk', 'whatever').encode(),
+            'lifetime': int(conf_dict.get('lifetime', 15 * 60)),
+            'dpd': int(conf_dict.get('dpd', 60)),
             'id': PayloadID(PayloadID.Type.ID_FQDN, conf_dict.get('id', default_id).encode()),
             'peer_id': PayloadID(PayloadID.Type.ID_FQDN, conf_dict.get('id', default_id).encode()),
             'encr': self._load_crypto_algs('encr', conf_dict.get('encr', ['aes256']), _encr_name_to_transform),

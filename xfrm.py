@@ -354,7 +354,7 @@ class Xfrm(NetlinkProtocol):
         try:
             self.send_recv(XFRM_MSG_DELSA, (NLM_F_REQUEST | NLM_F_ACK), xfrm_id)
         except NetlinkError as ex:
-            logging.error('Could not delete IPsec SA with SPI: {}. {}'.format(hexstring(spi), ex))
+            logging.warning('Could not delete IPsec SA with SPI: {}. {}'.format(hexstring(spi), ex))
 
     def create_policies(self, my_addr, peer_addr, ike_conf):
         for ipsec_conf in ike_conf['protect']:
