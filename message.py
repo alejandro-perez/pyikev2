@@ -640,8 +640,7 @@ class TrafficSelector(object):
             start_addr, end_addr = unpack_from('>{0}s{0}s'.format(addr_len), data, 8)
         except struct_error:
             raise InvalidSyntax('Error parsing Traffic selector.')
-        return TrafficSelector(ts_type, ip_proto, start_port, end_port, ip_address(start_addr),
-                               ip_address(end_addr))
+        return TrafficSelector(ts_type, ip_proto, start_port, end_port, ip_address(start_addr), ip_address(end_addr))
 
     def to_bytes(self):
         addr_len = (4 if self.ts_type == TrafficSelector.Type.TS_IPV4_ADDR_RANGE else 16)
@@ -716,8 +715,7 @@ class PayloadTS(Payload):
 
     def to_dict(self):
         result = super(PayloadTS, self).to_dict()
-        result.update(OrderedDict([
-            ('traffic_selectors', [x.to_dict() for x in self.traffic_selectors])]))
+        result.update(OrderedDict([('traffic_selectors', [x.to_dict() for x in self.traffic_selectors])]))
         return result
 
 
@@ -864,9 +862,7 @@ class Message:
                 # offset is increased in any case
                 payloads.append(payload)
             except KeyError:
-                logging.warning(
-                    'Unrecognized payload with type {}'.format(
-                        Payload.Type.safe_name(payload_type)))
+                logging.warning('Unrecognized payload with type {}'.format(Payload.Type.safe_name(payload_type)))
                 if critical:
                     raise UnsupportedCriticalPayload
 
