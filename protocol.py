@@ -367,7 +367,7 @@ class IkeSa(object):
 
     def process_acquire(self, tsi, tsr, index):
         if self.state not in (IkeSa.State.INITIAL, IkeSa.State.ESTABLISHED):
-            self.log_warning('Cannot process acquire while waiting for a response. Queuing')
+            self.log_debug('Cannot process acquire while waiting for a response. Queuing')
             self.pending_events.append((self.process_acquire, tsi, tsr, index))
             return None
         try:
@@ -391,13 +391,13 @@ class IkeSa(object):
         """ Creates a rekey CREATE_CHILD_SA message for creating a new CHILD or an INFORMATIONAL for deleting it
         """
         if self.state != IkeSa.State.ESTABLISHED:
-            self.log_warning('Cannot process expire while waiting for a response. Queuing')
+            self.log_debug('Cannot process expire while waiting for a response. Queuing')
             self.pending_events.append((self.process_expire, spi, hard))
             return None
 
         child_sa = self.get_child_sa(spi)
         if child_sa is None:
-            self.log_warning("Received expire for unknown CHILD_SA with spi {}".format(hexstring(spi)))
+            self.log_debug("Received expire for unknown CHILD_SA with spi {}".format(hexstring(spi)))
             return None
 
         self.log_info("Received expire for CHILD_SA {}. Hard={}".format(child_sa, hard))
