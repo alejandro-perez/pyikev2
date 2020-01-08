@@ -27,13 +27,15 @@ _encr_name_to_transform = {
 }
 
 _integ_name_to_transform = {
+    'sha256': Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA2_256_128),
+    'sha512': Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA2_512_256),
     'sha1': Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96),
-    'md5': Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_MD5_96),
 }
 
 _prf_name_to_transform = {
     'sha1': Transform(Transform.Type.PRF, Transform.PrfId.PRF_HMAC_SHA1),
-    'md5': Transform(Transform.Type.PRF, Transform.PrfId.PRF_HMAC_MD5),
+    'sha256': Transform(Transform.Type.PRF, Transform.PrfId.PRF_HMAC_SHA2_256),
+    'sha512': Transform(Transform.Type.PRF, Transform.PrfId.PRF_HMAC_SHA2_512),
 }
 
 _dh_name_to_transform = {
@@ -93,9 +95,9 @@ class Configuration(object):
             'id': PayloadID(PayloadID.Type.ID_FQDN, conf_dict.get('id', default_id).encode()),
             'peer_id': PayloadID(PayloadID.Type.ID_FQDN, conf_dict.get('id', default_id).encode()),
             'encr': self._load_crypto_algs('encr', conf_dict.get('encr', ['aes256']), _encr_name_to_transform),
-            'integ': self._load_crypto_algs('integ', conf_dict.get('integ', ['sha1']), _integ_name_to_transform),
-            'prf': self._load_crypto_algs('prf', conf_dict.get('prf', ['sha1']), _prf_name_to_transform),
-            'dh': self._load_crypto_algs('dh', conf_dict.get('dh', ['2']), _dh_name_to_transform),
+            'integ': self._load_crypto_algs('integ', conf_dict.get('integ', ['sha256']), _integ_name_to_transform),
+            'prf': self._load_crypto_algs('prf', conf_dict.get('prf', ['sha256']), _prf_name_to_transform),
+            'dh': self._load_crypto_algs('dh', conf_dict.get('dh', ['14']), _dh_name_to_transform),
         }
 
         ipsec_confs = []
@@ -130,7 +132,7 @@ class Configuration(object):
             'mode': self._load_from_dict(conf_dict.get('mode', 'transport'), _mode_name_to_enum),
             'ipsec_proto': self._load_from_dict(conf_dict.get('ipsec_proto', 'esp'), _ipsec_proto_name_to_enum),
             'encr': self._load_crypto_algs('encr', conf_dict.get('encr', ['aes256']), _encr_name_to_transform),
-            'integ': self._load_crypto_algs('integ', conf_dict.get('integ', ['sha1']), _integ_name_to_transform),
+            'integ': self._load_crypto_algs('integ', conf_dict.get('integ', ['sha256']), _integ_name_to_transform),
         }
 
     def get_ike_configuration(self, addr):

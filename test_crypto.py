@@ -13,8 +13,8 @@ __author__ = 'Alejandro Perez <alex@um.es>'
 
 class TestCrypto(unittest.TestCase):
     def test_dh(self):
-        dh1 = DiffieHellman(5)
-        dh2 = DiffieHellman(5)
+        dh1 = DiffieHellman(14)
+        dh2 = DiffieHellman(14)
         dh1.compute_secret(dh2.public_key)
         dh2.compute_secret(dh1.public_key)
         self.assertEqual(dh1.shared_secret, dh2.shared_secret)
@@ -50,9 +50,9 @@ class TestCrypto(unittest.TestCase):
                          b'\x0f[\xb1\xd3\'\t\x92\\\xb9\xd7(SS')
 
     def test_integrity(self):
-        integrity = Integrity(Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_MD5_96))
+        integrity = Integrity(Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA2_512_256))
         checksum = integrity.compute(b'supersecret', b'This is a long message')
-        self.assertEqual(checksum, b'\x8b\xe5&\xa5\xf84 \xa1D\x8c\x07\xb1')
+        self.assertEqual(checksum, b'\x0e\xb2\x8a\xa0N\x14\x0b$\x9a\x8c/\x9d<\x83\xd2\xf8\x94\x12\x1a\xbc\xd4b~\xd5\xd0\xa5\x02-\x0f\x8fcC')
 
 if __name__ == '__main__':
     unittest.main()

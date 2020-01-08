@@ -24,8 +24,9 @@ class EncrError(Exception):
 
 class Prf(object):
     _digestmod_dict = {
-        Transform.PrfId.PRF_HMAC_MD5: hashlib.md5,
         Transform.PrfId.PRF_HMAC_SHA1: hashlib.sha1,
+        Transform.PrfId.PRF_HMAC_SHA2_256: hashlib.sha3_256,
+        Transform.PrfId.PRF_HMAC_SHA2_512: hashlib.sha3_512,
     }
 
     def __init__(self, transform):
@@ -108,32 +109,6 @@ class Cipher:
 
 class DiffieHellman:
     _group_dict = {
-        # MODP768
-        Transform.DhId.DH_1:
-            'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1'
-            '29024E088A67CC74020BBEA63B139B22514A08798E3404DD'
-            'EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245'
-            'E485B576625E7EC6F44C42E9A63A3620FFFFFFFFFFFFFFFF',
-        # MODP1024
-        Transform.DhId.DH_2:
-            'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1'
-            '29024E088A67CC74020BBEA63B139B22514A08798E3404DD'
-            'EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245'
-            'E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED'
-            'EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE65381'
-            'FFFFFFFFFFFFFFFF',
-
-        # MODP1536
-        Transform.DhId.DH_5:
-            'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1'
-            '29024E088A67CC74020BBEA63B139B22514A08798E3404DD'
-            'EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245'
-            'E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED'
-            'EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3D'
-            'C2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F'
-            '83655D23DCA3AD961C62F356208552BB9ED529077096966D'
-            '670C354E4ABC9804F1746C08CA237327FFFFFFFFFFFFFFFF',
-
         # 14, MODP2048
         Transform.DhId.DH_14:
             'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1'
@@ -295,13 +270,14 @@ class DiffieHellman:
 
 class Integrity:
     _digestmod_dict = {
-        Transform.IntegId.AUTH_HMAC_MD5_96: hashlib.md5,
-        Transform.IntegId.AUTH_HMAC_SHA1_96: hashlib.sha1,
+        Transform.IntegId.AUTH_HMAC_SHA1_96: (hashlib.sha1, 96),
+        Transform.IntegId.AUTH_HMAC_SHA2_256_128: (hashlib.sha256, 128),
+        Transform.IntegId.AUTH_HMAC_SHA2_512_256: (hashlib.sha512, 256),
     }
 
     def __init__(self, transform):
         assert(transform.type == Transform.Type.INTEG)
-        self.hasher = self._digestmod_dict[transform.id]
+        self.hasher, self.keybits = self._digestmod_dict[transform.id]
 
     @property
     def key_size(self):
@@ -310,7 +286,7 @@ class Integrity:
     @property
     def hash_size(self):
         # Hardcoded as we only support _96 algorithms so far
-        return 96 // 8
+        return self.keybits // 8
 
     def compute(self, key, data):
         m = HMAC(key, data, digestmod=self.hasher)

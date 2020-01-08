@@ -33,7 +33,8 @@ class TestIkeSa(TestCase):
                 "192.168.0.2": {
                     "id": "alice@openikev2",
                     "psk": "testing",
-                    "dh": [5],
+                    "dh": [14],
+                    "integ": ["sha256"],
                     "protect": [{
                         "index": 1,
                         "ip_proto": "tcp",
@@ -41,7 +42,7 @@ class TestIkeSa(TestCase):
                         "lifetime": 5,
                         "peer_port": 0,
                         "ipsec_proto": "esp",
-                        "encr": ["aes256", "aes128"]
+                        "encr": ["aes256", "aes128"],
                     }]
                 }
             })
@@ -51,7 +52,7 @@ class TestIkeSa(TestCase):
                 "192.168.0.1": {
                     "id": "bob@openikev2",
                     "psk": "testing",
-                    "dh": [5],
+                    "dh": [14],
                     "protect": [{
                         "index": 2,
                         "ip_proto": "tcp",
@@ -106,7 +107,7 @@ class TestIkeSa(TestCase):
 
     @patch('xfrm.Xfrm')
     def test_ike_sa_init_no_proposal_chosen(self, MockClass1):
-        self.ike_sa1.configuration['dh'][0].id = Transform.DhId.DH_1
+        self.ike_sa1.configuration['dh'][0].id = Transform.DhId.DH_18
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -121,7 +122,7 @@ class TestIkeSa(TestCase):
 
     @patch('xfrm.Xfrm')
     def test_ike_sa_init_invalid_ke(self, MockClass1):
-        self.ike_sa1.configuration['dh'].insert(0, Transform(Transform.Type.DH, Transform.DhId.DH_1))
+        self.ike_sa1.configuration['dh'].insert(0, Transform(Transform.Type.DH, Transform.DhId.DH_18))
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)

@@ -357,20 +357,17 @@ class TestMessage(TestPayloadMixin, unittest.TestCase):
             PayloadSA([])
 
     def test_encrypted(self):
-        transform1 = Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96)
+        transform1 = Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA2_256_128)
         transform2 = Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC, 256)
-        proposal1 = Proposal(
-            1, Proposal.Protocol.IKE, b'aspiwhatever',
-            [transform1, transform2])
+        proposal1 = Proposal(1, Proposal.Protocol.IKE, b'aspiwhatever', [transform1, transform2])
 
         payload_sa = PayloadSA([proposal1])
-        payload_nonce = PayloadNONCE()
+        payload_nonce = PayloadNONCE(b'123456789012341232132132131')
 
         crypto = Crypto(Cipher(Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC, 256)),
                         b'a' * 32,
-                        Integrity(
-                            Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96)),
-                        b'a' * 16,
+                        Integrity(Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA2_512_256)),
+                        b'a' * 8,
                         None, b'')
 
         message = Message(

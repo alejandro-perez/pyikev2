@@ -263,12 +263,14 @@ class Xfrm(NetlinkProtocol):
 
     _cipher_names = {
         None: b'none',
-        Transform.EncrId.ENCR_AES_CBC: b'aes',
+        Transform.EncrId.ENCR_AES_CBC: b'cbc(aes)',
     }
 
     _auth_names = {
-        Transform.IntegId.AUTH_HMAC_MD5_96: b'md5',
-        Transform.IntegId.AUTH_HMAC_SHA1_96: b'sha1',
+        Transform.IntegId.AUTH_HMAC_MD5_96: b'hmac(md5)',
+        Transform.IntegId.AUTH_HMAC_SHA1_96: b'hmac(sha1)',
+        Transform.IntegId.AUTH_HMAC_SHA2_256_128: b'hmac(sha256)',
+        Transform.IntegId.AUTH_HMAC_SHA2_512_256: b'hmac(sha512)',
     }
 
     netlink_family = socket.NETLINK_XFRM

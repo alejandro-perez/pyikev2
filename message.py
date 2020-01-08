@@ -146,6 +146,9 @@ class Transform:
         PRF_HMAC_MD5 = 1
         PRF_HMAC_SHA1 = 2
         PRF_HMAC_TIGER = 3
+        PRF_HMAC_SHA2_256 = 5
+        PRF_HMAC_SHA2_384 = 6
+        PRF_HMAC_SHA2_512 = 7
 
     class DhId(SafeIntEnum):
         DH_NONE = 0
@@ -165,6 +168,8 @@ class Transform:
         AUTH_DES_MAC = 3
         AUTH_KPDK_MD5 = 4
         AUTH_AES_XCBC_96 = 5
+        AUTH_HMAC_SHA2_256_128 = 12
+        AUTH_HMAC_SHA2_512_256 = 14
 
     class EsnId(SafeIntEnum):
         NO_ESN = 0
