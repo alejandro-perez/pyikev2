@@ -960,8 +960,8 @@ class IkeSa(object):
             response_payload_nonce = response.get_payload(Payload.Type.NONCE, True)
 
         # check mode is consistent
-        request_mode = (xfrm.Mode.TRANSPORT if request_transport_mode else xfrm.Mode.TUNNEL)
-        response_mode = (xfrm.Mode.TRANSPORT if response_transport_mode else xfrm.Mode.TUNNEL)
+        request_mode = xfrm.Mode.TRANSPORT if request_transport_mode else xfrm.Mode.TUNNEL
+        response_mode = xfrm.Mode.TRANSPORT if response_transport_mode else xfrm.Mode.TUNNEL
         if request_mode != response_mode:
             raise TsUnacceptable('Invalid mode requested {} vs {}'.format(request_mode, response_mode))
 
