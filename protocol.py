@@ -9,6 +9,7 @@ import os
 import random
 import socket
 import time
+import traceback
 from collections import namedtuple
 from ipaddress import ip_address, ip_network
 from select import select
@@ -267,14 +268,21 @@ class IkeSa(object):
 
         try:
             handler = _handler_dict[message.exchange_type]
-            response = handler(message)
         except KeyError:
             self.log_error("I don't know how to handle this message. Please, implement a handler for this exchange!")
             return None
+        try:
+            response = handler(message)
         except IkeSaError as ex:
             self.log_error(str(ex))
             response = self._generate_ike_error_response(message, ex)
             self.state = IkeSa.State.DELETED
+        except Exception as ex:
+            traceback.print_exc()
+            self.log_error(str(ex))
+            response = self._generate_ike_error_response(message, ex)
+            self.state = IkeSa.State.DELETED
+
 
         # if the message is successfully processed, increment expected message
         # ID and store response (for future retransmissions responses)
@@ -809,7 +817,7 @@ class IkeSa(object):
             self.log_warning('CHILD_SA negotiation failed. {}'.format(ex))
             return [PayloadNOTIFY.from_exception(ex)]
         # Generic error happening while negotiating the CHILD_SA should be reported as NO_PROPOSAL_CHOSEN
-        except IkeSaError as ex:
+        except (IkeSaError, xfrm.NetlinkError) as ex:
             self.log_warning('CHILD_SA negotiation failed. {}'.format(ex))
             return [PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN, b'', b'')]
 
