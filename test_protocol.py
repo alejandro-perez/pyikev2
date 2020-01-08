@@ -24,7 +24,7 @@ logging.basicConfig(level=logging.DEBUG,
 
 class TestIkeSa(TestCase):
     @patch('xfrm.Xfrm')
-    def setUp(self, MockClass1):
+    def setUp(self, mockclass):
         self.ip1 = ip_address("192.168.0.1")
         self.ip2 = ip_address("192.168.0.2")
         self.configuration1 = Configuration(
@@ -76,7 +76,7 @@ class TestIkeSa(TestCase):
         self.assertTrue(message.get_notifies(notification_type, ikesa.my_crypto is not None))
 
     @patch('xfrm.Xfrm')
-    def test_initial_exchanges_transport(self, MockClass1):
+    def test_initial_exchanges_transport(self, mockclass):
         # initial exchanges
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
@@ -92,7 +92,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 1)
 
     @patch('xfrm.Xfrm')
-    def test_create_child_ok(self, MockClass1):
+    def test_create_child_ok(self, mockclass):
         self.test_initial_exchanges_transport()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
@@ -106,7 +106,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 2)
 
     @patch('xfrm.Xfrm')
-    def test_ike_sa_init_no_proposal_chosen(self, MockClass1):
+    def test_ike_sa_init_no_proposal_chosen(self, mockclass):
         self.ike_sa1.configuration['dh'][0].id = Transform.DhId.DH_18
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
@@ -121,7 +121,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
     @patch('xfrm.Xfrm')
-    def test_ike_sa_init_invalid_ke(self, MockClass1):
+    def test_ike_sa_init_invalid_ke(self, mockclass):
         self.ike_sa1.configuration['dh'].insert(0, Transform(Transform.Type.DH, Transform.DhId.DH_18))
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
@@ -140,7 +140,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(ike_sa3.child_sas), 0)
 
     @patch('xfrm.Xfrm')
-    def test_ike_auth_no_proposal_chosen(self, MockClass1):
+    def test_ike_auth_no_proposal_chosen(self, mockclass):
         self.ike_sa1.configuration['protect'][0]['ipsec_proto'] = Proposal.Protocol.AH
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
@@ -157,7 +157,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
     @patch('xfrm.Xfrm')
-    def test_ike_auth_invalid_mode(self, MockClass1):
+    def test_ike_auth_invalid_mode(self, mockclass):
         self.ike_sa2.configuration['protect'][0]['mode'] = xfrm.Mode.TUNNEL
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
@@ -174,7 +174,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
     @patch('xfrm.Xfrm')
-    def test_ike_auth_invalid_auth_type(self, MockClass1):
+    def test_ike_auth_invalid_auth_type(self, mockclass):
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -193,7 +193,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
     @patch('xfrm.Xfrm')
-    def test_ike_auth_invalid_auth_data(self, MockClass1):
+    def test_ike_auth_invalid_auth_data(self, mockclass):
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -212,7 +212,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
     @patch('xfrm.Xfrm')
-    def test_ike_auth_invalid_ts(self, MockClass1):
+    def test_ike_auth_invalid_ts(self, mockclass):
         self.ike_sa2.configuration['protect'][0]['my_subnet'] = ip_network("10.0.0.0/24")
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
@@ -229,7 +229,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
     @patch('xfrm.Xfrm')
-    def test_ike_auth_missing_sa_payload(self, MockClass1):
+    def test_ike_auth_missing_sa_payload(self, mockclass):
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -249,7 +249,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
     @patch('xfrm.Xfrm')
-    def test_retransmit(self, MockClass1):
+    def test_retransmit(self, mockclass):
         self.test_initial_exchanges_transport()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
@@ -265,7 +265,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 2)
 
     @patch('xfrm.Xfrm')
-    def test_invalid_message_id_on_request(self, MockClass1):
+    def test_invalid_message_id_on_request(self, mockclass):
         self.test_initial_exchanges_transport()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
@@ -281,7 +281,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 1)
 
     @patch('xfrm.Xfrm')
-    def test_invalid_message_id_on_response(self, MockClass1):
+    def test_invalid_message_id_on_response(self, mockclass):
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -297,7 +297,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
     @patch('xfrm.Xfrm')
-    def test_invalid_exchange_type_on_request(self, MockClass1):
+    def test_invalid_exchange_type_on_request(self, mockclass):
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -312,7 +312,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
     @patch('xfrm.Xfrm')
-    def test_invalid_exchange_type_on_response(self, MockClass1):
+    def test_invalid_exchange_type_on_response(self, mockclass):
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -328,7 +328,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
     @patch('xfrm.Xfrm')
-    def test_create_child_invalid_ts(self, MockClass1):
+    def test_create_child_invalid_ts(self, mockclass):
         self.test_initial_exchanges_transport()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
@@ -345,7 +345,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 1)
 
     @patch('xfrm.Xfrm')
-    def test_rekey_child_sa(self, MockClass1):
+    def test_rekey_child_sa(self, mockclass):
         self.test_initial_exchanges_transport()
         create_child_sa_req = self.ike_sa1.process_expire(self.ike_sa1.child_sas[0].inbound_spi)
         create_child_sa_res = self.ike_sa2.process_message(create_child_sa_req)
@@ -363,7 +363,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 1)
 
     @patch('xfrm.Xfrm')
-    def test_rekey_child_sa_from_responder(self, MockClass1):
+    def test_rekey_child_sa_from_responder(self, mockclass):
         self.test_initial_exchanges_transport()
         create_child_sa_req = self.ike_sa2.process_expire(self.ike_sa2.child_sas[0].inbound_spi)
         create_child_sa_res = self.ike_sa1.process_message(create_child_sa_req)
@@ -381,7 +381,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 1)
 
     @patch('xfrm.Xfrm')
-    def test_rekey_child_sa_invalid_spi_initiator(self, MockClass1):
+    def test_rekey_child_sa_invalid_spi_initiator(self, mockclass):
         self.test_initial_exchanges_transport()
         create_child_sa_req = self.ike_sa1.process_expire(b'')
         self.assertIsNone(create_child_sa_req)
@@ -389,7 +389,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
 
     @patch('xfrm.Xfrm')
-    def test_rekey_child_sa_invalid_spi_responder(self, MockClass1):
+    def test_rekey_child_sa_invalid_spi_responder(self, mockclass):
         self.test_initial_exchanges_transport()
         self.ike_sa2.child_sas = []
         create_child_sa_req = self.ike_sa1.process_expire(self.ike_sa1.child_sas[0].inbound_spi)
@@ -401,7 +401,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
 
     @patch('xfrm.Xfrm')
-    def test_delete_child_sa(self, MockClass1):
+    def test_delete_child_sa(self, mockclass):
         self.test_initial_exchanges_transport()
         delete_child_sa_req = self.ike_sa1.process_expire(self.ike_sa1.child_sas[0].inbound_spi, hard=True)
         delete_child_sa_res = self.ike_sa2.process_message(delete_child_sa_req)
@@ -413,7 +413,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
     @patch('xfrm.Xfrm')
-    def test_delete_child_sa_invalid_spi_on_response(self, MockClass1):
+    def test_delete_child_sa_invalid_spi_on_response(self, mockclass):
         self.test_initial_exchanges_transport()
         delete_child_sa_req = self.ike_sa1.process_expire(self.ike_sa1.child_sas[0].inbound_spi, hard=True)
         delete_child_sa_res = self.ike_sa2.process_message(delete_child_sa_req)
@@ -428,7 +428,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 0)
 
     @patch('xfrm.Xfrm')
-    def test_simultaneous_rekey_child_delete_child(self, MockClass1):
+    def test_simultaneous_rekey_child_delete_child(self, mockclass):
         self.test_initial_exchanges_transport()
         rekey_request = self.ike_sa1.process_expire(self.ike_sa1.child_sas[0].inbound_spi)
         delete_request = self.ike_sa2.process_expire(self.ike_sa2.child_sas[0].inbound_spi, hard=True)
@@ -445,7 +445,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
 
     @patch('xfrm.Xfrm')
-    def test_simultaneous_delete_child_delete_child(self, MockClass1):
+    def test_simultaneous_delete_child_delete_child(self, mockclass):
         self.test_initial_exchanges_transport()
         delete_request_alice = self.ike_sa1.process_expire(self.ike_sa1.child_sas[0].inbound_spi, hard=True)
         delete_request_bob = self.ike_sa2.process_expire(self.ike_sa2.child_sas[0].inbound_spi, hard=True)
@@ -459,7 +459,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
 
     @patch('xfrm.Xfrm')
-    def test_simultaneous_rekey_child_rekey_child(self, MockClass1):
+    def test_simultaneous_rekey_child_rekey_child(self, mockclass):
         self.test_initial_exchanges_transport()
         self.assertEqual(len(self.ike_sa1.child_sas), 1)
         self.assertEqual(len(self.ike_sa2.child_sas), 1)
@@ -479,7 +479,7 @@ class TestIkeSa(TestCase):
         self.assertIsNone(delete_request_bob)
 
     @patch('xfrm.Xfrm')
-    def test_dead_peer_detection(self, MockClass1):
+    def test_dead_peer_detection(self, mockclass):
         self.test_initial_exchanges_transport()
         self.ike_sa1.start_dpd_at = 0
         dpd_req = self.ike_sa1.check_dead_peer_detection_timer()
@@ -497,7 +497,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
 
     @patch('xfrm.Xfrm')
-    def test_delete_ike_sa(self, MockClass1):
+    def test_delete_ike_sa(self, mockclass):
         self.test_initial_exchanges_transport()
         self.ike_sa1.rekey_ike_sa_at = 0
         delete_req = self.ike_sa1.check_rekey_ike_sa_timer(hard=True)
@@ -507,7 +507,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(self.ike_sa2.state, IkeSa.State.DELETED)
 
     @patch('xfrm.Xfrm')
-    def test_rekey_ike_sa(self, MockClass1):
+    def test_rekey_ike_sa(self, mockclass):
         self.test_initial_exchanges_transport()
         self.ike_sa1.rekey_ike_sa_at = 0
         rekey_req = self.ike_sa1.check_rekey_ike_sa_timer(hard=False)
@@ -521,7 +521,7 @@ class TestIkeSa(TestCase):
         self.assertIsNotNone(rekey_req)
 
     @patch('xfrm.Xfrm')
-    def test_rekey_ike_sa_from_responder(self, MockClass1):
+    def test_rekey_ike_sa_from_responder(self, mockclass):
         self.test_initial_exchanges_transport()
         self.ike_sa2.rekey_ike_sa_at = 0
         rekey_req = self.ike_sa2.check_rekey_ike_sa_timer(hard=False)
@@ -535,7 +535,7 @@ class TestIkeSa(TestCase):
         self.assertIsNotNone(rekey_req)
 
     @patch('xfrm.Xfrm')
-    def test_simultaneous_rekey_ike_sa(self, MockClass1):
+    def test_simultaneous_rekey_ike_sa(self, mockclass):
         self.test_initial_exchanges_transport()
         self.ike_sa1.rekey_ike_sa_at = 0
         self.ike_sa2.rekey_ike_sa_at = 0
@@ -551,7 +551,7 @@ class TestIkeSa(TestCase):
         self.assertEqual(self.ike_sa1.state, IkeSa.State.DEL_IKE_SA_REQ_SENT)
 
     @patch('xfrm.Xfrm')
-    def test_simultaneous_rekey_ike_sa_rekey_child(self, MockClass1):
+    def test_simultaneous_rekey_ike_sa_rekey_child(self, mockclass):
         self.test_initial_exchanges_transport()
         self.ike_sa1.rekey_ike_sa_at = 0
         rekey_ike_sa_req = self.ike_sa1.check_rekey_ike_sa_timer(hard=False)
@@ -568,7 +568,7 @@ class TestIkeSa(TestCase):
         self.assertIsNotNone(delete_ike_sa_req)
 
     @patch('xfrm.Xfrm')
-    def test_simultaneous_rekey_ike_sa_create_child(self, MockClass1):
+    def test_simultaneous_rekey_ike_sa_create_child(self, mockclass):
         self.test_initial_exchanges_transport()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
@@ -587,7 +587,7 @@ class TestIkeSa(TestCase):
         self.assertIsNotNone(delete_ike_sa_req)
 
     @patch('xfrm.Xfrm')
-    def test_simultaneous_del_ike_sa_create_child(self, MockClass1):
+    def test_simultaneous_del_ike_sa_create_child(self, mockclass):
         self.test_initial_exchanges_transport()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
@@ -605,7 +605,7 @@ class TestIkeSa(TestCase):
         self.assertIsNone(request_bob)
 
     @patch('xfrm.Xfrm')
-    def test_simultaneous_del_ike_sa_rekey_child(self, MockClass1):
+    def test_simultaneous_del_ike_sa_rekey_child(self, mockclass):
         self.test_initial_exchanges_transport()
         self.ike_sa1.rekey_ike_sa_at = 0
         del_ike_sa_req = self.ike_sa1.check_rekey_ike_sa_timer(hard=True)
@@ -621,7 +621,7 @@ class TestIkeSa(TestCase):
         self.assertIsNone(request_bob)
 
     @patch('xfrm.Xfrm')
-    def test_simultaneous_del_ike_sa_del_child(self, MockClass1):
+    def test_simultaneous_del_ike_sa_del_child(self, mockclass):
         self.test_initial_exchanges_transport()
         self.ike_sa1.rekey_ike_sa_at = 0
         del_ike_sa_req = self.ike_sa1.check_rekey_ike_sa_timer(hard=True)
@@ -636,7 +636,7 @@ class TestIkeSa(TestCase):
         self.assertIsNone(request_bob)
 
     @patch('xfrm.Xfrm')
-    def test_simultaneous_del_ike_sa_del_ike_sa(self, MockClass1):
+    def test_simultaneous_del_ike_sa_del_ike_sa(self, mockclass):
         self.test_initial_exchanges_transport()
         self.ike_sa1.rekey_ike_sa_at = 0
         self.ike_sa2.rekey_ike_sa_at = 0
@@ -652,7 +652,7 @@ class TestIkeSa(TestCase):
         self.assertIsNone(request_bob)
 
     @patch('xfrm.Xfrm')
-    def test_simultaneous_rekey_ike_sa_del_ike_sa(self, MockClass1):
+    def test_simultaneous_rekey_ike_sa_del_ike_sa(self, mockclass):
         self.test_initial_exchanges_transport()
         self.ike_sa1.rekey_ike_sa_at = 0
         self.ike_sa2.rekey_ike_sa_at = 0
@@ -669,7 +669,7 @@ class TestIkeSa(TestCase):
         self.assertIsNone(request_bob)
 
     @patch('xfrm.Xfrm')
-    def test_simultaneous_rekey_ike_sa_del_child_sa(self, MockClass1):
+    def test_simultaneous_rekey_ike_sa_del_child_sa(self, mockclass):
         self.test_initial_exchanges_transport()
         self.ike_sa1.rekey_ike_sa_at = 0
         rekey_ike_sa_req = self.ike_sa1.check_rekey_ike_sa_timer(hard=False)
@@ -685,3 +685,37 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 0)
         self.assertIsNotNone(request_alice)
         self.assertIsNone(request_bob)
+
+    @patch('xfrm.Xfrm')
+    def test_queues(self, mockclass):
+        self.test_initial_exchanges_transport()
+        small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
+        small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
+        create_child_req_1 = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
+        create_child_req_2 = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
+        delete_request = self.ike_sa1.process_expire(self.ike_sa1.child_sas[0].inbound_spi, hard=True)
+        self.assertIsNone(create_child_req_2)
+        self.assertIsNone(delete_request)
+        create_child_res = self.ike_sa2.process_message(create_child_req_1)
+        create_child_req_2 = self.ike_sa1.process_message(create_child_res)
+        self.assertIsNotNone(create_child_req_2)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.NEW_CHILD_REQ_SENT)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 2)
+        self.assertEqual(len(self.ike_sa2.child_sas), 2)
+        create_child_res_2 = self.ike_sa2.process_message(create_child_req_2)
+        delete_request = self.ike_sa1.process_message(create_child_res_2)
+        self.assertIsNotNone(delete_request)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.DEL_CHILD_REQ_SENT)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 3)
+        self.assertEqual(len(self.ike_sa2.child_sas), 3)
+        delete_res = self.ike_sa2.process_message(delete_request)
+        request = self.ike_sa1.process_message(delete_res)
+        self.assertIsNone(request)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 2)
+        self.assertEqual(len(self.ike_sa2.child_sas), 2)
+
+

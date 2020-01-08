@@ -94,6 +94,7 @@ class IkeSa(object):
         self.retransmissions = 0
         self.start_dpd_at = time.time() + configuration['dpd']
         self.rekey_ike_sa_at = time.time() + configuration['lifetime'] + random.randint(0, 5)
+        self.pending_events = []
 
     def __str__(self):
         return hexstring(self.my_spi)
@@ -283,7 +284,6 @@ class IkeSa(object):
             response = self._generate_ike_error_response(message, ex)
             self.state = IkeSa.State.DELETED
 
-
         # if the message is successfully processed, increment expected message
         # ID and store response (for future retransmissions responses)
         self.peer_msg_id = self.peer_msg_id + 1
@@ -317,15 +317,32 @@ class IkeSa(object):
         self.my_msg_id = self.my_msg_id + 1
         try:
             handler = _handler_dict[message.exchange_type]
+        except KeyError:
+            self.log_error("I don't know how to handle this message. Please, implement a handler!")
+            return None
+
+        try:
             request = handler(message)
-            # If there is a another request to be sent, serizalize it and return it
+            # If there is a another request to be sent, serialise it and return it
             if request:
                 return self._send_request(request, addr)
+
+            # if state is ESTABLISHED, check for pending events
+            if self.state == IkeSa.State.ESTABLISHED:
+                for x in list(self.pending_events):
+                    self.pending_events.remove(x)
+                    self.log_debug('Processing pending event')
+                    handler, *args = x
+                    request = handler(*args)
+                    if request:
+                        return request
         except (IkeSaError, IkeSaStateError) as ex:
             self.log_error(str(ex))
             self.state = IkeSa.State.DELETED
-        except KeyError:
-            self.log_error("I don't know how to handle this message. Please, implement a handler!")
+        except Exception as ex:
+            traceback.print_exc()
+            self.log_error(str(ex))
+            self.state = IkeSa.State.DELETED
 
         return None
 
@@ -349,22 +366,24 @@ class IkeSa(object):
             return self._process_response(message, addr)
 
     def process_acquire(self, tsi, tsr, index):
+        if self.state not in (IkeSa.State.INITIAL, IkeSa.State.ESTABLISHED):
+            self.log_warning('Cannot process acquire while waiting for a response. Queuing')
+            self.pending_events.append((self.process_acquire, tsi, tsr, index))
+            return None
         try:
             ipsec_conf = next(x for x in self.configuration['protect'] if x['index'] == index)
         except StopIteration:
             self.log_warning('Could not find a matching "protect" configuration for received ACQUIRE.')
             return None
+
         self.log_info("Received acquire from policy with index={}".format(index))
         # Create the ChildSa object with the values we know so far
         child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, proposal=None, tsi=tsi, tsr=tsr,
                            mode=ipsec_conf['mode'], ipsec_conf=ipsec_conf)
         if self.state == IkeSa.State.INITIAL:
             request = self.generate_ike_sa_init_request(child_sa)
-        elif self.state == IkeSa.State.ESTABLISHED:
-            request = self.generate_create_child_sa_request(child_sa)
         else:
-            self.log_warning('Cannot process acquire while waiting for a response.')
-            return None
+            request = self.generate_create_child_sa_request(child_sa)
 
         return self._send_request(request, self.peer_addr)
 
@@ -372,7 +391,8 @@ class IkeSa(object):
         """ Creates a rekey CREATE_CHILD_SA message for creating a new CHILD or an INFORMATIONAL for deleting it
         """
         if self.state != IkeSa.State.ESTABLISHED:
-            self.log_warning('Cannot process expire while waiting for a response')
+            self.log_warning('Cannot process expire while waiting for a response. Queuing')
+            self.pending_events.append((self.process_expire, spi, hard))
             return None
 
         child_sa = self.get_child_sa(spi)
