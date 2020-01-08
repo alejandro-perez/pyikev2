@@ -148,6 +148,7 @@ class IkeSa(object):
         for child_sa in self.child_sas:
             self.xfrm.delete_sa(self.peer_addr, child_sa.proposal.protocol_id, child_sa.outbound_spi)
             self.xfrm.delete_sa(self.my_addr, child_sa.proposal.protocol_id, child_sa.inbound_spi)
+        self.child_sas.clear()
 
     def generate_child_sa_key_material(self, child_proposal, nonce_i, nonce_r, sk_d):
         """ Generates CHILD_SA key material
