@@ -110,7 +110,7 @@ class TestIkeSa(TestCase):
 
     @patch('xfrm.Xfrm')
     def test_ike_sa_init_no_proposal_chosen(self, mockclass):
-        self.ike_sa1.configuration['dh'][0].id = Transform.DhId.DH_16
+        self.ike_sa1.configuration.dh[0].id = Transform.DhId.DH_16
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -125,7 +125,7 @@ class TestIkeSa(TestCase):
 
     @patch('xfrm.Xfrm')
     def test_ike_sa_init_invalid_ke(self, mockclass):
-        self.ike_sa1.configuration['dh'].insert(0, Transform(Transform.Type.DH, Transform.DhId.DH_16))
+        self.ike_sa1.configuration.dh.insert(0, Transform(Transform.Type.DH, Transform.DhId.DH_16))
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -144,7 +144,7 @@ class TestIkeSa(TestCase):
 
     @patch('xfrm.Xfrm')
     def test_ike_auth_no_proposal_chosen(self, mockclass):
-        self.ike_sa1.configuration['protect'][0]['ipsec_proto'] = Proposal.Protocol.AH
+        self.ike_sa1.configuration.protect[0] = self.ike_sa1.configuration.protect[0]._replace(ipsec_proto=Proposal.Protocol.AH)
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -161,7 +161,7 @@ class TestIkeSa(TestCase):
 
     @patch('xfrm.Xfrm')
     def test_ike_auth_invalid_mode(self, mockclass):
-        self.ike_sa2.configuration['protect'][0]['mode'] = xfrm.Mode.TUNNEL
+        self.ike_sa2.configuration.protect[0] = self.ike_sa2.configuration.protect[0]._replace(mode=xfrm.Mode.TUNNEL)
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -216,7 +216,7 @@ class TestIkeSa(TestCase):
 
     @patch('xfrm.Xfrm')
     def test_ike_auth_invalid_ts(self, mockclass):
-        self.ike_sa2.configuration['protect'][0]['my_subnet'] = ip_network("10.0.0.0/24")
+        self.ike_sa2.configuration.protect[0] = self.ike_sa2.configuration.protect[0]._replace(my_subnet = ip_network("10.0.0.0/24"))
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -369,7 +369,7 @@ class TestIkeSa(TestCase):
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         # create additional CHILD_SA
-        self.ike_sa2.configuration['protect'][0]['my_subnet'] = ip_network("10.0.0.0/24")
+        self.ike_sa2.configuration.protect[0] = self.ike_sa2.configuration.protect[0]._replace(my_subnet = ip_network("10.0.0.0/24"))
         create_child_sa_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
         create_child_sa_res = self.ike_sa2.process_message(create_child_sa_req)
         request = self.ike_sa1.process_message(create_child_sa_res, self.ip2)

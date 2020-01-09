@@ -4,7 +4,8 @@
 """ This module defines the classes for the protocol handling.
 """
 import socket
-from copy import copy, deepcopy
+from collections import namedtuple
+from copy import deepcopy
 from ipaddress import ip_address, ip_network
 
 import xfrm
@@ -66,6 +67,12 @@ _ipsec_proto_name_to_enum = {
     'ah': Proposal.Protocol.AH,
 }
 
+IkeConfiguration = namedtuple('IkeConfiguration',
+                              ['psk', 'lifetime', 'dpd', 'id', 'peer_id', 'encr', 'integ', 'prf', 'dh', 'protect'])
+IpsecConfiguration = namedtuple('IpsecConfiguration',
+                                ['my_subnet', 'index', 'peer_subnet', 'my_port', 'lifetime', 'peer_port', 'ip_proto',
+                                 'mode', 'ipsec_proto', 'encr', 'integ'])
+
 
 class Configuration(object):
     """ Represents the daemon configuration.
@@ -88,23 +95,22 @@ class Configuration(object):
 
     def _load_ike_conf(self, peer_ip, conf_dict):
         default_id = 'https://github.com/alejandro-perez/pyikev2'
-        result = {
-            'psk': conf_dict.get('psk', 'whatever').encode(),
-            'lifetime': int(conf_dict.get('lifetime', 15 * 60)),
-            'dpd': int(conf_dict.get('dpd', 60)),
-            'id': PayloadID(PayloadID.Type.ID_FQDN, conf_dict.get('id', default_id).encode()),
-            'peer_id': PayloadID(PayloadID.Type.ID_FQDN, conf_dict.get('id', default_id).encode()),
-            'encr': self._load_crypto_algs('encr', conf_dict.get('encr', ['aes256']), _encr_name_to_transform),
-            'integ': self._load_crypto_algs('integ', conf_dict.get('integ', ['sha256']), _integ_name_to_transform),
-            'prf': self._load_crypto_algs('prf', conf_dict.get('prf', ['sha256']), _prf_name_to_transform),
-            'dh': self._load_crypto_algs('dh', conf_dict.get('dh', ['14']), _dh_name_to_transform),
-        }
-
         ipsec_confs = []
         for ipsec_conf in conf_dict.get('protect', [{}]):
             ipsec_confs.append(self._load_ipsec_conf(peer_ip, ipsec_conf))
-        result['protect'] = ipsec_confs
-        return result
+
+        return IkeConfiguration(
+            psk=conf_dict.get('psk', 'whatever').encode(),
+            lifetime=int(conf_dict.get('lifetime', 15 * 60)),
+            dpd=int(conf_dict.get('dpd', 60)),
+            id=PayloadID(PayloadID.Type.ID_FQDN, conf_dict.get('id', default_id).encode()),
+            peer_id=PayloadID(PayloadID.Type.ID_FQDN, conf_dict.get('peer_id', default_id).encode()),
+            encr=self._load_crypto_algs('encr', conf_dict.get('encr', ['aes256']), _encr_name_to_transform),
+            integ=self._load_crypto_algs('integ', conf_dict.get('integ', ['sha256']), _integ_name_to_transform),
+            prf=self._load_crypto_algs('prf', conf_dict.get('prf', ['sha256']), _prf_name_to_transform),
+            dh=self._load_crypto_algs('dh', conf_dict.get('dh', ['14']), _dh_name_to_transform),
+            protect=ipsec_confs
+        )
 
     @staticmethod
     def _load_ip_network(value):
@@ -121,19 +127,19 @@ class Configuration(object):
             raise ConfigurationError(str(ex))
 
     def _load_ipsec_conf(self, peer_ip, conf_dict):
-        return {
-            'my_subnet': self._load_ip_network(conf_dict.get('my_subnet', self.my_addr)),
-            'index': int(conf_dict.get('index', -1)),
-            'peer_subnet': self._load_ip_network(conf_dict.get('peer_subnet', peer_ip)),
-            'my_port': int(conf_dict.get('my_port', 0)),
-            'lifetime': int(conf_dict.get('lifetime', 5 * 60)),
-            'peer_port': int(conf_dict.get('peer_port', 0)),
-            'ip_proto': self._load_from_dict(conf_dict.get('ip_proto', 'any'), _ip_proto_name_to_enum),
-            'mode': self._load_from_dict(conf_dict.get('mode', 'transport'), _mode_name_to_enum),
-            'ipsec_proto': self._load_from_dict(conf_dict.get('ipsec_proto', 'esp'), _ipsec_proto_name_to_enum),
-            'encr': self._load_crypto_algs('encr', conf_dict.get('encr', ['aes256']), _encr_name_to_transform),
-            'integ': self._load_crypto_algs('integ', conf_dict.get('integ', ['sha256']), _integ_name_to_transform),
-        }
+        return IpsecConfiguration(
+            my_subnet=self._load_ip_network(conf_dict.get('my_subnet', self.my_addr)),
+            index=int(conf_dict.get('index', -1)),
+            peer_subnet=self._load_ip_network(conf_dict.get('peer_subnet', peer_ip)),
+            my_port=int(conf_dict.get('my_port', 0)),
+            lifetime=int(conf_dict.get('lifetime', 5 * 60)),
+            peer_port=int(conf_dict.get('peer_port', 0)),
+            ip_proto=self._load_from_dict(conf_dict.get('ip_proto', 'any'), _ip_proto_name_to_enum),
+            mode=self._load_from_dict(conf_dict.get('mode', 'transport'), _mode_name_to_enum),
+            ipsec_proto=self._load_from_dict(conf_dict.get('ipsec_proto', 'esp'), _ipsec_proto_name_to_enum),
+            encr=self._load_crypto_algs('encr', conf_dict.get('encr', ['aes256']), _encr_name_to_transform),
+            integ=self._load_crypto_algs('integ', conf_dict.get('integ', ['sha256']), _integ_name_to_transform),
+        )
 
     def get_ike_configuration(self, addr):
         addr = ip_address(addr)

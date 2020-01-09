@@ -92,8 +92,8 @@ class IkeSa(object):
         self.xfrm = xfrm.Xfrm()
         self.retransmit_at = 0
         self.retransmissions = 0
-        self.start_dpd_at = time.time() + configuration['dpd']
-        self.rekey_ike_sa_at = time.time() + configuration['lifetime'] + random.randint(0, 5)
+        self.start_dpd_at = time.time() + configuration.dpd
+        self.rekey_ike_sa_at = time.time() + configuration.lifetime + random.randint(0, 5)
         self.pending_events = []
 
     def __str__(self):
@@ -180,15 +180,14 @@ class IkeSa(object):
         raise NoProposalChosen('Could not find a suitable matching Proposal')
 
     def _ike_conf_2_proposal(self):
-        return Proposal(1, Proposal.Protocol.IKE, b'', (self.configuration['encr'] + self.configuration['integ']
-                                                        + self.configuration['prf'] + self.configuration['dh']))
+        return Proposal(1, Proposal.Protocol.IKE, b'', (self.configuration.encr + self.configuration.integ
+                                                        + self.configuration.prf + self.configuration.dh))
 
     def _ipsec_conf_2_proposal(self, ipsec_conf):
-        proto = ipsec_conf['ipsec_proto']
-        if proto == Proposal.Protocol.ESP:
-            return Proposal(1, proto, b'', ipsec_conf['encr'] + ipsec_conf['integ'])
+        if ipsec_conf.ipsec_proto == Proposal.Protocol.ESP:
+            return Proposal(1, ipsec_conf.ipsec_proto, b'', ipsec_conf.encr + ipsec_conf.integ)
         else:
-            return Proposal(1, proto, b'', ipsec_conf['integ'])
+            return Proposal(1, ipsec_conf.ipsec_proto, b'', ipsec_conf.integ)
 
     def _select_best_ike_sa_proposal(self, peer_payload_sa):
         my_proposal = self._ike_conf_2_proposal()
@@ -201,9 +200,8 @@ class IkeSa(object):
     def _ipsec_conf_2_ts(self, ipsec_conf):
         """ Generates traffic selectors based on an ipsec configuration
         """
-        conf_tsi = TrafficSelector.from_network(ipsec_conf['my_subnet'], ipsec_conf['my_port'], ipsec_conf['ip_proto'])
-        conf_tsr = TrafficSelector.from_network(ipsec_conf['peer_subnet'], ipsec_conf['peer_port'],
-                                                ipsec_conf['ip_proto'])
+        conf_tsi = TrafficSelector.from_network(ipsec_conf.my_subnet, ipsec_conf.my_port, ipsec_conf.ip_proto)
+        conf_tsr = TrafficSelector.from_network(ipsec_conf.peer_subnet, ipsec_conf.peer_port, ipsec_conf.ip_proto)
         return conf_tsi, conf_tsr
 
     def _get_ipsec_configuration(self, payload_tsi, payload_tsr):
@@ -214,7 +212,7 @@ class IkeSa(object):
         """
         for tsi in reversed(payload_tsi.traffic_selectors):
             for tsr in reversed(payload_tsr.traffic_selectors):
-                for ipsec_conf in self.configuration['protect']:
+                for ipsec_conf in self.configuration.protect:
                     conf_tsi, conf_tsr = self._ipsec_conf_2_ts(ipsec_conf)
                     # look for a larger policy
                     if tsi.is_subset(conf_tsi) and tsr.is_subset(conf_tsr):
@@ -360,7 +358,7 @@ class IkeSa(object):
             return None
 
         # receiving any kind of message from the peer resets the DPD timer
-        self.start_dpd_at = time.time() + self.configuration['dpd']
+        self.start_dpd_at = time.time() + self.configuration.dpd
         if message.is_request:
             return self._process_request(message, addr)
         else:
@@ -372,7 +370,7 @@ class IkeSa(object):
             self.pending_events.append((self.process_acquire, tsi, tsr, index))
             return None
         try:
-            ipsec_conf = next(x for x in self.configuration['protect'] if x['index'] == index)
+            ipsec_conf = next(x for x in self.configuration.protect if x.index == index)
         except StopIteration:
             self.log_warning('Could not find a matching "protect" configuration for received ACQUIRE.')
             return None
@@ -380,7 +378,7 @@ class IkeSa(object):
         self.log_info("Received acquire from policy with index={}".format(index))
         # Create the ChildSa object with the values we know so far
         child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, proposal=None, tsi=tsi, tsr=tsr,
-                           mode=ipsec_conf['mode'], ipsec_conf=ipsec_conf)
+                           mode=ipsec_conf.mode, ipsec_conf=ipsec_conf)
         if self.state == IkeSa.State.INITIAL:
             request = self.generate_ike_sa_init_request(child_sa)
         else:
@@ -629,7 +627,7 @@ class IkeSa(object):
         child_sa_payloads = self._generate_child_sa_negotiation_req(self.creating_child_sa)
 
         # generate IDi
-        payload_idi = PayloadIDi(self.configuration['id'].id_type, self.configuration['id'].id_data)
+        payload_idi = PayloadIDi(self.configuration.id.id_type, self.configuration.id.id_data)
 
         # generate Payload AUTH
         ike_sa_init_res = Message.parse(self.ike_sa_init_res_data)
@@ -733,7 +731,7 @@ class IkeSa(object):
     def _generate_psk_auth_payload(self, message_data, nonce, payload_id, sk_p):
         prf = self.peer_crypto.prf.prf
         data_to_be_signed = (message_data + nonce + prf(sk_p, payload_id.to_bytes()))
-        keypad = prf(self.configuration['psk'], b'Key Pad for IKEv2')
+        keypad = prf(self.configuration.psk, b'Key Pad for IKEv2')
         return prf(keypad, data_to_be_signed)
 
     def _process_create_child_sa_negotiation_req(self, request):
@@ -790,7 +788,7 @@ class IkeSa(object):
                 response_payloads.append(
                     PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.USE_TRANSPORT_MODE, b'', b''))
 
-            if ipsec_conf['mode'] != mode:
+            if ipsec_conf.mode != mode:
                 raise TsUnacceptable('Invalid mode requested')
 
             # generate the response payload SA with the chosen proposal
@@ -808,11 +806,11 @@ class IkeSa(object):
                                ipsec_conf=ipsec_conf)
 
             self.child_sas.append(child_sa)
-            if ipsec_conf['ipsec_proto'] == Proposal.Protocol.ESP:
+            if ipsec_conf.ipsec_proto == Proposal.Protocol.ESP:
                 encr_transform = chosen_child_proposal.get_transform(Transform.Type.ENCR).id
             else:
                 encr_transform = None
-            lifetime = ipsec_conf['lifetime'] + random.randint(0, 5) if ipsec_conf['lifetime'] != -1 else -1
+            lifetime = ipsec_conf.lifetime + random.randint(0, 5) if ipsec_conf.lifetime != -1 else -1
             self.xfrm.create_sa(self.my_addr, self.peer_addr, chosen_tsr, chosen_tsi,
                                 chosen_child_proposal.protocol_id,
                                 child_sa.outbound_spi, encr_transform, child_sa_keyring.sk_er,
@@ -899,7 +897,7 @@ class IkeSa(object):
         response_payloads = self._process_create_child_sa_negotiation_req(request)
 
         # generate IDr
-        response_payload_idr = PayloadIDr(self.configuration['id'].id_type, self.configuration['id'].id_data)
+        response_payload_idr = PayloadIDr(self.configuration.id.id_type, self.configuration.id.id_data)
 
         # generate AUTH payload
         # TODO: Use a function for generating/validating AUTH payloads
@@ -998,7 +996,7 @@ class IkeSa(object):
         encr_transform = None
         if chosen_child_proposal.protocol_id == Proposal.Protocol.ESP:
             encr_transform = chosen_child_proposal.get_transform(Transform.Type.ENCR).id
-        lifetime = ipsec_conf['lifetime'] + random.randint(0, 5) if ipsec_conf['lifetime'] != -1 else -1
+        lifetime = ipsec_conf.lifetime + random.randint(0, 5) if ipsec_conf.lifetime != -1 else -1
         self.xfrm.create_sa(self.my_addr, self.peer_addr, chosen_tsi, chosen_tsr, chosen_child_proposal.protocol_id,
                             child_sa.outbound_spi, encr_transform, child_sa_keyring.sk_ei,
                             chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
