@@ -3,8 +3,8 @@
 #
 import argparse
 import logging
-import netifaces
 import signal
+import socket
 import sys
 from ipaddress import ip_address
 
@@ -16,17 +16,14 @@ from protocol import IkeSaController
 __author__ = 'Alejandro Perez <alex@um.es>'
 __version__ = "0.1"
 
-# check the available interfaces
-interfaces = netifaces.interfaces()
-
 # parses the arguments
 parser = argparse.ArgumentParser(description='Opensource IKEv2 daemon written in Python.',
                                  prog='pyikev2')
 parser.add_argument('--verbose', '-v', action='store_true',
                     help='Enable (much) more verbosity. WARNING: This will make your key '
                          'material to be shown in the log output!')
-parser.add_argument('--interface', '-i', required=True, metavar='IFACE', choices=interfaces,
-                    help='Interface where the daemon will listen from. Choices: %(choices)s')
+parser.add_argument('--ip-address', '-i', metavar='IPADDR',
+                    help='IP address where the daemon will listen from.')
 parser.add_argument('--configuration-file', '-c', required=True, metavar='FILE',
                     help='Configuration file.')
 parser.add_argument('--no-indent', '-ni', action='store_true',
@@ -35,8 +32,10 @@ parser.add_argument('--version', action='version', version='%(prog)s {}'.format(
 args = parser.parse_args()
 
 try:
-    addrs = netifaces.ifaddresses(args.interface)
-    ip = addrs[netifaces.AF_INET][0]['addr']
+    if args.ip_address:
+        ip = ip_address(args.ip_address)
+    else:
+        ip = socket.gethostbyname(socket.gethostname())
 except ValueError as ex:
     print(ex)
     sys.exit(1)
