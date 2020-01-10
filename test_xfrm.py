@@ -6,6 +6,7 @@
 import unittest
 from ipaddress import ip_address, ip_network
 
+from configuration import IkeConfiguration, IpsecConfiguration
 from xfrm import Xfrm, Mode
 from message import TrafficSelector, Proposal, Transform
 
@@ -19,33 +20,16 @@ class TestXfrm(unittest.TestCase):
         self.xfrm.flush_sas()
 
     def test_create_transport_policy(self):
-        ike_conf = {
-            'protect': [
-                {
-                    'my_port': 0,
-                    'peer_port': 80,
-                    'ip_proto': TrafficSelector.IpProtocol.TCP,
-                    'ipsec_proto': Proposal.Protocol.AH,
-                    'mode': Mode.TRANSPORT
-                }
-            ]
-        }
+        ipsec_conf = IpsecConfiguration(my_port=0, peer_port=80, ip_proto=TrafficSelector.IpProtocol.TCP,
+                                        ipsec_proto=Proposal.Protocol.AH, mode=Mode.TRANSPORT, index=0)
+        ike_conf = IkeConfiguration(protect=[ipsec_conf])
         self.xfrm.create_policies(ip_address('192.168.1.1'), ip_address('192.168.1.2'), ike_conf)
 
     def test_create_tunnel_policy(self):
-        ike_conf = {
-            'protect': [
-                {
-                    'my_subnet': ip_network('192.168.1.0/24'),
-                    'peer_subnet': ip_network('10.0.0.0/8'),
-                    'my_port': 0,
-                    'peer_port': 80,
-                    'ip_proto': TrafficSelector.IpProtocol.TCP,
-                    'ipsec_proto': Proposal.Protocol.AH,
-                    'mode': Mode.TUNNEL
-                }
-            ]
-        }
+        ipsec_conf = IpsecConfiguration(my_subnet=ip_network('192.168.1.0/24'), peer_subnet=ip_network('10.0.0.0/8'),
+                                        my_port=0, peer_port=80, ip_proto=TrafficSelector.IpProtocol.TCP,
+                                        ipsec_proto=Proposal.Protocol.AH, mode=Mode.TUNNEL, index=1)
+        ike_conf = IkeConfiguration(protect=[ipsec_conf])
         self.xfrm.create_policies(ip_address('192.168.1.1'), ip_address('192.168.1.2'), ike_conf)
 
     def test_create_transport_ipsec_sa(self):

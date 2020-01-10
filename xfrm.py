@@ -359,29 +359,28 @@ class Xfrm(NetlinkProtocol):
             logging.warning('Could not delete IPsec SA with SPI: {}. {}'.format(hexstring(spi), ex))
 
     def create_policies(self, my_addr, peer_addr, ike_conf):
-        for ipsec_conf in ike_conf['protect']:
-            if ipsec_conf['mode'] == Mode.TUNNEL:
-                src_selector = ipsec_conf['my_subnet']
-                dst_selector = ipsec_conf['peer_subnet']
+        for ipsec_conf in ike_conf.protect:
+            if ipsec_conf.mode == Mode.TUNNEL:
+                src_selector = ipsec_conf.my_subnet
+                dst_selector = ipsec_conf.peer_subnet
             else:
                 src_selector = ip_network(my_addr)
                 dst_selector = ip_network(peer_addr)
 
             # generate an index for outbound policies
-            index = SystemRandom().randint(0, 2 ** 20) << 3 | XFRM_POLICY_OUT
-            ipsec_conf['index'] = index
+            index = ipsec_conf.index << 3 | XFRM_POLICY_OUT
 
-            self._create_policy(src_selector, dst_selector, ipsec_conf['my_port'],
-                                ipsec_conf['peer_port'], ipsec_conf['ip_proto'], XFRM_POLICY_OUT,
-                                ipsec_conf['ipsec_proto'], ipsec_conf['mode'], my_addr, peer_addr,
+            self._create_policy(src_selector, dst_selector, ipsec_conf.my_port,
+                                ipsec_conf.peer_port, ipsec_conf.ip_proto, XFRM_POLICY_OUT,
+                                ipsec_conf.ipsec_proto, ipsec_conf.mode, my_addr, peer_addr,
                                 index=index)
-            self._create_policy(dst_selector, src_selector, ipsec_conf['peer_port'],
-                                ipsec_conf['my_port'], ipsec_conf['ip_proto'], XFRM_POLICY_IN,
-                                ipsec_conf['ipsec_proto'], ipsec_conf['mode'], peer_addr, my_addr)
+            self._create_policy(dst_selector, src_selector, ipsec_conf.peer_port,
+                                ipsec_conf.my_port, ipsec_conf.ip_proto, XFRM_POLICY_IN,
+                                ipsec_conf.ipsec_proto, ipsec_conf.mode, peer_addr, my_addr)
             self._create_policy(dst_selector, src_selector,
-                                ipsec_conf['peer_port'], ipsec_conf['my_port'],
-                                ipsec_conf['ip_proto'], XFRM_POLICY_FWD, ipsec_conf['ipsec_proto'],
-                                ipsec_conf['mode'], peer_addr, my_addr)
+                                ipsec_conf.peer_port, ipsec_conf.my_port,
+                                ipsec_conf.ip_proto, XFRM_POLICY_FWD, ipsec_conf.ipsec_proto,
+                                ipsec_conf.mode, peer_addr, my_addr)
 
     def create_sa(self, src, dst, src_sel, dst_sel, ipsec_protocol, spi, enc_algorith, sk_e,
                   auth_algorithm, sk_a, mode, lifetime=-1):

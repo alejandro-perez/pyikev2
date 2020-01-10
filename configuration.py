@@ -3,6 +3,7 @@
 
 """ This module defines the classes for the protocol handling.
 """
+import random
 import socket
 from collections import namedtuple
 from copy import deepcopy
@@ -68,10 +69,12 @@ _ipsec_proto_name_to_enum = {
 }
 
 IkeConfiguration = namedtuple('IkeConfiguration',
-                              ['psk', 'lifetime', 'dpd', 'id', 'peer_id', 'encr', 'integ', 'prf', 'dh', 'protect'])
+                              ['psk', 'lifetime', 'dpd', 'id', 'peer_id', 'encr', 'integ', 'prf', 'dh', 'protect'],
+                              defaults=(None,)*10)
 IpsecConfiguration = namedtuple('IpsecConfiguration',
                                 ['my_subnet', 'index', 'peer_subnet', 'my_port', 'lifetime', 'peer_port', 'ip_proto',
-                                 'mode', 'ipsec_proto', 'encr', 'integ'])
+                                 'mode', 'ipsec_proto', 'encr', 'integ'],
+                                defaults=(None,)*11)
 
 
 class Configuration(object):
@@ -129,7 +132,7 @@ class Configuration(object):
     def _load_ipsec_conf(self, peer_ip, conf_dict):
         return IpsecConfiguration(
             my_subnet=self._load_ip_network(conf_dict.get('my_subnet', self.my_addr)),
-            index=int(conf_dict.get('index', -1)),
+            index=int(conf_dict.get('index', random.randint(0, 2**20))),
             peer_subnet=self._load_ip_network(conf_dict.get('peer_subnet', peer_ip)),
             my_port=int(conf_dict.get('my_port', 0)),
             lifetime=int(conf_dict.get('lifetime', 5 * 60)),

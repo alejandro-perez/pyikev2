@@ -18,9 +18,9 @@ from message import TrafficSelector, Transform, Proposal, Message, Payload, Payl
 from protocol import IkeSa
 
 logging.indent = 2
-logging.basicConfig(level=logging.DEBUG,
-                    format='[%(asctime)s.%(msecs)03d] [%(levelname)-7s] %(message)s',
-                    datefmt='%Y-%m-%d %H:%M:%S')
+# logging.basicConfig(level=logging.DEBUG,
+#                     format='[%(asctime)s.%(msecs)03d] [%(levelname)-7s] %(message)s',
+#                     datefmt='%Y-%m-%d %H:%M:%S')
 
 
 class TestIkeSa(TestCase):

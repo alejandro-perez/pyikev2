@@ -63,7 +63,7 @@ class IkeSa(object):
         REKEYED = 20
         DELETED = 21
 
-    MAX_RETRANSMISSIONS = 3
+    MAX_RETRANSMISSIONS = 4
     RETRANSMISSION_DELAY = 2
 
     def __init__(self, is_initiator, peer_spi, configuration, my_addr, peer_addr):
@@ -1209,7 +1209,7 @@ class IkeSa(object):
         if self.state == IkeSa.State.REK_IKE_SA_REQ_SENT:
             # If we are asked to wait, wait for a random amount of time before retrying to rekey the IKE_SA
             if response.get_notifies(PayloadNOTIFY.Type.TEMPORARY_FAILURE, True):
-                self.log_info('Redundant IKE_SA rekey')
+                self.log_debug('Push back IKE_SA rekey as we received TEMPORARY_FAILURE')
                 self.state = IkeSa.State.ESTABLISHED
                 self.rekey_ike_sa_at = time.time() + random.uniform(0, 2)
                 return None
@@ -1410,7 +1410,7 @@ class IkeSaController:
                                                  xfrm_acquire.sel.sport, xfrm_acquire.sel.proto)
         small_tsr = TrafficSelector.from_network(ip_network(xfrm_acquire.sel.daddr.to_ipaddr()),
                                                  xfrm_acquire.sel.dport, xfrm_acquire.sel.proto)
-        request = ike_sa.process_acquire(small_tsi, small_tsr, xfrm_acquire.policy.index)
+        request = ike_sa.process_acquire(small_tsi, small_tsr, xfrm_acquire.policy.index >> 3)
 
         # look for ipsec configuration
         return request, (str(ike_sa.peer_addr), 500)
