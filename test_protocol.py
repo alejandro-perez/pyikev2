@@ -7,6 +7,7 @@
 __author__ = 'Alejandro Perez <alex@um.es>'
 
 import logging
+import time
 from ipaddress import ip_address, ip_network
 from unittest import TestCase
 from unittest.mock import patch
@@ -260,7 +261,7 @@ class TestIkeSa(TestCase):
         create_child_sa_res = self.ike_sa2.process_message(create_child_sa_req)
         create_child_sa_req = self.ike_sa1.check_retransmission_timer()
         self.assertIsNone(create_child_sa_req)
-        self.ike_sa1.retransmit_at = 0
+        self.ike_sa1.retransmit_at = time.time()
         create_child_sa_req = self.ike_sa1.check_retransmission_timer()
         self.assertIsNotNone(create_child_sa_req)
         create_child_sa_res2 = self.ike_sa2.process_message(create_child_sa_req)
@@ -278,10 +279,12 @@ class TestIkeSa(TestCase):
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         create_child_sa_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
-        self.ike_sa1.retransmit_at = 0
+        self.assertIsNotNone(create_child_sa_req)
         for i in range(0, IkeSa.MAX_RETRANSMISSIONS - 1):
+            self.ike_sa1.retransmit_at = time.time()
             create_child_sa_req = self.ike_sa1.check_retransmission_timer()
             self.assertIsNotNone(create_child_sa_req)
+        self.ike_sa1.retransmit_at = time.time()
         create_child_sa_req = self.ike_sa1.check_retransmission_timer()
         self.assertIsNone(create_child_sa_req)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.DELETED)
@@ -532,14 +535,14 @@ class TestIkeSa(TestCase):
         self.test_initial_exchanges_transport()
         dpd_req = self.ike_sa1.check_dead_peer_detection_timer()
         self.assertIsNone(dpd_req)
-        self.ike_sa1.start_dpd_at = 0
+        self.ike_sa1.start_dpd_at = time.time()
         dpd_req = self.ike_sa1.check_dead_peer_detection_timer()
         dpd_res = self.ike_sa2.process_message(dpd_req)
         request = self.ike_sa1.process_message(dpd_res)
         self.assertIsNone(request)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
-        self.ike_sa2.start_dpd_at = 0
+        self.ike_sa2.start_dpd_at = time.time()
         dpd_req = self.ike_sa2.check_dead_peer_detection_timer()
         dpd_res = self.ike_sa1.process_message(dpd_req)
         request = self.ike_sa2.process_message(dpd_res)
@@ -550,7 +553,7 @@ class TestIkeSa(TestCase):
     @patch('xfrm.Xfrm')
     def test_delete_ike_sa(self, mockclass):
         self.test_initial_exchanges_transport()
-        self.ike_sa1.rekey_ike_sa_at = 0
+        self.ike_sa1.rekey_ike_sa_at = time.time()
         delete_req = self.ike_sa1.check_rekey_ike_sa_timer(hard=True)
         delete_res = self.ike_sa2.process_message(delete_req)
         req = self.ike_sa1.process_message(delete_res)
@@ -562,7 +565,7 @@ class TestIkeSa(TestCase):
         self.test_initial_exchanges_transport()
         rekey_req = self.ike_sa1.check_rekey_ike_sa_timer(hard=False)
         self.assertIsNone(rekey_req)
-        self.ike_sa1.rekey_ike_sa_at = 0
+        self.ike_sa1.rekey_ike_sa_at = time.time()
         rekey_req = self.ike_sa1.check_rekey_ike_sa_timer(hard=False)
         rekey_res = self.ike_sa2.process_message(rekey_req)
         delete_req = self.ike_sa1.process_message(rekey_res)
@@ -576,7 +579,7 @@ class TestIkeSa(TestCase):
     @patch('xfrm.Xfrm')
     def test_rekey_ike_sa_from_responder(self, mockclass):
         self.test_initial_exchanges_transport()
-        self.ike_sa2.rekey_ike_sa_at = 0
+        self.ike_sa2.rekey_ike_sa_at = time.time()
         rekey_req = self.ike_sa2.check_rekey_ike_sa_timer(hard=False)
         rekey_res = self.ike_sa1.process_message(rekey_req)
         delete_req = self.ike_sa2.process_message(rekey_res)
@@ -590,8 +593,8 @@ class TestIkeSa(TestCase):
     @patch('xfrm.Xfrm')
     def test_simultaneous_rekey_ike_sa(self, mockclass):
         self.test_initial_exchanges_transport()
-        self.ike_sa1.rekey_ike_sa_at = 0
-        self.ike_sa2.rekey_ike_sa_at = 0
+        self.ike_sa1.rekey_ike_sa_at = time.time()
+        self.ike_sa2.rekey_ike_sa_at = time.time()
         rekey_req_alice = self.ike_sa1.check_rekey_ike_sa_timer(hard=False)
         rekey_req_bob = self.ike_sa2.check_rekey_ike_sa_timer(hard=False)
         rekey_res_alice = self.ike_sa1.process_message(rekey_req_bob)
@@ -606,7 +609,7 @@ class TestIkeSa(TestCase):
     @patch('xfrm.Xfrm')
     def test_simultaneous_rekey_ike_sa_rekey_child(self, mockclass):
         self.test_initial_exchanges_transport()
-        self.ike_sa1.rekey_ike_sa_at = 0
+        self.ike_sa1.rekey_ike_sa_at = time.time()
         rekey_ike_sa_req = self.ike_sa1.check_rekey_ike_sa_timer(hard=False)
         rekey_child_sa_req = self.ike_sa2.process_expire(self.ike_sa2.child_sas[0].inbound_spi, hard=False)
         rekey_ike_sa_res = self.ike_sa2.process_message(rekey_ike_sa_req)
@@ -625,7 +628,7 @@ class TestIkeSa(TestCase):
         self.test_initial_exchanges_transport()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
-        self.ike_sa1.rekey_ike_sa_at = 0
+        self.ike_sa1.rekey_ike_sa_at = time.time()
         rekey_ike_sa_req = self.ike_sa1.check_rekey_ike_sa_timer(hard=False)
         create_child_sa_req = self.ike_sa2.process_acquire(small_tsr, small_tsi, 2)
         rekey_ike_sa_res = self.ike_sa2.process_message(rekey_ike_sa_req)
@@ -644,7 +647,7 @@ class TestIkeSa(TestCase):
         self.test_initial_exchanges_transport()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
-        self.ike_sa1.rekey_ike_sa_at = 0
+        self.ike_sa1.rekey_ike_sa_at = time.time()
         del_ike_sa_req = self.ike_sa1.check_rekey_ike_sa_timer(hard=True)
         create_child_sa_req = self.ike_sa2.process_acquire(small_tsr, small_tsi, 2)
         del_ike_sa_res = self.ike_sa2.process_message(del_ike_sa_req)
@@ -660,7 +663,7 @@ class TestIkeSa(TestCase):
     @patch('xfrm.Xfrm')
     def test_simultaneous_del_ike_sa_rekey_child(self, mockclass):
         self.test_initial_exchanges_transport()
-        self.ike_sa1.rekey_ike_sa_at = 0
+        self.ike_sa1.rekey_ike_sa_at = time.time()
         del_ike_sa_req = self.ike_sa1.check_rekey_ike_sa_timer(hard=True)
         rekey_child_sa_req = self.ike_sa2.process_expire(self.ike_sa2.child_sas[0].inbound_spi, hard=False)
         del_ike_sa_res = self.ike_sa2.process_message(del_ike_sa_req)
@@ -676,7 +679,7 @@ class TestIkeSa(TestCase):
     @patch('xfrm.Xfrm')
     def test_simultaneous_del_ike_sa_del_child(self, mockclass):
         self.test_initial_exchanges_transport()
-        self.ike_sa1.rekey_ike_sa_at = 0
+        self.ike_sa1.rekey_ike_sa_at = time.time()
         del_ike_sa_req = self.ike_sa1.check_rekey_ike_sa_timer(hard=True)
         del_child_sa_req = self.ike_sa2.process_expire(self.ike_sa2.child_sas[0].inbound_spi, hard=True)
         del_ike_sa_res = self.ike_sa2.process_message(del_ike_sa_req)
@@ -691,8 +694,8 @@ class TestIkeSa(TestCase):
     @patch('xfrm.Xfrm')
     def test_simultaneous_del_ike_sa_del_ike_sa(self, mockclass):
         self.test_initial_exchanges_transport()
-        self.ike_sa1.rekey_ike_sa_at = 0
-        self.ike_sa2.rekey_ike_sa_at = 0
+        self.ike_sa1.rekey_ike_sa_at = time.time()
+        self.ike_sa2.rekey_ike_sa_at = time.time()
         del_ike_sa_req_alice = self.ike_sa1.check_rekey_ike_sa_timer(hard=True)
         del_ike_sa_req_bob = self.ike_sa2.check_rekey_ike_sa_timer(hard=True)
         del_ike_sa_res_alice = self.ike_sa1.process_message(del_ike_sa_req_bob)
@@ -707,8 +710,8 @@ class TestIkeSa(TestCase):
     @patch('xfrm.Xfrm')
     def test_simultaneous_rekey_ike_sa_del_ike_sa(self, mockclass):
         self.test_initial_exchanges_transport()
-        self.ike_sa1.rekey_ike_sa_at = 0
-        self.ike_sa2.rekey_ike_sa_at = 0
+        self.ike_sa1.rekey_ike_sa_at = time.time()
+        self.ike_sa2.rekey_ike_sa_at = time.time()
         rekey_ike_sa_req = self.ike_sa1.check_rekey_ike_sa_timer(hard=False)
         del_ike_sa_req = self.ike_sa2.check_rekey_ike_sa_timer(hard=True)
         rekey_ike_sa_res = self.ike_sa2.process_message(rekey_ike_sa_req)
@@ -724,7 +727,7 @@ class TestIkeSa(TestCase):
     @patch('xfrm.Xfrm')
     def test_simultaneous_rekey_ike_sa_del_child_sa(self, mockclass):
         self.test_initial_exchanges_transport()
-        self.ike_sa1.rekey_ike_sa_at = 0
+        self.ike_sa1.rekey_ike_sa_at = time.time()
         rekey_ike_sa_req = self.ike_sa1.check_rekey_ike_sa_timer(hard=False)
         del_child_sa_req = self.ike_sa2.process_expire(self.ike_sa2.child_sas[0].inbound_spi, hard=True)
         rekey_ike_sa_res = self.ike_sa2.process_message(rekey_ike_sa_req)
