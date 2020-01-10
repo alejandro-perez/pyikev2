@@ -15,7 +15,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher as _Cipher, algorithms
 
 from message import Transform, InvalidSyntax
 
-__author__ = 'Alejandro Perez <alex@um.es>'
+__author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
 
 class EncrError(Exception):

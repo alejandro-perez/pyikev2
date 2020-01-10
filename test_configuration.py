@@ -9,7 +9,7 @@ from ipaddress import ip_address
 from configuration import (
     Configuration, ConfigurationError, ConfigurationNotFound)
 
-__author__ = 'Alejandro Perez <alex@um.es>'
+__author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
 
 class TestConfiguration(unittest.TestCase):

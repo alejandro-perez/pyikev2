@@ -12,7 +12,7 @@ from ipaddress import ip_address, ip_network
 import xfrm
 from message import PayloadID, Proposal, TrafficSelector, Transform
 
-__author__ = 'Alejandro Perez <alex@um.es>'
+__author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
 
 class ConfigurationError(Exception):

@@ -24,7 +24,7 @@ from message import (Message, Payload, PayloadAUTH, PayloadDELETE, PayloadIDi, P
                      PayloadNOTIFY, PayloadSA, PayloadTSi, PayloadTSr, PayloadVENDOR, Proposal, TrafficSelector,
                      Transform)
 
-__author__ = 'Alejandro Perez <alex@um.es>'
+__author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
 # TODO: Implement tests for this with valid and invalid exchange sequences
 

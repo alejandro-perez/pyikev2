@@ -10,7 +10,7 @@ from configuration import IkeConfiguration, IpsecConfiguration
 from xfrm import Xfrm, Mode
 from message import TrafficSelector, Proposal, Transform
 
-__author__ = 'Alejandro Perez <alex@um.es>'
+__author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
 
 class TestXfrm(unittest.TestCase):

@@ -13,8 +13,8 @@ import yaml
 from configuration import Configuration
 from protocol import IkeSaController
 
-__author__ = 'Alejandro Perez <alex@um.es>'
-__version__ = "0.1"
+__author__ = 'Alejandro Perez <alejandro.perez.mendez@gmail.com>'
+__version__ = "0.2"
 
 # parses the arguments
 parser = argparse.ArgumentParser(description='Opensource IKEv2 daemon written in Python.',

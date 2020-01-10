@@ -15,7 +15,7 @@ from message import Proposal, Transform
 from netlink import (NetlinkStructure, NetlinkProtocol, NLM_F_REQUEST, NLM_F_ACK, NLM_F_DUMP,
                      NetlinkError)
 
-__author__ = 'Alejandro Perez <alex@um.es>'
+__author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
 # XFRM payload types
 XFRM_MSG_NEWSA = 0x10

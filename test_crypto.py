@@ -8,7 +8,7 @@ import unittest
 from crypto import Prf, Cipher, DiffieHellman, Integrity
 from message import Transform
 
-__author__ = 'Alejandro Perez <alex@um.es>'
+__author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
 
 class TestCrypto(unittest.TestCase):

@@ -4,7 +4,7 @@
 """ This module defines test for protocol messages.
 """
 
-__author__ = 'Alejandro Perez <alex@um.es>'
+__author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
 import logging
 import time

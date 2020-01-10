@@ -13,7 +13,7 @@ from struct import error as struct_error, pack, pack_into, unpack_from
 
 from helpers import SafeIntEnum, hexstring
 
-__author__ = 'Alejandro Perez <alex@um.es>'
+__author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
 
 class IkeSaError(Exception):
