@@ -39,9 +39,6 @@ try:
 except ValueError as ex:
     print(ex)
     sys.exit(1)
-except KeyError:
-    print('Interface do not have a valid IPv4 number')
-    sys.exit(1)
 
 # set logger
 logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
@@ -67,7 +64,7 @@ ike_sa_controller = IkeSaController(ip_address(ip), configuration=configuration)
 
 def signal_handler(*unused):
     print('SIGINT received. Exiting.')
-    # TODO: Close IKE_SA_CONTROLLER gracefully
+    ike_sa_controller.close()
     sys.exit(0)
 
 

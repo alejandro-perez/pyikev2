@@ -1479,3 +1479,7 @@ class IkeSaController:
                 request_data = ikesa.check_rekey_ike_sa_timer()
                 if request_data:
                     sock.sendto(request_data, (str(ikesa.peer_addr), 500))
+
+    def close(self):
+        self.xfrm.flush_policies()
+        self.xfrm.flush_sas()
