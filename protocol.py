@@ -93,7 +93,8 @@ class IkeSa(object):
         self.retransmit_at = 0
         self.retransmissions = 0
         self.start_dpd_at = time.time() + configuration.dpd
-        self.rekey_ike_sa_at = time.time() + configuration.lifetime + random.randint(0, 5)
+        self.rekey_ike_sa_at = time.time() + configuration.lifetime + random.uniform(0, 5)
+        self.delete_ike_sa_at = self.rekey_ike_sa_at + 30
         self.pending_events = []
 
     def __str__(self):
@@ -422,16 +423,18 @@ class IkeSa(object):
             return self._send_request(request, self.peer_addr)
         return None
 
-    def check_rekey_ike_sa_timer(self, hard=False):
+    def check_rekey_ike_sa_timer(self):
         """ Creates an empty INFORMATIONAL message for Dead Peer Detection
         """
-        if self.rekey_ike_sa_at < time.time() and self.state == IkeSa.State.ESTABLISHED:
-            self.log_info("Received expire for IKE_SA. Hard={}".format(hard))
-            if hard:
+        if self.state == IkeSa.State.ESTABLISHED:
+            now = time.time()
+            if self.delete_ike_sa_at < now:
+                self.log_info("Received hard expire for IKE_SA")
                 request = self.generate_delete_ike_sa_request()
-            else:
+                return self._send_request(request, self.peer_addr)
+            elif self.rekey_ike_sa_at < now:
                 request = self.generate_rekey_ike_sa_request()
-            return self._send_request(request, self.peer_addr)
+                return self._send_request(request, self.peer_addr)
         return None
 
     def _process_ike_sa_negotiation_request(self, request, encrypted=False, old_sk_d=None):
@@ -1202,9 +1205,14 @@ class IkeSa(object):
                                                              PayloadNOTIFY.Type.TEMPORARY_FAILURE,
                                                              PayloadNOTIFY.Type.INVALID_KE_PAYLOAD])
 
+        # IKE_SA rekey response
         if self.state == IkeSa.State.REK_IKE_SA_REQ_SENT:
+            # If we are asked to wait, wait for a random amount of time before retrying to rekey the IKE_SA
             if response.get_notifies(PayloadNOTIFY.Type.TEMPORARY_FAILURE, True):
+                self.log_info('Redundant IKE_SA rekey')
                 self.state = IkeSa.State.ESTABLISHED
+                self.rekey_ike_sa_at = time.time() + random.uniform(0, 2)
+                return None
             else:
                 # process the IKE_SA negotiation payloads
                 self.new_ike_sa._process_ike_sa_negotiation_response(
@@ -1214,7 +1222,8 @@ class IkeSa(object):
                 self.child_sas = []
                 self.state = IkeSa.State.REKEYED
                 self.new_ike_sa.state = IkeSa.State.ESTABLISHED
-            return self.generate_delete_ike_sa_request()
+                return self.generate_delete_ike_sa_request()
+        # CHILD_SA create/rekey response
         else:
             negotiation_failed = False
             try:
