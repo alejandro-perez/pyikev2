@@ -18,10 +18,10 @@ from message import TrafficSelector, Transform, Proposal, Message, Payload, Payl
 from protocol import IkeSa
 
 logging.indent = 2
-# logging.basicConfig(level=logging.DEBUG,
-#                     format='[%(asctime)s.%(msecs)03d] [%(levelname)-7s] %(message)s',
-#                     datefmt='%Y-%m-%d %H:%M:%S')
-
+logging.basicConfig(level=logging.INFO,
+                    format='[%(asctime)s.%(msecs)03d] [%(levelname)-7s] %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S')
+# logging.disable()
 
 class TestIkeSa(TestCase):
     @patch('xfrm.Xfrm')
@@ -359,7 +359,7 @@ class TestIkeSa(TestCase):
         message = Message.parse(ike_sa_init_res)
         message.exchange_type = 100
         ike_sa_init_res = message.to_bytes()
-        ike_auth_res = self.ike_sa1.process_message(ike_sa_init_res, self.ip1)
+        ike_auth_res = self.ike_sa1.process_message(ike_sa_init_res)
         self.assertIsNone(ike_auth_res)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.INIT_REQ_SENT)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.INIT_RES_SENT)
@@ -375,7 +375,7 @@ class TestIkeSa(TestCase):
         self.ike_sa2.configuration.protect[0] = self.ike_sa2.configuration.protect[0]._replace(my_subnet = ip_network("10.0.0.0/24"))
         create_child_sa_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
         create_child_sa_res = self.ike_sa2.process_message(create_child_sa_req)
-        request = self.ike_sa1.process_message(create_child_sa_res, self.ip2)
+        request = self.ike_sa1.process_message(create_child_sa_res)
         self.assertIsNone(request)
         self.assertMessageHasNotification(create_child_sa_res, self.ike_sa2, PayloadNOTIFY.Type.TS_UNACCEPTABLE)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)

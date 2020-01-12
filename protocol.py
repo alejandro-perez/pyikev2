@@ -12,6 +12,7 @@ import time
 import traceback
 from collections import namedtuple
 from ipaddress import ip_address, ip_network
+from itertools import chain
 from select import select
 from struct import unpack
 
@@ -132,8 +133,7 @@ class IkeSa(object):
         keymat = prf.prfplus(skeyseed, nonce_i + nonce_r + spi_i + spi_r,
                              prf.key_size * 3 + integ.key_size * 2 + cipher.key_size * 2)
         sk_d, sk_ai, sk_ar, sk_ei, sk_er, sk_pi, sk_pr = unpack(
-            '>{0}s{1}s{1}s{2}s{2}s{0}s{0}s'.format(prf.key_size, integ.key_size, cipher.key_size),
-            keymat)
+            '>{0}s{1}s{1}s{2}s{2}s{0}s{0}s'.format(prf.key_size, integ.key_size, cipher.key_size), keymat)
         ike_sa_keyring = Keyring(sk_d, sk_ai, sk_ar, sk_ei, sk_er, sk_pi, sk_pr)
         crypto_i = Crypto(cipher, ike_sa_keyring.sk_ei, integ, ike_sa_keyring.sk_ai, prf, ike_sa_keyring.sk_pi)
         crypto_r = Crypto(cipher, ike_sa_keyring.sk_er, integ, ike_sa_keyring.sk_ar, prf, ike_sa_keyring.sk_pr)
@@ -225,13 +225,19 @@ class IkeSa(object):
 
     # TODO: Logging should be done per exchange, instead of having a generic
     # call, to make it more specific (e.g. CHILD_SA_REKEY, IKE_SA_REKEY, IKE_SA_DELETE, etc.)
-    def log_message(self, message, addr, data, send=True):
-        self.log_info('{} {} {} ({} bytes) {} {}'.format('Sent' if send else 'Received',
-                                                         Message.Exchange.safe_name(message.exchange_type),
-                                                         'response' if message.is_response else 'request',
-                                                         len(data),
-                                                         'to' if send else 'from',
-                                                         addr))
+    def log_message(self, message, data, send=True):
+        payloads_names = (Payload.Type.safe_name(x.type) for x in message.payloads + message.encrypted_payloads if
+                          x.type != Payload.Type.NOTIFY)
+        payloads_notify_names = ('N({})'.format(PayloadNOTIFY.Type.safe_name(x.notification_type)) for x in
+                                 message.payloads + message.encrypted_payloads if x.type == Payload.Type.NOTIFY)
+        self.log_info('{} {} {} ({} bytes) {} {} [{}]'
+                      ''.format('Sent' if send else 'Received',
+                                Message.Exchange.safe_name(message.exchange_type),
+                                'response' if message.is_response else 'request',
+                                len(data),
+                                'to' if send else 'from',
+                                self.peer_addr,
+                                ', '.join(chain(payloads_names, payloads_notify_names))))
         self.log_debug(json.dumps(message.to_dict(), indent=logging.indent))
 
     def _generate_ike_error_response(self, request, exception):
@@ -250,7 +256,7 @@ class IkeSa(object):
                                            else []),
                        crypto=(self.my_crypto if request.exchange_type != Message.Exchange.IKE_SA_INIT else None))
 
-    def _process_request(self, message, addr):
+    def _process_request(self, message):
         _handler_dict = {
             Message.Exchange.IKE_SA_INIT: self.process_ike_sa_init_request,
             Message.Exchange.IKE_AUTH: self.process_ike_auth_request,
@@ -288,18 +294,18 @@ class IkeSa(object):
         # ID and store response (for future retransmissions responses)
         self.peer_msg_id = self.peer_msg_id + 1
         response_data = response.to_bytes()
-        self.log_message(response, addr, response_data, send=True)
+        self.log_message(response, response_data, send=True)
         self.last_sent_response_data = response_data
         return response_data
 
-    def _send_request(self, request, addr):
+    def _send_request(self, request):
         self.retransmissions = 1
         self.retransmit_at = time.time() + IkeSa.RETRANSMISSION_DELAY
         request_data = request.to_bytes()
-        self.log_message(request, addr, request_data, send=True)
+        self.log_message(request, request_data, send=True)
         return request_data
 
-    def _process_response(self, message, addr):
+    def _process_response(self, message):
         _handler_dict = {
             Message.Exchange.IKE_SA_INIT: self.process_ike_sa_init_response,
             Message.Exchange.IKE_AUTH: self.process_ike_auth_response,
@@ -325,7 +331,7 @@ class IkeSa(object):
             request = handler(message)
             # If there is a another request to be sent, serialise it and return it
             if request:
-                return self._send_request(request, addr)
+                return self._send_request(request)
 
             # if state is ESTABLISHED, check for pending events
             if self.state == IkeSa.State.ESTABLISHED:
@@ -346,12 +352,10 @@ class IkeSa(object):
 
         return None
 
-    def process_message(self, data, addr=None):
-        if addr is None:
-            addr = self.peer_addr
+    def process_message(self, data):
         # parse the whole message (including encrypted data)
         message = Message.parse(data, header_only=False, crypto=self.peer_crypto)
-        self.log_message(message, addr, data, send=False)
+        self.log_message(message, data, send=False)
 
         # check the role the sender claims to have corresponds with what we think about ourselves
         if message.is_initiator == self.is_initiator:
@@ -361,9 +365,9 @@ class IkeSa(object):
         # receiving any kind of message from the peer resets the DPD timer
         self.start_dpd_at = time.time() + self.configuration.dpd
         if message.is_request:
-            return self._process_request(message, addr)
+            return self._process_request(message)
         else:
-            return self._process_response(message, addr)
+            return self._process_response(message)
 
     def process_acquire(self, tsi, tsr, index):
         if self.state not in (IkeSa.State.INITIAL, IkeSa.State.ESTABLISHED):
@@ -385,7 +389,7 @@ class IkeSa(object):
         else:
             request = self.generate_create_child_sa_request(child_sa)
 
-        return self._send_request(request, self.peer_addr)
+        return self._send_request(request)
 
     def process_expire(self, spi, hard=False):
         """ Creates a rekey CREATE_CHILD_SA message for creating a new CHILD or an INFORMATIONAL for deleting it
@@ -411,7 +415,7 @@ class IkeSa(object):
         else:
             request = self.generate_delete_child_sa_request(child_sa)
 
-        return self._send_request(request, self.peer_addr)
+        return self._send_request(request)
 
     def check_dead_peer_detection_timer(self):
         """ Creates an empty INFORMATIONAL message for Dead Peer Detection
@@ -420,7 +424,7 @@ class IkeSa(object):
         if self.start_dpd_at < time.time() and self.state == IkeSa.State.ESTABLISHED:
             self.log_info('Starting DEAD-PEER-DETECTION')
             request = self.generate_dead_peer_detection_request()
-            return self._send_request(request, self.peer_addr)
+            return self._send_request(request)
         return None
 
     def check_rekey_ike_sa_timer(self):
@@ -431,10 +435,10 @@ class IkeSa(object):
             if self.delete_ike_sa_at < now:
                 self.log_info("Received hard expire for IKE_SA")
                 request = self.generate_delete_ike_sa_request()
-                return self._send_request(request, self.peer_addr)
+                return self._send_request(request)
             elif self.rekey_ike_sa_at < now:
                 request = self.generate_rekey_ike_sa_request()
-                return self._send_request(request, self.peer_addr)
+                return self._send_request(request)
         return None
 
     def _process_ike_sa_negotiation_request(self, request, encrypted=False, old_sk_d=None):
