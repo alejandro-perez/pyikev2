@@ -1,5 +1,12 @@
 # pyikev2
-This is a WIP project to build a generic and stable python library and executable for perfoming IKEv2 exchanges
+Python implementation of the IKEv2 protocol. It provides:
 
-The intent is not to provide an outstanding performance or security, but to serve as a didactical and support tool for learning and/or research projects.
+* Complete IKEv2 message parsing and generation.
+* Support of PSK authentication
+* Support for creating CHILD_SAs using the Linux XFRM interface
+* Logging of all the message exchanges for easy inspection.
+* Single threaded model, with no locks for easier understanding.
+* Small codebase.
+
+The intent of this implementation is not to provide an outstanding performance or security, but to serve as a didactic and support tool for learning and/or research projects.
 
