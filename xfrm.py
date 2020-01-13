@@ -96,7 +96,6 @@ class Mode(SafeIntEnum):
     TUNNEL = XFRM_MODE_TUNNEL
 
 
-# TODO: This needs to support IPv6 in the future
 class XfrmAddress(NetlinkStructure, BigEndianStructure):
     _fields_ = (('addr', c_uint32 * 4),)
 

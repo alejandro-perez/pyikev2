@@ -27,8 +27,6 @@ from message import (Message, Payload, PayloadAUTH, PayloadDELETE, PayloadIDi, P
 
 __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
-# TODO: Implement tests for this with valid and invalid exchange sequences
-
 Keyring = namedtuple('Keyring', ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er', 'sk_pi', 'sk_pr'])
 ChildSa = namedtuple('ChildSa', ['inbound_spi', 'outbound_spi', 'proposal', 'tsi', 'tsr', 'mode', 'ipsec_conf'])
 ChildSa.__str__ = lambda x: '({}, {})'.format(hexstring(x.inbound_spi), hexstring(x.outbound_spi))
@@ -223,8 +221,6 @@ class IkeSa(object):
                         return ipsec_conf, conf_tsi, conf_tsr
         raise TsUnacceptable('TS could not be matched with any IPsec configuration')
 
-    # TODO: Logging should be done per exchange, instead of having a generic
-    # call, to make it more specific (e.g. CHILD_SA_REKEY, IKE_SA_REKEY, IKE_SA_DELETE, etc.)
     def log_message(self, message, data, send=True):
         payloads_names = (Payload.Type.safe_name(x.type) for x in message.payloads + message.encrypted_payloads if
                           x.type != Payload.Type.NOTIFY)
@@ -672,7 +668,6 @@ class IkeSa(object):
         payload_ke = response.get_payload(Payload.Type.KE, encrypted)
 
         # select the peers proposal.
-        # TODO: Must check that peer actually selected a subset
         self.chosen_proposal = payload_sa.proposals[0]
 
         # update peer spi (take it from the payload SA if old_sa_d is not none ie. IKE_SA rekey)
@@ -907,7 +902,6 @@ class IkeSa(object):
         response_payload_idr = PayloadIDr(self.configuration.id.id_type, self.configuration.id.id_data)
 
         # generate AUTH payload
-        # TODO: Use a function for generating/validating AUTH payloads
         auth_data = self._generate_psk_auth_payload(self.ike_sa_init_res_data,
                                                     ike_sa_init_req.get_payload(Payload.Type.NONCE).nonce,
                                                     response_payload_idr, self.my_crypto.sk_p)
@@ -1376,7 +1370,7 @@ class IkeSaController:
                 return None
 
         # generate the reply (if any)
-        reply = ike_sa.process_message(data, peer_addr)
+        reply = ike_sa.process_message(data)
 
         # if rekeyed, add the new IkeSa
         if ike_sa.state in (IkeSa.State.REKEYED, IkeSa.State.DEL_AFTER_REKEY_IKE_SA_REQ_SENT):
@@ -1397,7 +1391,6 @@ class IkeSaController:
         logging.debug('Received acquire for {}'.format(peer_addr))
 
         # look for an active IKE_SA with the peer
-        # TODO: Probably need to check state to see if we can use it or not
         try:
             ike_sa = self._get_ike_sa_by_peer_addr(peer_addr)
         except StopIteration:
@@ -1450,7 +1443,6 @@ class IkeSaController:
                 if data:
                     sock.sendto(data, addr)
 
-            # TODO: Wrong. _parse_message should not be used here
             if xfrm_socket in readable:
                 data = xfrm_socket.recv(4096)
                 header, msg, attributes = xfrm_obj.parse_message(data)
