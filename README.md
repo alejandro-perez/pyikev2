@@ -10,3 +10,4 @@ Python implementation of the IKEv2 protocol. It provides:
 
 The intent of this implementation is not to provide an outstanding performance or security, but to serve as a didactic and support tool for learning and/or research projects.
 
+Its design allows to create scripts to manually test other implementations (see test_protocol.py for examples of how IKEv2 exchanges can be processed)  
