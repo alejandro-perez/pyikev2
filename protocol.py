@@ -502,7 +502,7 @@ class IkeSa(object):
                            message_id=self.peer_msg_id,
                            payloads=response_payloads,
                            encrypted_payloads=[],
-                           crypto=self.my_crypto)
+                           crypto=None)
 
         # switch state
         self.state = IkeSa.State.INIT_RES_SENT
