@@ -222,10 +222,6 @@ class IkeSa(object):
         raise TsUnacceptable('TS could not be matched with any IPsec configuration')
 
     def log_message(self, message, data, send=True):
-        payloads_names = (Payload.Type.safe_name(x.type) for x in message.payloads + message.encrypted_payloads if
-                          x.type != Payload.Type.NOTIFY)
-        payloads_notify_names = ('N({})'.format(PayloadNOTIFY.Type.safe_name(x.notification_type)) for x in
-                                 message.payloads + message.encrypted_payloads if x.type == Payload.Type.NOTIFY)
         self.log_info('{} {} {} ({} bytes) {} {} [{}]'
                       ''.format('Sent' if send else 'Received',
                                 Message.Exchange.safe_name(message.exchange_type),
@@ -233,7 +229,7 @@ class IkeSa(object):
                                 len(data),
                                 'to' if send else 'from',
                                 self.peer_addr,
-                                ', '.join(chain(payloads_names, payloads_notify_names))))
+                                ', '.join(str(x) for x in message.payloads + message.encrypted_payloads)))
         self.log_debug(json.dumps(message.to_dict(), indent=logging.indent))
 
     def _generate_ike_error_response(self, request, exception):

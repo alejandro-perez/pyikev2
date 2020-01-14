@@ -91,6 +91,9 @@ class Payload:
             ('type', Payload.Type.safe_name(self.type)),
             ('critical', self.critical)])
 
+    def __str__(self):
+        return Payload.Type.safe_name(self.type)
+
 
 class PayloadKE(Payload):
     type = Payload.Type.KE
@@ -506,6 +509,9 @@ class PayloadNOTIFY(Payload):
 
     def is_error(self):
         return self.notification_type < 16384
+
+    def __str__(self):
+        return 'N({})'.format(PayloadNOTIFY.Type.safe_name(self.notification_type))
 
 
 class PayloadID(Payload):
