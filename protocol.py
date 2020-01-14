@@ -1082,7 +1082,7 @@ class IkeSa(object):
         """
         assert (self.state == IkeSa.State.ESTABLISHED)
 
-        payload_delete = PayloadDELETE(Proposal.Protocol.NONE, [child_sa.inbound_spi])
+        payload_delete = PayloadDELETE(child_sa.proposal.protocol_id, [child_sa.inbound_spi])
 
         # generate the message
         self.request = Message(spi_i=self.spi_i,
@@ -1118,10 +1118,10 @@ class IkeSa(object):
                 self.log_info('Deleting this IKE_SA')
                 self.state = IkeSa.State.DELETED
             # if protocol is either AH or ESP, delete the Child SAs and return the inbound SPI
-            else:
+            elif delete_payload.protocol_id in (Proposal.Protocol.AH, Proposal.Protocol.ESP):
                 for del_spi in delete_payload.spis:
                     child_sa = self.get_child_sa(del_spi)
-                    if child_sa is not None:
+                    if child_sa is not None and child_sa.proposal.protocol_id == delete_payload.protocol_id:
                         self.xfrm.delete_sa(self.peer_addr, child_sa.proposal.protocol_id, child_sa.outbound_spi)
                         self.xfrm.delete_sa(self.my_addr, child_sa.proposal.protocol_id, child_sa.inbound_spi)
                         self.child_sas.remove(child_sa)
