@@ -183,10 +183,11 @@ class IkeSa(object):
                                                         + self.configuration.prf + self.configuration.dh))
 
     def _ipsec_conf_2_proposal(self, ipsec_conf):
+        no_esn = [Transform(Transform.Type.ESN, Transform.EsnId.NO_ESN)]
         if ipsec_conf.ipsec_proto == Proposal.Protocol.ESP:
-            return Proposal(1, ipsec_conf.ipsec_proto, b'', ipsec_conf.encr + ipsec_conf.integ)
+            return Proposal(1, ipsec_conf.ipsec_proto, b'', ipsec_conf.encr + ipsec_conf.integ + no_esn)
         else:
-            return Proposal(1, ipsec_conf.ipsec_proto, b'', ipsec_conf.integ)
+            return Proposal(1, ipsec_conf.ipsec_proto, b'', ipsec_conf.integ + no_esn)
 
     def _select_best_ike_sa_proposal(self, peer_payload_sa):
         my_proposal = self._ike_conf_2_proposal()
