@@ -1047,10 +1047,12 @@ class IkeSa(object):
 
         # generate the CHILD_SA negotiation payloads
         child_sa_payloads = self._generate_child_sa_negotiation_req(child_sa)
+        payloads = []
         if rekeyed_child_sa is not None:
             self.rekeying_child_sa = rekeyed_child_sa
-            child_sa_payloads.append(PayloadNOTIFY(rekeyed_child_sa.proposal.protocol_id, PayloadNOTIFY.Type.REKEY_SA,
-                                                   rekeyed_child_sa.inbound_spi, b''))
+            child_sa_payloads.insert(0, PayloadNOTIFY(rekeyed_child_sa.proposal.protocol_id,
+                                                      PayloadNOTIFY.Type.REKEY_SA,
+                                                      rekeyed_child_sa.inbound_spi, b''))
 
         # generate Payload NONCE
         payload_nonce = PayloadNONCE()
