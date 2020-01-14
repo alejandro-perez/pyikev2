@@ -25,8 +25,8 @@ class EncrError(Exception):
 class Prf(object):
     _digestmod_dict = {
         Transform.PrfId.PRF_HMAC_SHA1: hashlib.sha1,
-        Transform.PrfId.PRF_HMAC_SHA2_256: hashlib.sha3_256,
-        Transform.PrfId.PRF_HMAC_SHA2_512: hashlib.sha3_512,
+        Transform.PrfId.PRF_HMAC_SHA2_256: hashlib.sha256,
+        Transform.PrfId.PRF_HMAC_SHA2_512: hashlib.sha512,
     }
 
     def __init__(self, transform):
