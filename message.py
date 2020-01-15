@@ -38,6 +38,11 @@ class InvalidKePayload(IkeSaError):
         self.group = group
 
 
+class CookieRequired(IkeSaError):
+    def __init__(self, msg, cookie):
+        super().__init__(msg)
+        self.cookie = cookie
+
 class AuthenticationFailed(IkeSaError):
     pass
 
@@ -470,10 +475,18 @@ class PayloadNOTIFY(Payload):
             TsUnacceptable: PayloadNOTIFY.Type.TS_UNACCEPTABLE,
             InvalidKePayload: PayloadNOTIFY.Type.INVALID_KE_PAYLOAD,
             ChildSaNotFound: PayloadNOTIFY.Type.CHILD_SA_NOT_FOUND,
-            TemporaryFailure: PayloadNOTIFY.Type.TEMPORARY_FAILURE
+            TemporaryFailure: PayloadNOTIFY.Type.TEMPORARY_FAILURE,
+            CookieRequired: PayloadNOTIFY.Type.COOKIE
         }
         notification_type = exception_2_notify.get(type(ex), PayloadNOTIFY.Type.INVALID_SYNTAX)
-        notification_data = pack('>H', ex.group) if type(ex) is InvalidKePayload else b''
+
+        if type(ex) is InvalidKePayload:
+            notification_data = pack('>H', ex.group)
+        elif type(ex) is CookieRequired:
+            notification_data = ex.cookie
+        else:
+            notification_data = b''
+
         notification_protocol = ex.protocol if type(ex) is ChildSaNotFound else Proposal.Protocol.NONE
         notification_spi = ex.spi if type(ex) is ChildSaNotFound else b''
         return PayloadNOTIFY(notification_protocol, notification_type, notification_spi, notification_data)

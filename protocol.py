@@ -3,6 +3,7 @@
 
 """ This module defines the classes for the protocol handling.
 """
+import hashlib
 import json
 import logging
 import os
@@ -11,8 +12,8 @@ import socket
 import time
 import traceback
 from collections import namedtuple
+from hmac import HMAC
 from ipaddress import ip_address, ip_network
-from itertools import chain
 from select import select
 from struct import unpack
 
@@ -20,7 +21,7 @@ import xfrm
 from crypto import Cipher, Crypto, DiffieHellman, Integrity, Prf
 from helpers import SafeIntEnum, hexstring
 from message import (AuthenticationFailed, ChildSaNotFound, IkeSaError, InvalidKePayload,
-                     NoProposalChosen, TemporaryFailure, TsUnacceptable)
+                     NoProposalChosen, TemporaryFailure, TsUnacceptable, CookieRequired)
 from message import (Message, Payload, PayloadAUTH, PayloadDELETE, PayloadIDi, PayloadIDr, PayloadKE, PayloadNONCE,
                      PayloadNOTIFY, PayloadSA, PayloadTSi, PayloadTSr, PayloadVENDOR, Proposal, TrafficSelector,
                      Transform)
@@ -65,7 +66,7 @@ class IkeSa(object):
     MAX_RETRANSMISSIONS = 4
     RETRANSMISSION_DELAY = 2
 
-    def __init__(self, is_initiator, peer_spi, configuration, my_addr, peer_addr):
+    def __init__(self, is_initiator, peer_spi, configuration, my_addr, peer_addr, cookie_secret=None):
         self.state = IkeSa.State.INITIAL
         self.my_spi = os.urandom(8)
         self.peer_spi = peer_spi
@@ -91,6 +92,7 @@ class IkeSa(object):
         self.xfrm = xfrm.Xfrm()
         self.retransmit_at = 0
         self.retransmissions = 0
+        self.cookie_secret = cookie_secret
         self.start_dpd_at = time.time() + configuration.dpd
         self.rekey_ike_sa_at = time.time() + configuration.lifetime + random.uniform(0, 5)
         self.delete_ike_sa_at = self.rekey_ike_sa_at + 30
@@ -444,6 +446,14 @@ class IkeSa(object):
         payload_nonce = request.get_payload(Payload.Type.NONCE, encrypted)
         payload_ke = request.get_payload(Payload.Type.KE, encrypted)
 
+        # check cookie
+        if self.cookie_secret is not None:
+            expected_cookie = HMAC(self.cookie_secret, request.spi_i + payload_nonce.nonce + self.peer_addr.packed,
+                                   digestmod=hashlib.sha256).digest()
+            received_cookies = request.get_notifies(PayloadNOTIFY.Type.COOKIE)
+            if len(received_cookies) == 0 or received_cookies[0].notification_data != expected_cookie:
+                raise CookieRequired('COOKIE is required', cookie=expected_cookie)
+
         # select the proposal and generate a response Payload SA
         self.chosen_proposal = self._select_best_ike_sa_proposal(payload_sa)
         # if this is a rekey, hence spi is not empty, send ours
@@ -713,6 +723,13 @@ class IkeSa(object):
             payload_ke.dh_group = new_payload_ke.dh_group
             payload_ke.ke_data = new_payload_ke.ke_data
             self.ike_sa_init_req_data = self.request.to_bytes()
+        # Recover from COOKIE
+        cookie = response.get_notifies(PayloadNOTIFY.Type.COOKIE)
+        if cookie:
+            self.log_warning("COOKIE notification received. Trying including the COOKIE")
+            self.request.payloads.insert(0, cookie[0])
+            self.ike_sa_init_req_data = self.request.to_bytes()
+            self.my_msg_id = 0
             return self.request
 
         # Check error notifications
@@ -1326,7 +1343,8 @@ class IkeSaController:
         self.configuration = configuration
         self.xfrm = xfrm.Xfrm()
         self.my_addr = my_addr
-
+        self.cookie_threshold = 0
+        self.cookie_secret = os.urandom(8)
         # establish policies
         self.xfrm.flush_policies()
         self.xfrm.flush_sas()
@@ -1348,7 +1366,6 @@ class IkeSaController:
 
     def dispatch_message(self, data, my_addr, peer_addr):
         header = Message.parse(data, header_only=True)
-
         # if IKE_SA_INIT request, then a new IkeSa must be created
         if (header.exchange_type == Message.Exchange.IKE_SA_INIT and header.is_request):
             # look for matching configuration
@@ -1356,8 +1373,11 @@ class IkeSaController:
             ike_sa = IkeSa(is_initiator=False, peer_spi=header.spi_i, configuration=ike_conf,
                            my_addr=ip_address(my_addr[0]), peer_addr=ip_address(peer_addr[0]))
             self.ike_sas.append(ike_sa)
+            if sum(1 for x in self.ike_sas if x.state < IkeSa.State.ESTABLISHED) > self.cookie_threshold:
+                ike_sa.cookie_secret = self.cookie_secret
             logging.info('Starting the creation of IKE SA with SPI={}. Count={}'.format(hexstring(ike_sa.my_spi),
                                                                                         len(self.ike_sas)))
+
         # else, look for the IkeSa in the dict
         else:
             my_spi = header.spi_r if header.is_initiator else header.spi_i

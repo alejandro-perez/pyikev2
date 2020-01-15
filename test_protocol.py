@@ -18,7 +18,7 @@ from message import TrafficSelector, Transform, Proposal, Message, Payload, Payl
 from protocol import IkeSa
 
 logging.indent = 2
-logging.basicConfig(level=logging.INFO,
+logging.basicConfig(level=logging.DEBUG,
                     format='[%(asctime)s.%(msecs)03d] [%(levelname)-7s] %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S')
 # logging.disable()
@@ -137,6 +137,20 @@ class TestIkeSa(TestCase):
         ike_sa3.process_message(ike_sa_init_req_newgroup)
         self.assertMessageHasNotification(ike_sa_init_res, self.ike_sa2, PayloadNOTIFY.Type.INVALID_KE_PAYLOAD)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.INIT_REQ_SENT)
+    @patch('xfrm.Xfrm')
+    def test_ike_sa_init_cookie(self, mockclass):
+        small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
+        small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
+        self.ike_sa2.cookie_secret = b'secret'
+        ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
+        ike_sa_init_res = self.ike_sa2.process_message(ike_sa_init_req)
+        self.assertMessageHasNotification(ike_sa_init_res, self.ike_sa2, PayloadNOTIFY.Type.COOKIE)
+        ike_sa_init_req_cookie = self.ike_sa1.process_message(ike_sa_init_res)
+        ike_sa3 = IkeSa(is_initiator=False, peer_spi=self.ike_sa1.my_spi, my_addr=self.ip2, peer_addr=self.ip1,
+                        configuration=self.configuration2.get_ike_configuration(self.ip1))
+        ike_sa_init_res = ike_sa3.process_message(ike_sa_init_req_cookie)
+        self.ike_sa1.process_message(ike_sa_init_res)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.AUTH_REQ_SENT)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.DELETED)
         self.assertEqual(ike_sa3.state, IkeSa.State.INIT_RES_SENT)
         self.assertEqual(len(self.ike_sa1.child_sas), 0)
