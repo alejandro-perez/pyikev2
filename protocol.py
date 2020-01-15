@@ -718,11 +718,13 @@ class IkeSa(object):
             my_dh_group = unpack('>H', invalid_ke.notification_data)[0]
             self.dh = DiffieHellman(my_dh_group)
             new_payload_ke = PayloadKE(my_dh_group, self.dh.public_key)
-
             payload_ke = self.request.get_payload(Payload.Type.KE)
             payload_ke.dh_group = new_payload_ke.dh_group
             payload_ke.ke_data = new_payload_ke.ke_data
             self.ike_sa_init_req_data = self.request.to_bytes()
+            self.my_msg_id = 0
+            return self.request
+
         # Recover from COOKIE
         cookie = response.get_notifies(PayloadNOTIFY.Type.COOKIE)
         if cookie:
