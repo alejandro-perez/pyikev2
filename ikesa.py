@@ -647,9 +647,9 @@ class IkeSa(object):
 
         # generate Payload AUTH
         ike_sa_init_res = Message.parse(self.ike_sa_init_res_data)
-        auth_data = self._generate_psk_auth_payload(self.ike_sa_init_req_data,
-                                                    ike_sa_init_res.get_payload(Payload.Type.NONCE).nonce,
-                                                    payload_idi, self.my_crypto.sk_p)
+        auth_data = self._generate_auth_payload(PayloadAUTH.Method.PSK, self.ike_sa_init_req_data,
+                                                ike_sa_init_res.get_payload(Payload.Type.NONCE).nonce,
+                                                payload_idi, self.my_crypto.sk_p)
 
         payload_auth = PayloadAUTH(PayloadAUTH.Method.PSK, auth_data)
 
@@ -752,11 +752,15 @@ class IkeSa(object):
         # return IKE_AUTH request callback
         return self.generate_ike_auth_request()
 
-    def _generate_psk_auth_payload(self, message_data, nonce, payload_id, sk_p):
+    def _generate_auth_payload(self, authmethod, message_data, nonce, payload_id, sk_p):
         prf = self.peer_crypto.prf.prf
         data_to_be_signed = (message_data + nonce + prf(sk_p, payload_id.to_bytes()))
-        keypad = prf(self.configuration.psk, b'Key Pad for IKEv2')
-        return prf(keypad, data_to_be_signed)
+        if authmethod == PayloadAUTH.Method.PSK:
+            keypad = prf(self.configuration.psk, b'Key Pad for IKEv2')
+            return prf(keypad, data_to_be_signed)
+        else:
+            raise AuthenticationFailed('AUTH method {} not supported'.format(PayloadAUTH.Method.safe_name(authmethod)))
+
 
     def _process_create_child_sa_negotiation_req(self, request):
         """ This method process a CREATE CHILD SA negotiation request
@@ -903,16 +907,12 @@ class IkeSa(object):
         request_payload_idi = request.get_payload(Payload.Type.IDi, True)
         request_payload_auth = request.get_payload(Payload.Type.AUTH, True)
 
-        # verify AUTH payload
-        if request_payload_auth.method != PayloadAUTH.Method.PSK:
-            raise AuthenticationFailed('AUTH method not supported')
-
         ike_sa_init_req = Message.parse(self.ike_sa_init_req_data)
         ike_sa_init_res = Message.parse(self.ike_sa_init_res_data)
 
-        auth_data = self._generate_psk_auth_payload(self.ike_sa_init_req_data,
-                                                    ike_sa_init_res.get_payload(Payload.Type.NONCE).nonce,
-                                                    request_payload_idi, self.peer_crypto.sk_p)
+        auth_data = self._generate_auth_payload(request_payload_auth.method, self.ike_sa_init_req_data,
+                                                ike_sa_init_res.get_payload(Payload.Type.NONCE).nonce,
+                                                request_payload_idi, self.peer_crypto.sk_p)
 
         if auth_data != request_payload_auth.auth_data:
             raise AuthenticationFailed('Invalid AUTH data received')
@@ -924,9 +924,9 @@ class IkeSa(object):
         response_payload_idr = PayloadIDr(self.configuration.id.id_type, self.configuration.id.id_data)
 
         # generate AUTH payload
-        auth_data = self._generate_psk_auth_payload(self.ike_sa_init_res_data,
-                                                    ike_sa_init_req.get_payload(Payload.Type.NONCE).nonce,
-                                                    response_payload_idr, self.my_crypto.sk_p)
+        auth_data = self._generate_auth_payload(PayloadAUTH.Method.PSK, self.ike_sa_init_res_data,
+                                                ike_sa_init_req.get_payload(Payload.Type.NONCE).nonce,
+                                                response_payload_idr, self.my_crypto.sk_p)
         response_payload_auth = PayloadAUTH(PayloadAUTH.Method.PSK, auth_data)
 
         response_payloads += [response_payload_idr, response_payload_auth]
@@ -1041,14 +1041,10 @@ class IkeSa(object):
         response_payload_idr = response.get_payload(Payload.Type.IDr, True)
         response_payload_auth = response.get_payload(Payload.Type.AUTH, True)
 
-        # verify AUTH payload
-        if response_payload_auth.method != PayloadAUTH.Method.PSK:
-            raise AuthenticationFailed('AUTH method not supported')
-
         ike_sa_init_req = Message.parse(self.ike_sa_init_req_data)
-        auth_data = self._generate_psk_auth_payload(self.ike_sa_init_res_data,
-                                                    ike_sa_init_req.get_payload(Payload.Type.NONCE).nonce,
-                                                    response_payload_idr, self.peer_crypto.sk_p)
+        auth_data = self._generate_auth_payload(response_payload_auth.method, self.ike_sa_init_res_data,
+                                                ike_sa_init_req.get_payload(Payload.Type.NONCE).nonce,
+                                                response_payload_idr, self.peer_crypto.sk_p)
 
         if auth_data != response_payload_auth.auth_data:
             raise AuthenticationFailed('Invalid AUTH data received')
