@@ -96,7 +96,7 @@ class IkeSaController:
             my_addr = xfrm_acquire.saddr.to_ipaddr()
             ike_conf = self.configuration.get_ike_configuration(peer_addr)
             # create new IKE_SA (for now)
-            ike_sa = IkeSa(is_initiator=True, peer_spi=b'', configuration=ike_conf, my_addr=my_addr,
+            ike_sa = IkeSa(is_initiator=True, peer_spi=b'\0'*8, configuration=ike_conf, my_addr=my_addr,
                            peer_addr=peer_addr)
             self.ike_sas.append(ike_sa)
             logging.info('Starting the creation of IKE SA with SPI={}. Count={}'

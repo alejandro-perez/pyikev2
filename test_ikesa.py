@@ -68,7 +68,7 @@ class TestIkeSa(TestCase):
                     }]
                 }
             })
-        self.ike_sa1 = IkeSa(is_initiator=True, peer_spi=b'',
+        self.ike_sa1 = IkeSa(is_initiator=True, peer_spi=b'\0'*8,
                              configuration=self.configuration1.get_ike_configuration(self.ip2), my_addr=self.ip1,
                              peer_addr=self.ip2)
         self.ike_sa2 = IkeSa(is_initiator=False, peer_spi=self.ike_sa1.my_spi,

@@ -235,21 +235,37 @@ class IkeSa(object):
                                 ', '.join(str(x) for x in message.payloads + message.encrypted_payloads)))
         self.log_debug(json.dumps(message.to_dict(), indent=logging.indent))
 
-    def _generate_ike_error_response(self, request, exception):
-        notify_error = PayloadNOTIFY.from_exception(exception)
-        return Message(spi_i=request.spi_i,
-                       spi_r=request.spi_r,
+    def generate_response(self, exchange_type, payloads):
+        return Message(spi_i=self.spi_i,
+                       spi_r=self.spi_r,
                        major=2,
                        minor=0,
-                       exchange_type=request.exchange_type,
+                       exchange_type=exchange_type,
                        is_response=True,
                        can_use_higher_version=False,
                        is_initiator=self.is_initiator,
                        message_id=self.peer_msg_id,
-                       payloads=([notify_error] if request.exchange_type == Message.Exchange.IKE_SA_INIT else []),
-                       encrypted_payloads=([notify_error] if request.exchange_type != Message.Exchange.IKE_SA_INIT
-                                           else []),
-                       crypto=(self.my_crypto if request.exchange_type != Message.Exchange.IKE_SA_INIT else None))
+                       payloads=payloads if exchange_type == Message.Exchange.IKE_SA_INIT else [],
+                       encrypted_payloads=payloads if exchange_type != Message.Exchange.IKE_SA_INIT else [],
+                       crypto=self.my_crypto if exchange_type != Message.Exchange.IKE_SA_INIT else None)
+
+    def generate_request(self, exchange_type, payloads):
+        return Message(spi_i=self.spi_i,
+                       spi_r=self.spi_r,
+                       major=2,
+                       minor=0,
+                       exchange_type=exchange_type,
+                       is_response=False,
+                       can_use_higher_version=False,
+                       is_initiator=self.is_initiator,
+                       message_id=self.my_msg_id,
+                       payloads=payloads if exchange_type == Message.Exchange.IKE_SA_INIT else [],
+                       encrypted_payloads=payloads if exchange_type != Message.Exchange.IKE_SA_INIT else [],
+                       crypto=self.my_crypto if exchange_type != Message.Exchange.IKE_SA_INIT else None)
+
+    def _generate_ike_error_response(self, request, exception):
+        notify_error = PayloadNOTIFY.from_exception(exception)
+        return self.generate_response(request.exchange_type, [notify_error])
 
     def _process_request(self, message):
         _handler_dict = {
@@ -277,12 +293,14 @@ class IkeSa(object):
             response = handler(message)
         except IkeSaError as ex:
             self.log_error(str(ex))
-            response = self._generate_ike_error_response(message, ex)
+            notify_error = PayloadNOTIFY.from_exception(ex)
+            response = self.generate_response(message.exchange_type, [notify_error])
             self.state = IkeSa.State.DELETED
         except Exception as ex:
             traceback.print_exc()
             self.log_error(str(ex))
-            response = self._generate_ike_error_response(message, ex)
+            notify_error = PayloadNOTIFY.from_exception(ex)
+            response = self.generate_response(message.exchange_type, [notify_error])
             self.state = IkeSa.State.DELETED
 
         # if the message is successfully processed, increment expected message
@@ -500,18 +518,7 @@ class IkeSa(object):
         response_payloads.append(PayloadVENDOR(b'pyikev2-0.1'))
 
         # generate the message
-        response = Message(spi_i=request.spi_i,
-                           spi_r=self.my_spi,
-                           major=2,
-                           minor=0,
-                           exchange_type=Message.Exchange.IKE_SA_INIT,
-                           is_response=True,
-                           can_use_higher_version=False,
-                           is_initiator=self.is_initiator,
-                           message_id=self.peer_msg_id,
-                           payloads=response_payloads,
-                           encrypted_payloads=[],
-                           crypto=None)
+        response = self.generate_response(Message.Exchange.IKE_SA_INIT, response_payloads)
 
         # switch state
         self.state = IkeSa.State.INIT_RES_SENT
@@ -552,18 +559,7 @@ class IkeSa(object):
         payload_vendor = PayloadVENDOR(b'pyikev2-0.1')
 
         # generate the message
-        self.request = Message(spi_i=self.my_spi,
-                               spi_r=b'\0' * 8,
-                               major=2,
-                               minor=0,
-                               exchange_type=Message.Exchange.IKE_SA_INIT,
-                               is_response=False,
-                               can_use_higher_version=False,
-                               is_initiator=self.is_initiator,
-                               message_id=self.my_msg_id,
-                               payloads=ike_sa_payloads + [payload_vendor],
-                               encrypted_payloads=[],
-                               crypto=self.my_crypto)
+        self.request = self.generate_request(Message.Exchange.IKE_SA_INIT, ike_sa_payloads + [payload_vendor])
 
         # switch state
         self.state = IkeSa.State.INIT_REQ_SENT
@@ -589,18 +585,7 @@ class IkeSa(object):
         ike_sa_payloads = self.new_ike_sa._generate_ike_sa_negotiation_request()
 
         # generate the message
-        self.request = Message(spi_i=self.spi_i,
-                               spi_r=self.spi_r,
-                               major=2,
-                               minor=0,
-                               exchange_type=Message.Exchange.CREATE_CHILD_SA,
-                               is_response=False,
-                               can_use_higher_version=False,
-                               is_initiator=self.is_initiator,
-                               message_id=self.my_msg_id,
-                               payloads=[],
-                               encrypted_payloads=ike_sa_payloads,
-                               crypto=self.my_crypto)
+        self.request = self.generate_request(Message.Exchange.CREATE_CHILD_SA, ike_sa_payloads)
 
         # switch state
         self.state = IkeSa.State.REK_IKE_SA_REQ_SENT
@@ -654,18 +639,8 @@ class IkeSa(object):
         payload_auth = PayloadAUTH(PayloadAUTH.Method.PSK, auth_data)
 
         # generate the message
-        self.request = Message(spi_i=self.spi_i,
-                               spi_r=self.spi_r,
-                               major=2,
-                               minor=0,
-                               exchange_type=Message.Exchange.IKE_AUTH,
-                               is_response=False,
-                               can_use_higher_version=False,
-                               is_initiator=self.is_initiator,
-                               message_id=self.my_msg_id,
-                               payloads=[],
-                               encrypted_payloads=child_sa_payloads + [payload_idi, payload_auth],
-                               crypto=self.my_crypto)
+        self.request = self.generate_request(Message.Exchange.IKE_AUTH,
+                                             child_sa_payloads + [payload_idi, payload_auth])
 
         # transition
         self.state = IkeSa.State.AUTH_REQ_SENT
@@ -760,7 +735,6 @@ class IkeSa(object):
             return prf(keypad, data_to_be_signed)
         else:
             raise AuthenticationFailed('AUTH method {} not supported'.format(PayloadAUTH.Method.safe_name(authmethod)))
-
 
     def _process_create_child_sa_negotiation_req(self, request):
         """ This method process a CREATE CHILD SA negotiation request
@@ -932,18 +906,7 @@ class IkeSa(object):
         response_payloads += [response_payload_idr, response_payload_auth]
 
         # generate the message
-        response = Message(spi_i=request.spi_i,
-                           spi_r=request.spi_r,
-                           major=2,
-                           minor=0,
-                           exchange_type=Message.Exchange.IKE_AUTH,
-                           is_response=True,
-                           can_use_higher_version=False,
-                           is_initiator=self.is_initiator,
-                           message_id=self.peer_msg_id,
-                           payloads=[],
-                           encrypted_payloads=response_payloads,
-                           crypto=self.my_crypto)
+        response = self.generate_response(Message.Exchange.IKE_AUTH, response_payloads)
 
         # increase msg_id and transition
         self.state = IkeSa.State.ESTABLISHED
@@ -1079,18 +1042,7 @@ class IkeSa(object):
         payload_nonce = PayloadNONCE()
 
         # generate the message
-        self.request = Message(spi_i=self.spi_i,
-                               spi_r=self.spi_r,
-                               major=2,
-                               minor=0,
-                               exchange_type=Message.Exchange.CREATE_CHILD_SA,
-                               is_response=False,
-                               can_use_higher_version=False,
-                               is_initiator=self.is_initiator,
-                               message_id=self.my_msg_id,
-                               payloads=[],
-                               encrypted_payloads=child_sa_payloads + [payload_nonce],
-                               crypto=self.my_crypto)
+        self.request = self.generate_request(Message.Exchange.CREATE_CHILD_SA, child_sa_payloads + [payload_nonce])
 
         # transition
         self.state = (IkeSa.State.NEW_CHILD_REQ_SENT if rekeyed_child_sa is None
@@ -1106,18 +1058,7 @@ class IkeSa(object):
         payload_delete = PayloadDELETE(child_sa.proposal.protocol_id, [child_sa.inbound_spi])
 
         # generate the message
-        self.request = Message(spi_i=self.spi_i,
-                               spi_r=self.spi_r,
-                               major=2,
-                               minor=0,
-                               exchange_type=Message.Exchange.INFORMATIONAL,
-                               is_response=False,
-                               can_use_higher_version=False,
-                               is_initiator=self.is_initiator,
-                               message_id=self.my_msg_id,
-                               payloads=[],
-                               encrypted_payloads=[payload_delete],
-                               crypto=self.my_crypto)
+        self.request = self.generate_request(Message.Exchange.INFORMATIONAL, [payload_delete])
 
         # transition
         self.state = IkeSa.State.DEL_CHILD_REQ_SENT
@@ -1152,18 +1093,7 @@ class IkeSa(object):
                         self.log_warning('The indicated SPI could not be found when attempting to delete a '
                                          'Child SA: {}'.format(hexstring(del_spi)))
 
-        return Message(spi_i=request.spi_i,
-                       spi_r=request.spi_r,
-                       major=2,
-                       minor=0,
-                       exchange_type=Message.Exchange.INFORMATIONAL,
-                       is_response=True,
-                       can_use_higher_version=False,
-                       is_initiator=self.is_initiator,
-                       message_id=self.peer_msg_id,
-                       payloads=[],
-                       encrypted_payloads=response_payloads,
-                       crypto=self.my_crypto)
+        return self.generate_response(Message.Exchange.INFORMATIONAL, response_payloads)
 
     def process_create_child_sa_request(self, request):
         """ Processes a CREATE_CHILD_SA message and returns response
@@ -1193,18 +1123,7 @@ class IkeSa(object):
         else:
             response_payloads = self._process_create_child_sa_negotiation_req(request)
 
-        return Message(spi_i=request.spi_i,
-                       spi_r=request.spi_r,
-                       major=2,
-                       minor=0,
-                       exchange_type=Message.Exchange.CREATE_CHILD_SA,
-                       is_response=True,
-                       can_use_higher_version=False,
-                       is_initiator=self.is_initiator,
-                       message_id=self.peer_msg_id,
-                       payloads=[],
-                       encrypted_payloads=response_payloads,
-                       crypto=self.my_crypto)
+        return self.generate_response(Message.Exchange.CREATE_CHILD_SA, response_payloads)
 
     def get_child_sa(self, spi):
         try:
@@ -1301,18 +1220,7 @@ class IkeSa(object):
         assert (self.state == IkeSa.State.ESTABLISHED)
 
         # generate the message
-        self.request = Message(spi_i=self.spi_i,
-                               spi_r=self.spi_r,
-                               major=2,
-                               minor=0,
-                               exchange_type=Message.Exchange.INFORMATIONAL,
-                               is_response=False,
-                               can_use_higher_version=False,
-                               is_initiator=self.is_initiator,
-                               message_id=self.my_msg_id,
-                               payloads=[],
-                               encrypted_payloads=[],
-                               crypto=self.my_crypto)
+        self.request = self.generate_request(Message.Exchange.INFORMATIONAL, [])
 
         # transition
         self.state = IkeSa.State.DPD_REQ_SENT
@@ -1322,18 +1230,8 @@ class IkeSa(object):
         assert (self.state in (IkeSa.State.ESTABLISHED, IkeSa.State.REKEYED))
 
         # generate the message
-        self.request = Message(spi_i=self.spi_i,
-                               spi_r=self.spi_r,
-                               major=2,
-                               minor=0,
-                               exchange_type=Message.Exchange.INFORMATIONAL,
-                               is_response=False,
-                               can_use_higher_version=False,
-                               is_initiator=self.is_initiator,
-                               message_id=self.my_msg_id,
-                               payloads=[],
-                               encrypted_payloads=[PayloadDELETE(Proposal.Protocol.IKE, [])],
-                               crypto=self.my_crypto)
+        self.request = self.generate_request(Message.Exchange.INFORMATIONAL,
+                                             [PayloadDELETE(Proposal.Protocol.IKE, [])])
 
         # transition
         self.state = (IkeSa.State.DEL_IKE_SA_REQ_SENT if self.state == IkeSa.State.ESTABLISHED
