@@ -7,7 +7,6 @@
 __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
 import logging
-import os
 import time
 from ipaddress import ip_address, ip_network
 from unittest import TestCase
@@ -16,7 +15,7 @@ from unittest.mock import patch
 import xfrm
 from configuration import Configuration
 from message import TrafficSelector, Transform, Proposal, Message, Payload, PayloadAUTH, PayloadNOTIFY
-from protocol import IkeSa
+from ikesa import IkeSa
 
 logging.indent = 2
 logging.basicConfig(level=logging.DEBUG,
