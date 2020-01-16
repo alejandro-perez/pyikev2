@@ -68,7 +68,7 @@ class TestIkeSa(TestCase):
                     }]
                 }
             })
-        self.ike_sa1 = IkeSa(is_initiator=True, peer_spi=None,
+        self.ike_sa1 = IkeSa(is_initiator=True, peer_spi=b'',
                              configuration=self.configuration1.get_ike_configuration(self.ip2), my_addr=self.ip1,
                              peer_addr=self.ip2)
         self.ike_sa2 = IkeSa(is_initiator=False, peer_spi=self.ike_sa1.my_spi,
@@ -569,6 +569,19 @@ class TestIkeSa(TestCase):
         request = self.ike_sa2.process_message(dpd_res)
         self.assertIsNone(request)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+
+    @patch('xfrm.Xfrm')
+    def test_peer_changes_spi(self, mockclass):
+        self.test_initial_exchanges_transport()
+        self.ike_sa1.start_dpd_at = time.time()
+        dpd_req = self.ike_sa1.check_dead_peer_detection_timer()
+        message = Message.parse(dpd_req, self.ike_sa1.peer_crypto)
+        message.spi_i = b'1' * 8
+        dpd_req = message.to_bytes()
+        dpd_res = self.ike_sa2.process_message(dpd_req)
+        self.assertIsNone(dpd_res)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.DPD_REQ_SENT)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
 
     @patch('xfrm.Xfrm')

@@ -357,6 +357,12 @@ class IkeSa(object):
             self.log_error('Received a message with the wrong "INITIATOR" flag. Ignoring')
             return None
 
+        if (message.exchange_type != Message.Exchange.IKE_SA_INIT
+                and (message.spi_i, message.spi_r) != (self.spi_i, self.spi_r)):
+            self.log_error('Received a message with wrong SPI values. Expected: {}. Ignoring'
+                           ''.format((hexstring(self.spi_i), hexstring(self.spi_r))))
+            return None
+
         # receiving any kind of message from the peer resets the DPD timer
         self.start_dpd_at = time.time() + self.configuration.dpd
         if message.is_request:
