@@ -23,7 +23,7 @@ class IkeSaController:
         self.configuration = configuration
         self.xfrm = xfrm.Xfrm()
         self.my_addr = my_addr
-        self.cookie_threshold = 0
+        self.cookie_threshold = 10
         self.cookie_secret = os.urandom(8)
         # establish policies
         self.xfrm.flush_policies()
