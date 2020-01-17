@@ -8,13 +8,10 @@ import json
 import logging
 import os
 import random
-import socket
 import time
 import traceback
 from collections import namedtuple
 from hmac import HMAC
-from ipaddress import ip_address, ip_network
-from select import select
 from struct import unpack
 
 import xfrm

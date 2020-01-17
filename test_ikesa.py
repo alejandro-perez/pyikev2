@@ -8,6 +8,7 @@ __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
 import logging
 import time
+import unittest
 from ipaddress import ip_address, ip_network
 from unittest import TestCase
 from unittest.mock import patch
@@ -825,3 +826,7 @@ class TestIkeSa(TestCase):
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         create_child_req_1 = self.ike_sa1.process_acquire(small_tsi, small_tsr, 9)
         self.assertIsNone(create_child_req_1)
+
+
+if __name__ == '__main__':
+    unittest.main()
