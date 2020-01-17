@@ -65,7 +65,6 @@ class IkeSaController:
                 ike_sa = self._get_ike_sa_by_spi(my_spi)
             except StopIteration:
                 logging.warning('Received message for unknown SPI={}. Omitting.'.format(hexstring(my_spi)))
-                logging.debug(json.dumps(header.to_dict(), indent=logging.indent))
                 return None
 
         # generate the reply (if any)
