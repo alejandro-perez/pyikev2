@@ -313,7 +313,8 @@ class TestPayloadDELETE(TestPayloadMixin, unittest.TestCase):
         super(TestPayloadDELETE, self).setUp()
         self.object = PayloadDELETE(Proposal.Protocol.AH, [b'1234', b'1235'])
     def test_spi(self):
-        self.assertListEqual(self.object.protocol_id, Proposal.Protocol.AH)
+        self.assertEqual(self.object.protocol_id, Proposal.Protocol.AH)
+
 
 class TestMessage(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
