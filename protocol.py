@@ -116,7 +116,7 @@ class IkeSaController:
         logging.debug('Received EXPIRE for spi {}. Hard={}'.format(hexstring(spi), hard))
         ike_sa = self._get_ike_sa_by_child_sa_spi(spi)
         if (ike_sa):
-            request = ike_sa.process_expire(spi)
+            request = ike_sa.process_expire(spi, hard)
             return request, (str(ike_sa.peer_addr), 500)
         return None, None
 
