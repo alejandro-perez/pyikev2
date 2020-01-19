@@ -9,6 +9,7 @@ import socket
 from ctypes import (c_ubyte, c_uint16, c_uint32, c_uint64, BigEndianStructure)
 from ipaddress import ip_address, ip_network
 from random import SystemRandom
+from struct import unpack_from
 
 from helpers import SafeIntEnum, hexstring
 from message import Proposal, Transform
@@ -102,11 +103,19 @@ class XfrmAddress(NetlinkStructure, BigEndianStructure):
     @classmethod
     def from_ipaddr(cls, ip_addr):
         result = XfrmAddress()
-        result.addr[0] = int(ip_addr)
+        data = ip_addr.packed
+        result.addr[0], = unpack_from('>I', data)
+        if len(data) > 4:
+            result.addr[1], = unpack_from('>I', data, 4)
+            result.addr[2], = unpack_from('>I', data, 8)
+            result.addr[3], = unpack_from('>I', data, 12)
         return result
 
     def to_ipaddr(self):
-        return ip_address(self.addr[0])
+        data = bytes(self.addr)
+        if data[4:] == b'\0'*12:
+            data = data[:4]
+        return ip_address(data)
 
 
 class XfrmSelector(NetlinkStructure):
@@ -277,7 +286,7 @@ class Xfrm(NetlinkProtocol):
     def _create_sa(self, src_selector, dst_selector, src_port, dst_port, spi, ip_proto, ipsec_proto, mode, src, dst,
                    enc_algorithm, sk_e, auth_algorithm, sk_a, lifetime=-1):
         usersa = XfrmUserSaInfo(
-            sel=XfrmSelector(family=socket.AF_INET,
+            sel=XfrmSelector(family=socket.AF_INET if src_selector[0].version == 4 else socket.AF_INET6,
                              daddr=XfrmAddress.from_ipaddr(dst_selector[0]),
                              saddr=XfrmAddress.from_ipaddr(src_selector[0]),
                              dport=dst_port,
@@ -291,7 +300,7 @@ class Xfrm(NetlinkProtocol):
                       proto=(socket.IPPROTO_ESP
                              if ipsec_proto == Proposal.Protocol.ESP else socket.IPPROTO_AH),
                       spi=create_byte_array(spi)),
-            family=socket.AF_INET,
+            family=socket.AF_INET if src.version == 4 else socket.AF_INET6,
             saddr=XfrmAddress.from_ipaddr(src),
             mode=mode,
             lft=XfrmLifetimeCfg.infinite() if lifetime < 0 else XfrmLifetimeCfg(soft_byte_limit=0xFFFFFFFFFFFFFFFF,
@@ -320,7 +329,7 @@ class Xfrm(NetlinkProtocol):
     def _create_policy(self, src_selector, dst_selector, src_port, dst_port, ip_proto, direction,
                        ipsec_proto, mode, src, dst, index=0):
         policy = XfrmUserPolicyInfo(
-            sel=XfrmSelector(family=socket.AF_INET,
+            sel=XfrmSelector(family=socket.AF_INET if src_selector[0].version == 4 else socket.AF_INET6,
                              daddr=XfrmAddress.from_ipaddr(dst_selector[0]),
                              saddr=XfrmAddress.from_ipaddr(src_selector[0]),
                              dport=dst_port,
@@ -338,7 +347,7 @@ class Xfrm(NetlinkProtocol):
         template = XfrmUserTmpl(
             id=XfrmId(daddr=XfrmAddress.from_ipaddr(dst),
                       proto=(socket.IPPROTO_ESP if ipsec_proto == Proposal.Protocol.ESP else socket.IPPROTO_AH)),
-            family=socket.AF_INET,
+            family=socket.AF_INET if src.version == 4 else socket.AF_INET6,
             saddr=XfrmAddress.from_ipaddr(src),
             aalgos=0xFFFFFFFF,
             ealgos=0xFFFFFFFF,
@@ -349,7 +358,7 @@ class Xfrm(NetlinkProtocol):
     def delete_sa(self, daddr, proto, spi):
         xfrm_id = XfrmUserSaId(
             daddr=XfrmAddress.from_ipaddr(daddr),
-            family=socket.AF_INET,
+            family=socket.AF_INET if daddr.version == 4 else socket.AF_INET6,
             proto=socket.IPPROTO_ESP if proto == Proposal.Protocol.ESP else socket.IPPROTO_AH,
             spi=create_byte_array(spi))
         try:
@@ -368,7 +377,6 @@ class Xfrm(NetlinkProtocol):
 
             # generate an index for outbound policies
             index = ipsec_conf.index << 3 | XFRM_POLICY_OUT
-
             self._create_policy(src_selector, dst_selector, ipsec_conf.my_port,
                                 ipsec_conf.peer_port, ipsec_conf.ip_proto, XFRM_POLICY_OUT,
                                 ipsec_conf.ipsec_proto, ipsec_conf.mode, my_addr, peer_addr,
