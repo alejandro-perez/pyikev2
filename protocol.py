@@ -84,15 +84,16 @@ class IkeSaController:
 
         return reply
 
-    def process_acquire(self, xfrm_acquire):
-        peer_addr = xfrm_acquire.id.daddr.to_ipaddr()
+    def process_acquire(self, xfrm_acquire, attributes):
+        family = attributes[xfrm.XFRMA_TMPL].family
+        peer_addr = xfrm_acquire.id.daddr.to_ipaddr(family)
         logging.debug('Received acquire for {}'.format(peer_addr))
 
         # look for an active IKE_SA with the peer
         try:
             ike_sa = self._get_ike_sa_by_peer_addr(peer_addr)
         except StopIteration:
-            my_addr = xfrm_acquire.saddr.to_ipaddr()
+            my_addr = xfrm_acquire.saddr.to_ipaddr(family)
             ike_conf = self.configuration.get_ike_configuration(peer_addr)
             # create new IKE_SA (for now)
             ike_sa = IkeSa(is_initiator=True, peer_spi=b'\0'*8, configuration=ike_conf, my_addr=my_addr,
@@ -100,10 +101,10 @@ class IkeSaController:
             self.ike_sas.append(ike_sa)
             logging.info('Starting the creation of IKE SA with SPI={}. Count={}'
                          ''.format(hexstring(ike_sa.my_spi), len(self.ike_sas)))
-
-        small_tsi = TrafficSelector.from_network(ip_network(xfrm_acquire.sel.saddr.to_ipaddr()),
+        sel_family = xfrm_acquire.sel.family
+        small_tsi = TrafficSelector.from_network(ip_network(xfrm_acquire.sel.saddr.to_ipaddr(sel_family)),
                                                  xfrm_acquire.sel.sport, xfrm_acquire.sel.proto)
-        small_tsr = TrafficSelector.from_network(ip_network(xfrm_acquire.sel.daddr.to_ipaddr()),
+        small_tsr = TrafficSelector.from_network(ip_network(xfrm_acquire.sel.daddr.to_ipaddr(sel_family)),
                                                  xfrm_acquire.sel.dport, xfrm_acquire.sel.proto)
         request = ike_sa.process_acquire(small_tsi, small_tsr, xfrm_acquire.policy.index >> 3)
 
@@ -146,7 +147,7 @@ class IkeSaController:
                 header, msg, attributes = xfrm_obj.parse_message(data)
                 reply_data, addr = None, None
                 if header.type == xfrm.XFRM_MSG_ACQUIRE:
-                    reply_data, addr = self.process_acquire(msg)
+                    reply_data, addr = self.process_acquire(msg, attributes)
                 elif header.type == xfrm.XFRM_MSG_EXPIRE:
                     reply_data, addr = self.process_expire(msg)
                 if reply_data:

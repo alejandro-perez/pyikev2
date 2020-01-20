@@ -3,6 +3,7 @@
 
 """ This module defines test for the xfrm module
 """
+import socket
 import unittest
 from ipaddress import ip_address, ip_network
 
@@ -20,14 +21,14 @@ class TestXfrm(unittest.TestCase):
         self.xfrm.flush_sas()
 
     def test_ipv6(self):
-        xfrmaddr = XfrmAddress.from_ipaddr(ip_address('2001::1'))
-        addr = xfrmaddr.to_ipaddr()
-        self.assertEqual(addr.version, 6)
+        xfrmaddr = XfrmAddress.from_ipaddr(ip_address('2001::0'))
+        addr = xfrmaddr.to_ipaddr(socket.AF_INET6)
+        self.assertEqual(str(addr), '2001::')
 
     def test_ipv4(self):
         xfrmaddr = XfrmAddress.from_ipaddr(ip_address('192.168.0.1'))
-        addr = xfrmaddr.to_ipaddr()
-        self.assertEqual(addr.version, 4)
+        addr = xfrmaddr.to_ipaddr(socket.AF_INET)
+        self.assertEqual(str(addr), '192.168.0.1')
 
     def test_create_transport_policy(self):
         ipsec_conf = IpsecConfiguration(my_port=0, peer_port=80, ip_proto=TrafficSelector.IpProtocol.TCP,

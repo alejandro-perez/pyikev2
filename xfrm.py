@@ -105,15 +105,13 @@ class XfrmAddress(NetlinkStructure, BigEndianStructure):
         result = XfrmAddress()
         data = ip_addr.packed
         result.addr[0], = unpack_from('>I', data)
-        if len(data) > 4:
-            result.addr[1], = unpack_from('>I', data, 4)
-            result.addr[2], = unpack_from('>I', data, 8)
-            result.addr[3], = unpack_from('>I', data, 12)
+        if ip_addr.version == 6:
+            result.addr[1], result.addr[2], result.addr[3] = unpack_from('>III', data, 4)
         return result
 
-    def to_ipaddr(self):
+    def to_ipaddr(self, family):
         data = bytes(self.addr)
-        if data[4:] == b'\0'*12:
+        if family == socket.AF_INET:
             data = data[:4]
         return ip_address(data)
 
