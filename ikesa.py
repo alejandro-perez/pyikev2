@@ -950,7 +950,7 @@ class IkeSa(object):
         chosen_child_proposal = response_payload_sa.proposals[0]
         my_proposal = request_payload_sa.proposals[0]
         intersection = my_proposal.intersection(chosen_child_proposal)
-        if intersection != chosen_child_proposal:
+        if intersection is None or intersection != chosen_child_proposal:
             raise NoProposalChosen('Responder did not choose a valid proposal')
 
         # generate CHILD key material
