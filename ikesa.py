@@ -629,11 +629,12 @@ class IkeSa(object):
         child_sa_payloads = self._generate_child_sa_negotiation_req(self.creating_child_sa, initial=True)
 
         # generate IDi
-        payload_idi = PayloadIDi(self.configuration.id.id_type, self.configuration.id.id_data)
+        payload_idi = PayloadIDi(self.configuration.auth.id.id_type, self.configuration.auth.id.id_data)
 
         # generate Payload AUTH
         ike_sa_init_res = Message.parse(self.ike_sa_init_res_data)
-        auth_data = self._generate_auth_payload(PayloadAUTH.Method.PSK, self.ike_sa_init_req_data,
+        auth_data = self._generate_auth_payload(PayloadAUTH.Method.PSK, self.configuration.auth,
+                                                self.ike_sa_init_req_data,
                                                 ike_sa_init_res.get_payload(Payload.Type.NONCE).nonce,
                                                 payload_idi, self.my_crypto.sk_p)
 
@@ -723,11 +724,11 @@ class IkeSa(object):
         # return IKE_AUTH request callback
         return self.generate_ike_auth_request()
 
-    def _generate_auth_payload(self, authmethod, message_data, nonce, payload_id, sk_p):
+    def _generate_auth_payload(self, authmethod, authconf, message_data, nonce, payload_id, sk_p):
         prf = self.peer_crypto.prf.prf
         data_to_be_signed = (message_data + nonce + prf(sk_p, payload_id.to_bytes()))
         if authmethod == PayloadAUTH.Method.PSK:
-            keypad = prf(self.configuration.psk, b'Key Pad for IKEv2')
+            keypad = prf(authconf.psk, b'Key Pad for IKEv2')
             return prf(keypad, data_to_be_signed)
         else:
             raise AuthenticationFailed('AUTH method {} not supported'.format(PayloadAUTH.Method.safe_name(authmethod)))
@@ -891,7 +892,8 @@ class IkeSa(object):
         ike_sa_init_req = Message.parse(self.ike_sa_init_req_data)
         ike_sa_init_res = Message.parse(self.ike_sa_init_res_data)
 
-        auth_data = self._generate_auth_payload(request_payload_auth.method, self.ike_sa_init_req_data,
+        auth_data = self._generate_auth_payload(request_payload_auth.method, self.configuration.peer_auth,
+                                                self.ike_sa_init_req_data,
                                                 ike_sa_init_res.get_payload(Payload.Type.NONCE).nonce,
                                                 request_payload_idi, self.peer_crypto.sk_p)
 
@@ -902,10 +904,11 @@ class IkeSa(object):
         response_payloads = self._process_create_child_sa_negotiation_req(request)
 
         # generate IDr
-        response_payload_idr = PayloadIDr(self.configuration.id.id_type, self.configuration.id.id_data)
+        response_payload_idr = PayloadIDr(self.configuration.auth.id.id_type, self.configuration.auth.id.id_data)
 
         # generate AUTH payload
-        auth_data = self._generate_auth_payload(PayloadAUTH.Method.PSK, self.ike_sa_init_res_data,
+        auth_data = self._generate_auth_payload(PayloadAUTH.Method.PSK, self.configuration.auth,
+                                                self.ike_sa_init_res_data,
                                                 ike_sa_init_req.get_payload(Payload.Type.NONCE).nonce,
                                                 response_payload_idr, self.my_crypto.sk_p)
         response_payload_auth = PayloadAUTH(PayloadAUTH.Method.PSK, auth_data)
@@ -1020,7 +1023,8 @@ class IkeSa(object):
         response_payload_auth = response.get_payload(Payload.Type.AUTH, True)
 
         ike_sa_init_req = Message.parse(self.ike_sa_init_req_data)
-        auth_data = self._generate_auth_payload(response_payload_auth.method, self.ike_sa_init_res_data,
+        auth_data = self._generate_auth_payload(response_payload_auth.method, self.configuration.peer_auth,
+                                                self.ike_sa_init_res_data,
                                                 ike_sa_init_req.get_payload(Payload.Type.NONCE).nonce,
                                                 response_payload_idr, self.peer_crypto.sk_p)
 

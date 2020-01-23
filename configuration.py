@@ -69,12 +69,15 @@ _ipsec_proto_name_to_enum = {
 }
 
 IkeConfiguration = namedtuple('IkeConfiguration',
-                              ['psk', 'lifetime', 'dpd', 'id', 'peer_id', 'encr', 'integ', 'prf', 'dh', 'protect'],
-                              defaults=(None,)*10)
+                              ['auth', 'peer_auth', 'lifetime', 'dpd', 'encr', 'integ', 'prf', 'dh', 'protect'],
+                              defaults=(None,) * 9)
+
+AuthConfiguration = namedtuple('AuthConfiguration', ['psk', 'id'], defaults=(None,) * 2)
+
 IpsecConfiguration = namedtuple('IpsecConfiguration',
                                 ['my_subnet', 'index', 'peer_subnet', 'my_port', 'lifetime', 'peer_port', 'ip_proto',
                                  'mode', 'ipsec_proto', 'encr', 'integ', 'dh'],
-                                defaults=(None,)*11)
+                                defaults=(None,) * 12)
 
 
 class Configuration(object):
@@ -92,23 +95,24 @@ class Configuration(object):
                 ip = ip_address(socket.getaddrinfo(key, None)[0][4][0])
             except (ValueError, socket.gaierror, IndexError) as ex:
                 raise ConfigurationError(str(ex))
-            self._configuration[ip] = self._load_ike_conf(ip, value)
+            try:
+                self._configuration[ip] = self._load_ike_conf(ip, value)
+            except KeyError as ex:
+                raise ConfigurationError('Mandatory parameter "{}" missing for peer "{}"'.format(str(ex), key))
 
     def items(self):
         return self._configuration.items()
 
     def _load_ike_conf(self, peer_ip, conf_dict):
-        default_id = 'https://github.com/alejandro-perez/pyikev2'
         ipsec_confs = []
         for ipsec_conf in conf_dict.get('protect', [{}]):
             ipsec_confs.append(self._load_ipsec_conf(peer_ip, ipsec_conf))
 
         return IkeConfiguration(
-            psk=conf_dict.get('psk', 'whatever').encode(),
+            auth=self._load_auth_conf(conf_dict['auth']),
+            peer_auth=self._load_auth_conf(conf_dict['peer_auth']),
             lifetime=int(conf_dict.get('lifetime', 15 * 60)),
             dpd=int(conf_dict.get('dpd', 60)),
-            id=PayloadID(PayloadID.Type.ID_FQDN, conf_dict.get('id', default_id).encode()),
-            peer_id=PayloadID(PayloadID.Type.ID_FQDN, conf_dict.get('peer_id', default_id).encode()),
             encr=self._load_crypto_algs('encr', conf_dict.get('encr', ['aes256']), _encr_name_to_transform),
             integ=self._load_crypto_algs('integ', conf_dict.get('integ', ['sha256']), _integ_name_to_transform),
             prf=self._load_crypto_algs('prf', conf_dict.get('prf', ['sha256']), _prf_name_to_transform),
@@ -130,10 +134,18 @@ class Configuration(object):
         except ValueError as ex:
             raise ConfigurationError(str(ex))
 
+    def _load_auth_conf(self, conf_dict):
+        default_id = 'https://github.com/alejandro-perez/pyikev2'
+
+        return AuthConfiguration(
+            psk=conf_dict['psk'].encode(),
+            id=PayloadID(PayloadID.Type.ID_FQDN, conf_dict.get('id', default_id).encode()),
+        )
+
     def _load_ipsec_conf(self, peer_ip, conf_dict):
         return IpsecConfiguration(
             my_subnet=self._load_ip_network(conf_dict.get('my_subnet', self.my_addr)),
-            index=int(conf_dict.get('index', random.randint(0, 2**20))),
+            index=int(conf_dict.get('index', random.randint(0, 2 ** 20))),
             peer_subnet=self._load_ip_network(conf_dict.get('peer_subnet', peer_ip)),
             my_port=int(conf_dict.get('my_port', 0)),
             lifetime=int(conf_dict.get('lifetime', 5 * 60)),
