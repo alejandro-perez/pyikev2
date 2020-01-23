@@ -15,7 +15,7 @@ from hmac import HMAC
 from struct import unpack
 
 import xfrm
-from crypto import Cipher, Crypto, DiffieHellman, Integrity, Prf
+from crypto import Cipher, Crypto, DiffieHellman, Integrity, Prf, RsaPrivateKey, RsaPublicKey
 from helpers import SafeIntEnum, hexstring
 from message import (AuthenticationFailed, ChildSaNotFound, IkeSaError, InvalidKePayload,
                      NoProposalChosen, TemporaryFailure, TsUnacceptable, CookieRequired)
@@ -633,7 +633,7 @@ class IkeSa(object):
 
         # generate Payload AUTH
         ike_sa_init_res = Message.parse(self.ike_sa_init_res_data)
-        payload_auth = self._generate_auth_payload(self.configuration.auth, self.ike_sa_init_req_data,
+        payload_auth = self._generate_auth_payload(self.ike_sa_init_req_data,
                                                    ike_sa_init_res.get_payload(Payload.Type.NONCE).nonce, payload_idi,
                                                    self.my_crypto.sk_p)
 
@@ -721,16 +721,39 @@ class IkeSa(object):
         # return IKE_AUTH request callback
         return self.generate_ike_auth_request()
 
-    def _generate_psk_auth_payload(self, authconf, data_to_be_signed):
-        keypad = self.my_crypto.prf.prf(authconf.psk, b'Key Pad for IKEv2')
+    def _generate_psk_auth_payload(self, psk, data_to_be_signed):
+        keypad = self.my_crypto.prf.prf(psk, b'Key Pad for IKEv2')
         return PayloadAUTH(PayloadAUTH.Method.PSK, self.my_crypto.prf.prf(keypad, data_to_be_signed))
 
-    def _generate_auth_payload(self, authconf, message_data, nonce, payload_id, sk_p):
+    def _generate_rsa_auth_payload(self, data_to_be_signed):
+        logging.debug("SIGNING: {}".format(hexstring(data_to_be_signed)))
+        return PayloadAUTH(PayloadAUTH.Method.RSA, self.configuration.auth.privkey.sign(data_to_be_signed))
+
+    def _verify_rsa_auth_payload(self, authdata, data_to_be_signed):
+        logging.debug("VERIFYING: {}".format(hexstring(data_to_be_signed)))
+        if not self.configuration.peer_auth.pubkey:
+            return False
+        return self.configuration.peer_auth.pubkey.verify(authdata, data_to_be_signed)
+
+    def _generate_auth_payload(self, message_data, nonce, payload_id, sk_p):
         data_to_be_signed = (message_data + nonce + self.my_crypto.prf.prf(sk_p, payload_id.to_bytes()))
-        if authconf.psk:
-            return self._generate_psk_auth_payload(authconf, data_to_be_signed)
+        if self.configuration.auth.privkey:
+            return self._generate_rsa_auth_payload(data_to_be_signed)
+        elif self.configuration.auth.psk:
+            return self._generate_psk_auth_payload(self.configuration.auth.psk, data_to_be_signed)
         else:
             raise AuthenticationFailed('Could not generate AUTH payload due to a lack of auth configuration')
+
+    def _verify_auth_payload(self, payload_auth, message_data, nonce, payload_id, sk_p):
+        data_to_be_signed = (message_data + nonce + self.my_crypto.prf.prf(sk_p, payload_id.to_bytes()))
+        if payload_auth.method == PayloadAUTH.Method.PSK:
+            if self._generate_psk_auth_payload(self.configuration.peer_auth.psk, data_to_be_signed) != payload_auth:
+                raise AuthenticationFailed('PSK authentication failed')
+        elif payload_auth.method == PayloadAUTH.Method.RSA:
+            if not self._verify_rsa_auth_payload(payload_auth.auth_data, data_to_be_signed):
+                raise AuthenticationFailed('RSA authentication failed')
+        else:
+            raise AuthenticationFailed('Authentication method not supported')
 
     def _process_create_child_sa_negotiation_req(self, request):
         """ This method process a CREATE CHILD SA negotiation request
@@ -891,12 +914,9 @@ class IkeSa(object):
         ike_sa_init_req = Message.parse(self.ike_sa_init_req_data)
         ike_sa_init_res = Message.parse(self.ike_sa_init_res_data)
 
-        auth_data = self._generate_auth_payload(self.configuration.peer_auth, self.ike_sa_init_req_data,
-                                                ike_sa_init_res.get_payload(Payload.Type.NONCE).nonce,
-                                                request_payload_idi, self.peer_crypto.sk_p)
-
-        if auth_data != request_payload_auth:
-            raise AuthenticationFailed('Invalid AUTH data received')
+        self._verify_auth_payload(request_payload_auth, self.ike_sa_init_req_data,
+                                  ike_sa_init_res.get_payload(Payload.Type.NONCE).nonce, request_payload_idi,
+                                  self.peer_crypto.sk_p)
 
         # process the CHILD_SA creation negotiation
         response_payloads = self._process_create_child_sa_negotiation_req(request)
@@ -905,7 +925,7 @@ class IkeSa(object):
         response_payload_idr = PayloadIDr(self.configuration.auth.id.id_type, self.configuration.auth.id.id_data)
 
         # generate AUTH payload
-        response_payload_auth = self._generate_auth_payload(self.configuration.auth, self.ike_sa_init_res_data,
+        response_payload_auth = self._generate_auth_payload(self.ike_sa_init_res_data,
                                                             ike_sa_init_req.get_payload(Payload.Type.NONCE).nonce,
                                                             response_payload_idr, self.my_crypto.sk_p)
 
@@ -1019,12 +1039,9 @@ class IkeSa(object):
         response_payload_auth = response.get_payload(Payload.Type.AUTH, True)
 
         ike_sa_init_req = Message.parse(self.ike_sa_init_req_data)
-        auth_data = self._generate_auth_payload(self.configuration.peer_auth, self.ike_sa_init_res_data,
-                                                ike_sa_init_req.get_payload(Payload.Type.NONCE).nonce,
-                                                response_payload_idr, self.peer_crypto.sk_p)
-
-        if auth_data != response_payload_auth:
-            raise AuthenticationFailed('Invalid AUTH data received')
+        self._verify_auth_payload(response_payload_auth, self.ike_sa_init_res_data,
+                                  ike_sa_init_req.get_payload(Payload.Type.NONCE).nonce,
+                                  response_payload_idr, self.peer_crypto.sk_p)
 
         # process the CHILD_SA creation negotiation
         try:

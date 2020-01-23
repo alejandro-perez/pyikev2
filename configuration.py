@@ -10,6 +10,7 @@ from copy import deepcopy
 from ipaddress import ip_address, ip_network
 
 import xfrm
+from crypto import RsaPrivateKey, RsaPublicKey
 from message import PayloadID, Proposal, TrafficSelector, Transform
 
 __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
@@ -72,7 +73,7 @@ IkeConfiguration = namedtuple('IkeConfiguration',
                               ['auth', 'peer_auth', 'lifetime', 'dpd', 'encr', 'integ', 'prf', 'dh', 'protect'],
                               defaults=(None,) * 9)
 
-AuthConfiguration = namedtuple('AuthConfiguration', ['psk', 'id'], defaults=(None,) * 2)
+AuthConfiguration = namedtuple('AuthConfiguration', ['psk', 'id', 'privkey', 'pubkey'], defaults=(None,) * 4)
 
 IpsecConfiguration = namedtuple('IpsecConfiguration',
                                 ['my_subnet', 'index', 'peer_subnet', 'my_port', 'lifetime', 'peer_port', 'ip_proto',
@@ -136,10 +137,11 @@ class Configuration(object):
 
     def _load_auth_conf(self, conf_dict):
         default_id = 'https://github.com/alejandro-perez/pyikev2'
-
         return AuthConfiguration(
-            psk=conf_dict['psk'].encode(),
+            psk=conf_dict['psk'].encode() if 'psk' in conf_dict else None,
             id=PayloadID(PayloadID.Type.ID_FQDN, conf_dict.get('id', default_id).encode()),
+            pubkey=RsaPublicKey(conf_dict.get('pubkey').encode()) if 'pubkey' in conf_dict else None,
+            privkey=RsaPrivateKey(conf_dict.get('privkey').encode()) if 'privkey' in conf_dict else None,
         )
 
     def _load_ipsec_conf(self, peer_ip, conf_dict):

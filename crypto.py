@@ -6,11 +6,13 @@
 
 import hashlib
 import os
-from collections import namedtuple
 from hmac import HMAC
 
 import cryptography.hazmat.backends.openssl.backend
-from cryptography.hazmat.primitives.asymmetric import dh
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.primitives.asymmetric import dh, padding
 from cryptography.hazmat.primitives.ciphers import Cipher as _Cipher, algorithms, modes
 
 from message import Transform, InvalidSyntax
@@ -292,6 +294,7 @@ class Integrity:
         m = HMAC(key, data, digestmod=self.hasher)
         return m.digest()[:self.hash_size]
 
+
 class Crypto:
     def __init__(self, cipher, sk_e, integrity, sk_a, prf, sk_p):
         self.cipher = cipher
@@ -300,3 +303,23 @@ class Crypto:
         self.sk_a = sk_a
         self.prf = prf
         self.sk_p = sk_p
+
+
+class RsaPrivateKey:
+    def __init__(self, pem):
+        self.key = serialization.load_pem_private_key(pem, password=None, backend=default_backend())
+
+    def sign(self, data):
+        return self.key.sign(data, padding.PKCS1v15(), hashes.SHA256())
+
+
+class RsaPublicKey:
+    def __init__(self, pem):
+        self.key = serialization.load_pem_public_key(pem, backend=default_backend())
+
+    def verify(self, signature, data):
+        try:
+            self.key.verify(signature, data, padding.PKCS1v15(), hashes.SHA256())
+            return True
+        except InvalidSignature:
+            return False

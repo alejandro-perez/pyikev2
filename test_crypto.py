@@ -5,7 +5,8 @@
 """
 import unittest
 
-from crypto import Prf, Cipher, DiffieHellman, Integrity
+from crypto import Prf, Cipher, DiffieHellman, Integrity, RsaPrivateKey, RsaPublicKey
+from helpers import hexstring
 from message import Transform
 
 __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
@@ -53,6 +54,37 @@ class TestCrypto(unittest.TestCase):
         integrity = Integrity(Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA2_512_256))
         checksum = integrity.compute(b'supersecret', b'This is a long message')
         self.assertEqual(checksum, b'\x0e\xb2\x8a\xa0N\x14\x0b$\x9a\x8c/\x9d<\x83\xd2\xf8\x94\x12\x1a\xbc\xd4b~\xd5\xd0\xa5\x02-\x0f\x8fcC')
+
+
+class TestRsa(unittest.TestCase):
+    def test_sign(self):
+        data = b'adfasdfskjfsldaf'
+        private_key = RsaPrivateKey(b'''-----BEGIN RSA PRIVATE KEY-----
+MIICXQIBAAKBgQDEkT4cscvAVzUjuK4rsCvETPixVfGGep/hUBcHnZyxN7XiFmaO
+EdE+W4TZ9EZy06W83qPfSYJrKt9n++mlFNWYgFsRtFMsP0X9Z6c7QBTt684+NRZ6
+Te4Jyv/VrKxN/mCSufdQ88s6Wa/KhV8JiWvYs1l+sEuNUHHDSswFehNOFQIDAQAB
+AoGAQDmIhs2c2hJkXXCJD+M22aOgmiiPirXkKTUG4UkhGlIujlltVrwBlxNF/ASx
+Q/FdNLG1703QW/2dExefBn4hL2jYObHAwFVGaiBLBEa0RzzkhHdQ0AE5Q0sPZL1w
+MW6TbIvI7DkXlTb8A1TaVrgQLf3AAtBs/6VQj7SkvfctLV0CQQDu0+jYXPGxIXeM
+QDCR2HzNu7IcvV0tyRqgToqFVf6tLFu60mX/kKgGPubcjU5qmU8D4Mqw3aEoJVs1
+nDCZ8NarAkEA0rNyn7/Usf/yV+pyuzylUw++0tw5bGd+16R3xebdExj9tEARfGcQ
+1KnmjeNGSbIN8se1lSYFqpjuu8R0BrNuPwJAaqDZ+J+mmPrkMQ4HoVYSgpgmcYZq
+L6L17FSkq9s1FYQUgFiniW7AVemHkTjVpepEyOp4FHcfGJl1G35chJ5ueQJBAMv+
+lxyZorkPf7eksp4bEkl/9hW6yBHvhfwMLTY61ZG24XMRkJxsQPxU3nZDM/sH279R
+obmcjWHlHUZH5rnSIQsCQQCDGkbQJcDHS0bRSjVryAHZ8jQTTjTPBUAtHjzr4Xn0
+IFf9L0pXd5MDpf5FhuOofyKzFYd08dMG1J/hm6DLFX0F
+-----END RSA PRIVATE KEY-----''')
+        signature = private_key.sign(data)
+
+        public_key = RsaPublicKey(b'''-----BEGIN PUBLIC KEY-----
+MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDEkT4cscvAVzUjuK4rsCvETPix
+VfGGep/hUBcHnZyxN7XiFmaOEdE+W4TZ9EZy06W83qPfSYJrKt9n++mlFNWYgFsR
+tFMsP0X9Z6c7QBTt684+NRZ6Te4Jyv/VrKxN/mCSufdQ88s6Wa/KhV8JiWvYs1l+
+sEuNUHHDSswFehNOFQIDAQAB
+-----END PUBLIC KEY-----''')
+
+        print(len(signature))
+        self.assertTrue(public_key.verify(signature, data))
 
 if __name__ == '__main__':
     unittest.main()

@@ -35,7 +35,7 @@ class TestIkeSa(TestCase):
             self.ip1,
             {
                 str(self.ip2): {
-                    "auth": { "id": "alice@openikev2", "psk": "testing" },
+                    "auth": {"id": "alice@openikev2", "psk": "testing"},
                     "peer_auth": {"id": "alice@openikev2", "psk": "testing2"},
                     "dh": [14],
                     "integ": ["sha256"],
@@ -56,7 +56,7 @@ class TestIkeSa(TestCase):
             {
                 str(self.ip1): {
                     "auth": {"id": "alice@openikev2", "psk": "testing2"},
-                    "peer_auth": { "id": "alice@openikev2", "psk": "testing" },
+                    "peer_auth": {"id": "alice@openikev2", "psk": "testing"},
                     "dh": [14],
                     "integ": ["sha256"],
                     "prf": ["sha256"],
@@ -99,8 +99,73 @@ class TestIkeSa(TestCase):
         self.assertEqual(len(self.ike_sa2.child_sas), 1)
 
     @patch('xfrm.Xfrm')
-    def test_initial_exchanges_transport(self, mockclass):
-        # initial exchanges
+    def test_initial_exchanges_transport_rsa(self, mockclass):
+        privkey = """-----BEGIN RSA PRIVATE KEY-----
+MIICXQIBAAKBgQDEkT4cscvAVzUjuK4rsCvETPixVfGGep/hUBcHnZyxN7XiFmaO
+EdE+W4TZ9EZy06W83qPfSYJrKt9n++mlFNWYgFsRtFMsP0X9Z6c7QBTt684+NRZ6
+Te4Jyv/VrKxN/mCSufdQ88s6Wa/KhV8JiWvYs1l+sEuNUHHDSswFehNOFQIDAQAB
+AoGAQDmIhs2c2hJkXXCJD+M22aOgmiiPirXkKTUG4UkhGlIujlltVrwBlxNF/ASx
+Q/FdNLG1703QW/2dExefBn4hL2jYObHAwFVGaiBLBEa0RzzkhHdQ0AE5Q0sPZL1w
+MW6TbIvI7DkXlTb8A1TaVrgQLf3AAtBs/6VQj7SkvfctLV0CQQDu0+jYXPGxIXeM
+QDCR2HzNu7IcvV0tyRqgToqFVf6tLFu60mX/kKgGPubcjU5qmU8D4Mqw3aEoJVs1
+nDCZ8NarAkEA0rNyn7/Usf/yV+pyuzylUw++0tw5bGd+16R3xebdExj9tEARfGcQ
+1KnmjeNGSbIN8se1lSYFqpjuu8R0BrNuPwJAaqDZ+J+mmPrkMQ4HoVYSgpgmcYZq
+L6L17FSkq9s1FYQUgFiniW7AVemHkTjVpepEyOp4FHcfGJl1G35chJ5ueQJBAMv+
+lxyZorkPf7eksp4bEkl/9hW6yBHvhfwMLTY61ZG24XMRkJxsQPxU3nZDM/sH279R
+obmcjWHlHUZH5rnSIQsCQQCDGkbQJcDHS0bRSjVryAHZ8jQTTjTPBUAtHjzr4Xn0
+IFf9L0pXd5MDpf5FhuOofyKzFYd08dMG1J/hm6DLFX0F
+-----END RSA PRIVATE KEY-----
+"""
+        pubkey = '''-----BEGIN PUBLIC KEY-----
+MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDEkT4cscvAVzUjuK4rsCvETPix
+VfGGep/hUBcHnZyxN7XiFmaOEdE+W4TZ9EZy06W83qPfSYJrKt9n++mlFNWYgFsR
+tFMsP0X9Z6c7QBTt684+NRZ6Te4Jyv/VrKxN/mCSufdQ88s6Wa/KhV8JiWvYs1l+
+sEuNUHHDSswFehNOFQIDAQAB
+-----END PUBLIC KEY-----'''
+
+        self.configuration1 = Configuration(
+            self.ip1,
+            {
+                str(self.ip2): {
+                    "auth": {"id": "alice@openikev2", "privkey": privkey},
+                    "peer_auth": {"id": "alice@openikev2", "psk": "testing2"},
+                    "dh": [14],
+                    "integ": ["sha256"],
+                    "prf": ["sha256"],
+                    "protect": [{
+                        "index": 1,
+                        "ip_proto": "tcp",
+                        "mode": "transport",
+                        "lifetime": 5,
+                        "peer_port": 0,
+                        "ipsec_proto": "esp",
+                        "encr": ["aes256", "aes128"],
+                    }]
+                }
+            })
+        self.configuration2 = Configuration(
+            self.ip2,
+            {
+                str(self.ip1): {
+                    "auth": {"id": "alice@openikev2", "psk": "testing2"},
+                    "peer_auth": {"id": "alice@openikev2", "pubkey": pubkey},
+                    "dh": [14],
+                    "integ": ["sha256"],
+                    "prf": ["sha256"],
+                    "protect": [{
+                        "index": 2,
+                        "ip_proto": "tcp",
+                        "mode": "transport",
+                        "lifetime": 5,
+                        "peer_port": 23,
+                        "ipsec_proto": "esp",
+                        "encr": ["aes256", "aes128"]
+                    }]
+                }
+            })
+
+        self.ike_sa1.configuration = self.configuration1.get_ike_configuration(self.ip2)
+        self.ike_sa2.configuration = self.configuration2.get_ike_configuration(self.ip1)
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -266,7 +331,7 @@ class TestIkeSa(TestCase):
         ike_sa_init_res = self.ike_sa2.process_message(ike_sa_init_req)
         ike_auth_req = self.ike_sa1.process_message(ike_sa_init_res)
         message = Message.parse(ike_auth_req, crypto=self.ike_sa1.my_crypto)
-        message.get_payload(Payload.Type.AUTH, encrypted=True).method = PayloadAUTH.Method.RSA
+        message.get_payload(Payload.Type.AUTH, encrypted=True).method = 100
         ike_auth_req = message.to_bytes()
         ike_auth_res = self.ike_sa2.process_message(ike_auth_req)
         request = self.ike_sa1.process_message(ike_auth_res)
