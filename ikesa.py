@@ -1129,8 +1129,11 @@ class IkeSa(object):
                                          IkeSa.State.REK_IKE_SA_REQ_SENT])
         self.abort_on_error_notifies(response, True, ignore=[PayloadNOTIFY.Type.TS_UNACCEPTABLE,
                                                              PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN,
+                                                             PayloadNOTIFY.Type.SINGLE_PAIR_REQUIRED,
                                                              PayloadNOTIFY.Type.CHILD_SA_NOT_FOUND,
                                                              PayloadNOTIFY.Type.TEMPORARY_FAILURE,
+                                                             PayloadNOTIFY.Type.INTERNAL_ADDRESS_FAILURE,
+                                                             PayloadNOTIFY.Type.FAILED_CP_REQUIRED,
                                                              PayloadNOTIFY.Type.INVALID_KE_PAYLOAD])
 
         # IKE_SA rekey response
