@@ -258,10 +258,6 @@ class IkeSa(object):
                        encrypted_payloads=payloads if exchange_type != Message.Exchange.IKE_SA_INIT else [],
                        crypto=self.my_crypto if exchange_type != Message.Exchange.IKE_SA_INIT else None)
 
-    def _generate_ike_error_response(self, request, exception):
-        notify_error = PayloadNOTIFY.from_exception(exception)
-        return self.generate_response(request.exchange_type, [notify_error])
-
     def _process_request(self, message):
         _handler_dict = {
             Message.Exchange.IKE_SA_INIT: self.process_ike_sa_init_request,
