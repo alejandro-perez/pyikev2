@@ -88,8 +88,9 @@ class Configuration(object):
         for key, value in conf_dict.items():
             try:
                 self.my_addr = self._load_ip_address(my_addr)
-                ip = ip_address(socket.gethostbyname(key))
-            except (ValueError, socket.gaierror) as ex:
+                # first result, sockaddr, then address
+                ip = ip_address(socket.getaddrinfo(key, None)[0][4][0])
+            except (ValueError, socket.gaierror, IndexError) as ex:
                 raise ConfigurationError(str(ex))
             self._configuration[ip] = self._load_ike_conf(ip, value)
 

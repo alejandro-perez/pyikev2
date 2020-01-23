@@ -121,7 +121,7 @@ class IkeSaController:
 
     def main_loop(self):
         # create network socket
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock = socket.socket(socket.AF_INET6 if self.my_addr.version == 6 else socket.AF_INET, socket.SOCK_DGRAM)
         port = 500
         sock.bind((str(self.my_addr), port))
         logging.info('Listening from {}:{}'.format(self.my_addr, port))

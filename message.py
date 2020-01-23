@@ -43,6 +43,7 @@ class CookieRequired(IkeSaError):
         super().__init__(msg)
         self.cookie = cookie
 
+
 class AuthenticationFailed(IkeSaError):
     pass
 
@@ -230,7 +231,7 @@ class Transform:
         return result
 
     def __hash__(self):
-        return hash((self.type, self.id, self.keylen),)
+        return hash((self.type, self.id, self.keylen), )
 
     def __eq__(self, other):
         return hash(self) == hash(other)
@@ -641,7 +642,8 @@ class TrafficSelector(object):
 
     @classmethod
     def from_network(cls, subnet, port, ip_proto):
-        return TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE, ip_proto, port,
+        return TrafficSelector((TrafficSelector.Type.TS_IPV6_ADDR_RANGE if subnet[0].version == 6
+                                else TrafficSelector.Type.TS_IPV4_ADDR_RANGE), ip_proto, port,
                                65535 if port == 0 else port, subnet[0], subnet[-1])
 
     def get_network(self):
