@@ -906,7 +906,8 @@ class IkeSa(object):
 
     def _process_create_child_sa_negotiation_res(self, response):
         for error in (PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN, PayloadNOTIFY.Type.TS_UNACCEPTABLE,
-                      PayloadNOTIFY.Type.CHILD_SA_NOT_FOUND, PayloadNOTIFY.Type.TEMPORARY_FAILURE):
+                      PayloadNOTIFY.Type.CHILD_SA_NOT_FOUND, PayloadNOTIFY.Type.TEMPORARY_FAILURE,
+                      PayloadNOTIFY.Type.NO_ADDITIONAL_SAS):
             if response.get_notifies(error, True):
                 raise IkeSaError('CHILD_SA negotiation failed because {}. Skipping creation of CHILD_SA.'.format(
                     PayloadNOTIFY.Type.safe_name(error)))
@@ -1129,6 +1130,7 @@ class IkeSa(object):
                                          IkeSa.State.REK_IKE_SA_REQ_SENT])
         self.abort_on_error_notifies(response, True, ignore=[PayloadNOTIFY.Type.TS_UNACCEPTABLE,
                                                              PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN,
+                                                             PayloadNOTIFY.Type.NO_ADDITIONAL_SAS,
                                                              PayloadNOTIFY.Type.SINGLE_PAIR_REQUIRED,
                                                              PayloadNOTIFY.Type.CHILD_SA_NOT_FOUND,
                                                              PayloadNOTIFY.Type.TEMPORARY_FAILURE,
@@ -1144,6 +1146,11 @@ class IkeSa(object):
                 self.state = IkeSa.State.ESTABLISHED
                 self.rekey_ike_sa_at = time.time() + random.uniform(0, 2)
                 return None
+            # if we receive NO_ADDITIONAL_SAS it means responder does not support rekeying.
+            elif response.get_notifies(PayloadNOTIFY.Type.NO_ADDITIONAL_SAS, True):
+                self.log_debug('IKE_SA rekey was rejected with NO_ADDITIONAL_SAS. Deleting IKE_SA.')
+                self.state = IkeSa.State.ESTABLISHED
+                return self.generate_delete_ike_sa_request()
             else:
                 # process the IKE_SA negotiation payloads
                 self.new_ike_sa._process_ike_sa_negotiation_response(

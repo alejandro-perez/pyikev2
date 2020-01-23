@@ -628,6 +628,21 @@ class TestIkeSa(TestCase):
         self.assertEqual(self.ike_sa1.state, IkeSa.State.DEL_AFTER_REKEY_IKE_SA_REQ_SENT)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.REKEYED)
         self.assertIsNotNone(rekey_req)
+        self.assertIsNotNone(delete_req)
+
+    @patch('xfrm.Xfrm')
+    def test_rekey_ike_sa_rejected(self, mockclass):
+        self.test_initial_exchanges_transport()
+        self.ike_sa1.rekey_ike_sa_at = time.time()
+        rekey_req = self.ike_sa1.check_rekey_ike_sa_timer()
+        rekey_res = self.ike_sa2.process_message(rekey_req)
+        message = Message.parse(rekey_res, crypto=self.ike_sa2.my_crypto)
+        message.encrypted_payloads = [PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.NO_ADDITIONAL_SAS, b'', b'')]
+        rekey_res = message.to_bytes()
+        delete_req = self.ike_sa1.process_message(rekey_res)
+        self.assertIsNotNone(delete_req)
+        self.assertEqual(len(self.ike_sa1.child_sas), 1)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.DEL_IKE_SA_REQ_SENT)
 
     @patch('xfrm.Xfrm')
     def test_rekey_ike_sa_from_responder(self, mockclass):
