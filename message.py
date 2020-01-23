@@ -618,6 +618,9 @@ class PayloadAUTH(Payload):
             ('auth_data', hexstring(self.auth_data)), ]))
         return result
 
+    def __eq__(self, other):
+        return (self.method, self.auth_data) == (other.method, other.auth_data)
+
 
 class TrafficSelector(object):
     class Type(SafeIntEnum):

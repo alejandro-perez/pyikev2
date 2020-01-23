@@ -36,7 +36,7 @@ class TestIkeSa(TestCase):
             {
                 str(self.ip2): {
                     "auth": { "id": "alice@openikev2", "psk": "testing" },
-                    "peer_auth": {"id": "alice@openikev2", "psk": "testing"},
+                    "peer_auth": {"id": "alice@openikev2", "psk": "testing2"},
                     "dh": [14],
                     "integ": ["sha256"],
                     "prf": ["sha256"],
@@ -55,7 +55,7 @@ class TestIkeSa(TestCase):
             self.ip2,
             {
                 str(self.ip1): {
-                    "auth": {"id": "alice@openikev2", "psk": "testing"},
+                    "auth": {"id": "alice@openikev2", "psk": "testing2"},
                     "peer_auth": { "id": "alice@openikev2", "psk": "testing" },
                     "dh": [14],
                     "integ": ["sha256"],
