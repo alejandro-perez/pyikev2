@@ -7,6 +7,7 @@
 __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
 import logging
+import socket
 import time
 import unittest
 from ipaddress import ip_address, ip_network
@@ -17,7 +18,7 @@ from configuration import Configuration
 from message import TrafficSelector, Message, PayloadNOTIFY
 from protocol import IkeSaController
 from xfrm import XfrmUserAcquire, XfrmId, XfrmAddress, XfrmSelector, XfrmUserPolicyInfo, XfrmUserExpire, \
-    XfrmUserSaInfo, create_byte_array
+    XfrmUserSaInfo, create_byte_array, XFRMA_TMPL, XfrmUserTmpl
 
 logging.indent = 2
 logging.basicConfig(level=logging.DEBUG,
@@ -86,7 +87,8 @@ class TestIkeSaController(TestCase):
                                                    dport=23,
                                                    proto=TrafficSelector.IpProtocol.TCP),
                                   policy=XfrmUserPolicyInfo(index=1 << 3))
-        ike_sa_init_req, peer_addr = self.ikesacontroller1.process_acquire(acquire)
+        attributes = {XFRMA_TMPL: XfrmUserTmpl(family=socket.AF_INET)}
+        ike_sa_init_req, peer_addr = self.ikesacontroller1.process_acquire(acquire, attributes)
         ike_sa_init_res = self.ikesacontroller2.dispatch_message(ike_sa_init_req, self.addr2, self.addr1)
         ike_auth_req = self.ikesacontroller1.dispatch_message(ike_sa_init_res, self.addr1, self.addr2)
         ike_auth_res = self.ikesacontroller2.dispatch_message(ike_auth_req, self.addr2, self.addr1)
@@ -161,7 +163,8 @@ class TestIkeSaController(TestCase):
                                                    dport=23,
                                                    proto=TrafficSelector.IpProtocol.TCP),
                                   policy=XfrmUserPolicyInfo(index=1 << 3))
-        ike_sa_init_req, peer_addr = self.ikesacontroller1.process_acquire(acquire)
+        attributes = {XFRMA_TMPL: XfrmUserTmpl(family=socket.AF_INET)}
+        ike_sa_init_req, peer_addr = self.ikesacontroller1.process_acquire(acquire, attributes)
         ike_sa_init_res = self.ikesacontroller2.dispatch_message(ike_sa_init_req, self.addr2, self.addr1)
         message = Message.parse(ike_sa_init_res)
         self.assertTrue(message.get_notifies(PayloadNOTIFY.Type.COOKIE))

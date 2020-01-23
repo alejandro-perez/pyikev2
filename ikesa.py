@@ -38,6 +38,8 @@ class IkeSa(object):
     """ This class controls the state machine of a IKE SA
         It is triggered with received Messages and/or IPsec events
     """
+    MAX_RETRANSMISSIONS = 4
+    RETRANSMISSION_DELAY = 2
 
     class State(SafeIntEnum):
         # Non-established states
@@ -59,9 +61,6 @@ class IkeSa(object):
         # Closing states
         REKEYED = 20
         DELETED = 21
-
-    MAX_RETRANSMISSIONS = 4
-    RETRANSMISSION_DELAY = 2
 
     def __init__(self, is_initiator, peer_spi, configuration, my_addr, peer_addr, cookie_secret=None):
         self.state = IkeSa.State.INITIAL
@@ -86,7 +85,6 @@ class IkeSa(object):
         self.deleting_child_sa = None
         self.acquire = None
         self.new_ike_sa = None
-        self.xfrm = xfrm.Xfrm()
         self.retransmit_at = 0
         self.retransmissions = 0
         self.cookie_secret = cookie_secret
@@ -144,8 +142,8 @@ class IkeSa(object):
 
     def delete_child_sas(self):
         for child_sa in self.child_sas:
-            self.xfrm.delete_sa(self.peer_addr, child_sa.proposal.protocol_id, child_sa.outbound_spi)
-            self.xfrm.delete_sa(self.my_addr, child_sa.proposal.protocol_id, child_sa.inbound_spi)
+            xfrm.Xfrm.delete_sa(self.peer_addr, child_sa.proposal.protocol_id, child_sa.outbound_spi)
+            xfrm.Xfrm.delete_sa(self.my_addr, child_sa.proposal.protocol_id, child_sa.inbound_spi)
         self.child_sas.clear()
 
     def generate_child_sa_key_material(self, child_proposal, nonce_i, nonce_r, sk_d):
@@ -810,12 +808,12 @@ class IkeSa(object):
             else:
                 encr_transform = None
             lifetime = ipsec_conf.lifetime + random.randint(0, 5) if ipsec_conf.lifetime != -1 else -1
-            self.xfrm.create_sa(self.my_addr, self.peer_addr, chosen_tsr, chosen_tsi,
+            xfrm.Xfrm.create_sa(self.my_addr, self.peer_addr, chosen_tsr, chosen_tsi,
                                 chosen_child_proposal.protocol_id,
                                 child_sa.outbound_spi, encr_transform, child_sa_keyring.sk_er,
                                 chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
                                 child_sa_keyring.sk_ar, mode, lifetime)
-            self.xfrm.create_sa(self.peer_addr, self.my_addr, chosen_tsi, chosen_tsr,
+            xfrm.Xfrm.create_sa(self.peer_addr, self.my_addr, chosen_tsi, chosen_tsr,
                                 chosen_child_proposal.protocol_id,
                                 child_sa.inbound_spi, encr_transform, child_sa_keyring.sk_ei,
                                 chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
@@ -980,11 +978,11 @@ class IkeSa(object):
         if chosen_child_proposal.protocol_id == Proposal.Protocol.ESP:
             encr_transform = chosen_child_proposal.get_transform(Transform.Type.ENCR).id
         lifetime = ipsec_conf.lifetime + random.randint(0, 5) if ipsec_conf.lifetime != -1 else -1
-        self.xfrm.create_sa(self.my_addr, self.peer_addr, chosen_tsi, chosen_tsr, chosen_child_proposal.protocol_id,
+        xfrm.Xfrm.create_sa(self.my_addr, self.peer_addr, chosen_tsi, chosen_tsr, chosen_child_proposal.protocol_id,
                             child_sa.outbound_spi, encr_transform, child_sa_keyring.sk_ei,
                             chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
                             child_sa_keyring.sk_ai, request_mode, lifetime)
-        self.xfrm.create_sa(self.peer_addr, self.my_addr, chosen_tsr, chosen_tsi, chosen_child_proposal.protocol_id,
+        xfrm.Xfrm.create_sa(self.peer_addr, self.my_addr, chosen_tsr, chosen_tsi, chosen_child_proposal.protocol_id,
                             child_sa.inbound_spi, encr_transform, child_sa_keyring.sk_er,
                             chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
                             child_sa_keyring.sk_ar, request_mode, lifetime)
@@ -1081,8 +1079,8 @@ class IkeSa(object):
                 for del_spi in delete_payload.spis:
                     child_sa = self.get_child_sa(del_spi)
                     if child_sa is not None and child_sa.proposal.protocol_id == delete_payload.protocol_id:
-                        self.xfrm.delete_sa(self.peer_addr, child_sa.proposal.protocol_id, child_sa.outbound_spi)
-                        self.xfrm.delete_sa(self.my_addr, child_sa.proposal.protocol_id, child_sa.inbound_spi)
+                        xfrm.Xfrm.delete_sa(self.peer_addr, child_sa.proposal.protocol_id, child_sa.outbound_spi)
+                        xfrm.Xfrm.delete_sa(self.my_addr, child_sa.proposal.protocol_id, child_sa.inbound_spi)
                         self.child_sas.remove(child_sa)
                         response_payloads.append(PayloadDELETE(delete_payload.protocol_id, [child_sa.inbound_spi]))
                         self.log_info('Removing CHILD_SA {}'.format(child_sa))
@@ -1194,9 +1192,9 @@ class IkeSa(object):
                                  ''.format(self.deleting_child_sa))
             else:
                 # delete our side of the
-                self.xfrm.delete_sa(self.peer_addr, self.deleting_child_sa.proposal.protocol_id,
+                xfrm.Xfrm.delete_sa(self.peer_addr, self.deleting_child_sa.proposal.protocol_id,
                                     self.deleting_child_sa.outbound_spi)
-                self.xfrm.delete_sa(self.my_addr, self.deleting_child_sa.proposal.protocol_id,
+                xfrm.Xfrm.delete_sa(self.my_addr, self.deleting_child_sa.proposal.protocol_id,
                                     self.deleting_child_sa.inbound_spi)
                 self.child_sas.remove(self.deleting_child_sa)
                 self.log_info('Removing CHILD_SA {}'.format(self.deleting_child_sa))

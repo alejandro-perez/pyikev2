@@ -261,11 +261,12 @@ class Xfrm(NetlinkProtocol):
         XFRMA_TMPL: XfrmUserTmpl,
     }
 
-    payload_types = _msg_to_struct = {
+    payload_types = NetlinkProtocol.payload_types
+    payload_types.update({
         XFRM_MSG_ACQUIRE: XfrmUserAcquire,
         XFRM_MSG_EXPIRE: XfrmUserExpire,
         XFRM_MSG_NEWPOLICY: XfrmUserPolicyInfo,
-    }
+    })
 
     _cipher_names = {
         None: b'none',
@@ -281,7 +282,8 @@ class Xfrm(NetlinkProtocol):
 
     netlink_family = socket.NETLINK_XFRM
 
-    def _create_sa(self, src_selector, dst_selector, src_port, dst_port, spi, ip_proto, ipsec_proto, mode, src, dst,
+    @classmethod
+    def _create_sa(cls, src_selector, dst_selector, src_port, dst_port, spi, ip_proto, ipsec_proto, mode, src, dst,
                    enc_algorithm, sk_e, auth_algorithm, sk_a, lifetime=-1):
         usersa = XfrmUserSaInfo(
             sel=XfrmSelector(family=socket.AF_INET if src_selector[0].version == 4 else socket.AF_INET6,
@@ -312,19 +314,22 @@ class Xfrm(NetlinkProtocol):
         )
         attributes = {}
         if ipsec_proto == Proposal.Protocol.ESP:
-            attributes[XFRMA_ALG_CRYPT] = XfrmAlgo.build(alg_name=self._cipher_names[enc_algorithm], key=sk_e)
-        attributes[XFRMA_ALG_AUTH] = XfrmAlgo.build(alg_name=self._auth_names[auth_algorithm], key=sk_a)
-        self.send_recv(XFRM_MSG_NEWSA, (NLM_F_REQUEST | NLM_F_ACK), usersa, attributes)
+            attributes[XFRMA_ALG_CRYPT] = XfrmAlgo.build(alg_name=cls._cipher_names[enc_algorithm], key=sk_e)
+        attributes[XFRMA_ALG_AUTH] = XfrmAlgo.build(alg_name=cls._auth_names[auth_algorithm], key=sk_a)
+        cls.send_recv(XFRM_MSG_NEWSA, (NLM_F_REQUEST | NLM_F_ACK), usersa, attributes)
 
-    def flush_policies(self):
+    @classmethod
+    def flush_policies(cls):
         usersaflush = XfrmUserSaFlush(proto=0)
-        self.send_recv(XFRM_MSG_FLUSHPOLICY, (NLM_F_REQUEST | NLM_F_ACK), usersaflush)
+        cls.send_recv(XFRM_MSG_FLUSHPOLICY, (NLM_F_REQUEST | NLM_F_ACK), usersaflush)
 
-    def flush_sas(self):
+    @classmethod
+    def flush_sas(cls):
         usersaflush = XfrmUserSaFlush(proto=0)
-        self.send_recv(XFRM_MSG_FLUSHSA, (NLM_F_REQUEST | NLM_F_ACK), usersaflush)
+        cls.send_recv(XFRM_MSG_FLUSHSA, (NLM_F_REQUEST | NLM_F_ACK), usersaflush)
 
-    def _create_policy(self, src_selector, dst_selector, src_port, dst_port, ip_proto, direction,
+    @classmethod
+    def _create_policy(cls, src_selector, dst_selector, src_port, dst_port, ip_proto, direction,
                        ipsec_proto, mode, src, dst, index=0):
         policy = XfrmUserPolicyInfo(
             sel=XfrmSelector(family=socket.AF_INET if src_selector[0].version == 4 else socket.AF_INET6,
@@ -351,20 +356,22 @@ class Xfrm(NetlinkProtocol):
             ealgos=0xFFFFFFFF,
             calgos=0xFFFFFFFF,
             mode=mode)
-        self.send_recv(XFRM_MSG_NEWPOLICY, (NLM_F_REQUEST | NLM_F_ACK), policy, {XFRMA_TMPL: template})
+        cls.send_recv(XFRM_MSG_NEWPOLICY, (NLM_F_REQUEST | NLM_F_ACK), policy, {XFRMA_TMPL: template})
 
-    def delete_sa(self, daddr, proto, spi):
+    @classmethod
+    def delete_sa(cls, daddr, proto, spi):
         xfrm_id = XfrmUserSaId(
             daddr=XfrmAddress.from_ipaddr(daddr),
             family=socket.AF_INET if daddr.version == 4 else socket.AF_INET6,
             proto=socket.IPPROTO_ESP if proto == Proposal.Protocol.ESP else socket.IPPROTO_AH,
             spi=create_byte_array(spi))
         try:
-            self.send_recv(XFRM_MSG_DELSA, (NLM_F_REQUEST | NLM_F_ACK), xfrm_id)
+            cls.send_recv(XFRM_MSG_DELSA, (NLM_F_REQUEST | NLM_F_ACK), xfrm_id)
         except NetlinkError as ex:
             logging.warning('Could not delete IPsec SA with SPI: {}. {}'.format(hexstring(spi), ex))
 
-    def create_policies(self, my_addr, peer_addr, ike_conf):
+    @classmethod
+    def create_policies(cls, my_addr, peer_addr, ike_conf):
         for ipsec_conf in ike_conf.protect:
             if ipsec_conf.mode == Mode.TUNNEL:
                 src_selector = ipsec_conf.my_subnet
@@ -375,27 +382,23 @@ class Xfrm(NetlinkProtocol):
 
             # generate an index for outbound policies
             index = ipsec_conf.index << 3 | XFRM_POLICY_OUT
-            self._create_policy(src_selector, dst_selector, ipsec_conf.my_port,
-                                ipsec_conf.peer_port, ipsec_conf.ip_proto, XFRM_POLICY_OUT,
-                                ipsec_conf.ipsec_proto, ipsec_conf.mode, my_addr, peer_addr,
-                                index=index)
-            self._create_policy(dst_selector, src_selector, ipsec_conf.peer_port,
-                                ipsec_conf.my_port, ipsec_conf.ip_proto, XFRM_POLICY_IN,
-                                ipsec_conf.ipsec_proto, ipsec_conf.mode, peer_addr, my_addr)
-            self._create_policy(dst_selector, src_selector,
-                                ipsec_conf.peer_port, ipsec_conf.my_port,
-                                ipsec_conf.ip_proto, XFRM_POLICY_FWD, ipsec_conf.ipsec_proto,
-                                ipsec_conf.mode, peer_addr, my_addr)
+            cls._create_policy(src_selector, dst_selector, ipsec_conf.my_port,ipsec_conf.peer_port,
+                               ipsec_conf.ip_proto, XFRM_POLICY_OUT, ipsec_conf.ipsec_proto, ipsec_conf.mode,
+                               my_addr, peer_addr, index=index)
+            cls._create_policy(dst_selector, src_selector, ipsec_conf.peer_port, ipsec_conf.my_port,
+                               ipsec_conf.ip_proto, XFRM_POLICY_IN, ipsec_conf.ipsec_proto, ipsec_conf.mode,
+                               peer_addr, my_addr)
+            cls._create_policy(dst_selector, src_selector, ipsec_conf.peer_port, ipsec_conf.my_port,
+                               ipsec_conf.ip_proto, XFRM_POLICY_FWD, ipsec_conf.ipsec_proto, ipsec_conf.mode,
+                               peer_addr, my_addr)
 
-    def create_sa(self, src, dst, src_sel, dst_sel, ipsec_protocol, spi, enc_algorith, sk_e,
+    @classmethod
+    def create_sa(cls, src, dst, src_sel, dst_sel, ipsec_protocol, spi, enc_algorith, sk_e,
                   auth_algorithm, sk_a, mode, lifetime=-1):
-        self._create_sa(src_sel.get_network(), dst_sel.get_network(), src_sel.get_port(),
-                        dst_sel.get_port(), spi, src_sel.ip_proto, ipsec_protocol, mode, src,
-                        dst, enc_algorith, sk_e, auth_algorithm, sk_a, lifetime)
+        cls._create_sa(src_sel.get_network(), dst_sel.get_network(), src_sel.get_port(),
+                       dst_sel.get_port(), spi, src_sel.ip_proto, ipsec_protocol, mode, src,
+                       dst, enc_algorith, sk_e, auth_algorithm, sk_a, lifetime)
 
-    def _get_policies(self):
-        policy_id = XfrmUserPolicyId()
-        return self.send_recv(XFRM_MSG_GETPOLICY, (NLM_F_REQUEST | NLM_F_DUMP), policy_id)
-
-    def get_socket(self):
-        return self._get_socket(XFRMGRP_ACQUIRE | XFRMGRP_EXPIRE)
+    @classmethod
+    def get_socket(cls):
+        return cls._get_socket(XFRMGRP_ACQUIRE | XFRMGRP_EXPIRE)

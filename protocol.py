@@ -3,7 +3,6 @@
 
 """ This module defines the classes for the protocol handling.
 """
-import json
 import logging
 import os
 import socket
@@ -21,15 +20,14 @@ class IkeSaController:
     def __init__(self, my_addr, configuration):
         self.ike_sas = []
         self.configuration = configuration
-        self.xfrm = xfrm.Xfrm()
         self.my_addr = my_addr
         self.cookie_threshold = 10
         self.cookie_secret = os.urandom(8)
         # establish policies
-        self.xfrm.flush_policies()
-        self.xfrm.flush_sas()
+        xfrm.Xfrm.flush_policies()
+        xfrm.Xfrm.flush_sas()
         for peer_addr, ike_conf in configuration.items():
-            self.xfrm.create_policies(my_addr, peer_addr, ike_conf)
+            xfrm.Xfrm.create_policies(my_addr, peer_addr, ike_conf)
 
     def _get_ike_sa_by_spi(self, spi):
         return next(x for x in self.ike_sas if x.my_spi == spi)
@@ -176,5 +174,5 @@ class IkeSaController:
                     sock.sendto(request_data, (str(ikesa.peer_addr), 500))
 
     def close(self):
-        self.xfrm.flush_policies()
-        self.xfrm.flush_sas()
+        xfrm.Xfrm.flush_policies()
+        xfrm.Xfrm.flush_sas()
