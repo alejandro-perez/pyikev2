@@ -46,8 +46,6 @@ logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                     datefmt='%Y-%m-%d %H:%M:%S')
 logging.indent = None if args.no_indent else 2
 
-
-
 # load configuration
 try:
     with open(args.configuration_file, 'r') as file:

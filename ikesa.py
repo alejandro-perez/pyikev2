@@ -15,7 +15,7 @@ from hmac import HMAC
 from struct import unpack
 
 import xfrm
-from crypto import Cipher, Crypto, DiffieHellman, Integrity, Prf, RsaPrivateKey, RsaPublicKey
+from crypto import Cipher, Crypto, DiffieHellman, Integrity, Prf
 from helpers import SafeIntEnum, hexstring
 from message import (AuthenticationFailed, ChildSaNotFound, IkeSaError, InvalidKePayload,
                      NoProposalChosen, TemporaryFailure, TsUnacceptable, CookieRequired)
@@ -92,6 +92,7 @@ class IkeSa(object):
         self.rekey_ike_sa_at = time.time() + configuration.lifetime + random.uniform(0, 5)
         self.delete_ike_sa_at = self.rekey_ike_sa_at + 30
         self.pending_events = []
+        self.dh = None
 
     def __str__(self):
         return hexstring(self.my_spi)
@@ -646,7 +647,7 @@ class IkeSa(object):
 
         return self.request
 
-    def _process_ike_sa_negotiation_response(self, response, nonce, encrypted=False, old_sk_d=None):
+    def process_ike_sa_negotiation_response(self, response, nonce, encrypted=False, old_sk_d=None):
         """ Process a IKE_SA negotiation response (SA, Ni, KEi)
             It sets self.chosen_proposal and self.ike_sa_keyring as a result
         """
@@ -713,7 +714,7 @@ class IkeSa(object):
         self.abort_on_error_notifies(response)
 
         # process the IKE_SA negotiation payloads
-        self._process_ike_sa_negotiation_response(response, self.request.get_payload(Payload.Type.NONCE).nonce)
+        self.process_ike_sa_negotiation_response(response, self.request.get_payload(Payload.Type.NONCE).nonce)
 
         # save the message for later authentication
         self.ike_sa_init_res_data = response.to_bytes()
@@ -1193,7 +1194,7 @@ class IkeSa(object):
                 return self.generate_delete_ike_sa_request()
             else:
                 # process the IKE_SA negotiation payloads
-                self.new_ike_sa._process_ike_sa_negotiation_response(
+                self.new_ike_sa.process_ike_sa_negotiation_response(
                     response, self.request.get_payload(Payload.Type.NONCE, True).nonce, encrypted=True,
                     old_sk_d=self.ike_sa_keyring.sk_d)
                 self.new_ike_sa.child_sas = self.child_sas

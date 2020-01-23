@@ -86,5 +86,6 @@ sEuNUHHDSswFehNOFQIDAQAB
         print(len(signature))
         self.assertTrue(public_key.verify(signature, data))
 
+
 if __name__ == '__main__':
     unittest.main()

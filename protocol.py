@@ -16,6 +16,7 @@ from message import (Message, TrafficSelector)
 
 __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
+
 class IkeSaController:
     def __init__(self, my_addr, configuration):
         self.ike_sas = []
@@ -45,7 +46,7 @@ class IkeSaController:
     def dispatch_message(self, data, my_addr, peer_addr):
         header = Message.parse(data, header_only=True)
         # if IKE_SA_INIT request, then a new IkeSa must be created
-        if (header.exchange_type == Message.Exchange.IKE_SA_INIT and header.is_request):
+        if header.exchange_type == Message.Exchange.IKE_SA_INIT and header.is_request:
             # look for matching configuration
             ike_conf = self.configuration.get_ike_configuration(peer_addr[0])
             ike_sa = IkeSa(is_initiator=False, peer_spi=header.spi_i, configuration=ike_conf,
@@ -114,7 +115,7 @@ class IkeSaController:
         hard = xfrm_expire.hard
         logging.debug('Received EXPIRE for spi {}. Hard={}'.format(hexstring(spi), hard))
         ike_sa = self._get_ike_sa_by_child_sa_spi(spi)
-        if (ike_sa):
+        if ike_sa:
             request = ike_sa.process_expire(spi, hard)
             return request, (str(ike_sa.peer_addr), 500)
         return None, None
