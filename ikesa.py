@@ -722,13 +722,11 @@ class IkeSa(object):
         return self.generate_ike_auth_request()
 
     def _generate_psk_auth_payload(self, authconf, data_to_be_signed):
-        prf = self.peer_crypto.prf.prf
-        keypad = prf(authconf.psk, b'Key Pad for IKEv2')
-        return PayloadAUTH(PayloadAUTH.Method.PSK, prf(keypad, data_to_be_signed))
+        keypad = self.my_crypto.prf.prf(authconf.psk, b'Key Pad for IKEv2')
+        return PayloadAUTH(PayloadAUTH.Method.PSK, self.my_crypto.prf.prf(keypad, data_to_be_signed))
 
     def _generate_auth_payload(self, authconf, message_data, nonce, payload_id, sk_p):
-        prf = self.peer_crypto.prf.prf
-        data_to_be_signed = (message_data + nonce + prf(sk_p, payload_id.to_bytes()))
+        data_to_be_signed = (message_data + nonce + self.my_crypto.prf.prf(sk_p, payload_id.to_bytes()))
         if authconf.psk:
             return self._generate_psk_auth_payload(authconf, data_to_be_signed)
         else:
