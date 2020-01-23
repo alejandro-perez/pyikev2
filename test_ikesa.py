@@ -32,7 +32,7 @@ class TestIkeSa(TestCase):
         self.configuration1 = Configuration(
             self.ip1,
             {
-                "192.168.0.2": {
+                str(self.ip2): {
                     "id": "alice@openikev2",
                     "psk": "testing",
                     "dh": [14],
@@ -52,7 +52,7 @@ class TestIkeSa(TestCase):
         self.configuration2 = Configuration(
             self.ip2,
             {
-                "192.168.0.1": {
+                str(self.ip1): {
                     "id": "bob@openikev2",
                     "psk": "testing",
                     "dh": [14],
@@ -79,6 +79,22 @@ class TestIkeSa(TestCase):
     def assertMessageHasNotification(self, message_data, ikesa, notification_type):
         message = Message.parse(message_data, crypto=ikesa.my_crypto)
         self.assertTrue(message.get_notifies(notification_type, ikesa.my_crypto is not None))
+
+    @patch('xfrm.Xfrm')
+    def test_initial_exchanges_transport(self, mockclass):
+        # initial exchanges
+        small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
+        small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
+        ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
+        ike_sa_init_res = self.ike_sa2.process_message(ike_sa_init_req)
+        ike_auth_req = self.ike_sa1.process_message(ike_sa_init_res)
+        ike_auth_res = self.ike_sa2.process_message(ike_auth_req)
+        request = self.ike_sa1.process_message(ike_auth_res)
+        self.assertIsNone(request)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 1)
+        self.assertEqual(len(self.ike_sa2.child_sas), 1)
 
     @patch('xfrm.Xfrm')
     def test_initial_exchanges_transport(self, mockclass):
@@ -359,34 +375,36 @@ class TestIkeSa(TestCase):
 
     @patch('xfrm.Xfrm')
     def test_invalid_exchange_type_on_request(self, mockclass):
+        self.test_initial_exchanges_transport()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
-        ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
-        message = Message.parse(ike_sa_init_req, crypto=self.ike_sa1.my_crypto)
+        create_child_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
+        message = Message.parse(create_child_req, crypto=self.ike_sa1.my_crypto)
         message.exchange_type = 100
-        ike_sa_init_req = message.to_bytes()
-        ike_sa_init_res = self.ike_sa2.process_message(ike_sa_init_req)
-        self.assertIsNone(ike_sa_init_res)
-        self.assertEqual(self.ike_sa1.state, IkeSa.State.INIT_REQ_SENT)
-        self.assertEqual(self.ike_sa2.state, IkeSa.State.INITIAL)
-        self.assertEqual(len(self.ike_sa1.child_sas), 0)
-        self.assertEqual(len(self.ike_sa2.child_sas), 0)
+        create_child_req = message.to_bytes()
+        create_child_res = self.ike_sa2.process_message(create_child_req)
+        self.assertIsNone(create_child_res)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.NEW_CHILD_REQ_SENT)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 1)
+        self.assertEqual(len(self.ike_sa2.child_sas), 1)
 
     @patch('xfrm.Xfrm')
     def test_invalid_exchange_type_on_response(self, mockclass):
+        self.test_initial_exchanges_transport()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
-        ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
-        ike_sa_init_res = self.ike_sa2.process_message(ike_sa_init_req)
-        message = Message.parse(ike_sa_init_res)
+        crate_child_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
+        crate_child_res = self.ike_sa2.process_message(crate_child_req)
+        message = Message.parse(crate_child_res, self.ike_sa1.peer_crypto)
         message.exchange_type = 100
-        ike_sa_init_res = message.to_bytes()
-        ike_auth_res = self.ike_sa1.process_message(ike_sa_init_res)
-        self.assertIsNone(ike_auth_res)
-        self.assertEqual(self.ike_sa1.state, IkeSa.State.INIT_REQ_SENT)
-        self.assertEqual(self.ike_sa2.state, IkeSa.State.INIT_RES_SENT)
-        self.assertEqual(len(self.ike_sa1.child_sas), 0)
-        self.assertEqual(len(self.ike_sa2.child_sas), 0)
+        crate_child_res = message.to_bytes()
+        request = self.ike_sa1.process_message(crate_child_res)
+        self.assertIsNone(request)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.NEW_CHILD_REQ_SENT)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 1)
+        self.assertEqual(len(self.ike_sa2.child_sas), 2)
 
     @patch('xfrm.Xfrm')
     def test_create_child_invalid_ts(self, mockclass):
