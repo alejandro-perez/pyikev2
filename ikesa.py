@@ -146,7 +146,7 @@ class IkeSa(object):
             xfrm.Xfrm.delete_sa(self.my_addr, child_sa.proposal.protocol_id, child_sa.inbound_spi)
         self.child_sas.clear()
 
-    def generate_child_sa_key_material(self, child_proposal, nonce_i, nonce_r, sk_d):
+    def generate_child_sa_key_material(self, child_proposal, keyseed, sk_d):
         """ Generates CHILD_SA key material
         """
         encr_key_size = 0
@@ -154,7 +154,7 @@ class IkeSa(object):
         if child_proposal.protocol_id == Proposal.Protocol.ESP:
             encr_key_size = Cipher(child_proposal.get_transform(Transform.Type.ENCR)).key_size
 
-        keymat = self.my_crypto.prf.prfplus(sk_d, nonce_i + nonce_r, 2 * integ_key_size + 2 * encr_key_size)
+        keymat = self.my_crypto.prf.prfplus(sk_d, keyseed, 2 * integ_key_size + 2 * encr_key_size)
 
         sk_ei, sk_ai, sk_er, sk_ar = unpack('>{0}s{1}s{0}s{1}s'.format(encr_key_size, integ_key_size), keymat)
         child_sa_keyring = Keyring(None, sk_ai, sk_ar, sk_ei, sk_er, None, None)
@@ -181,10 +181,10 @@ class IkeSa(object):
 
     def _ipsec_conf_2_proposal(self, ipsec_conf):
         no_esn = [Transform(Transform.Type.ESN, Transform.EsnId.NO_ESN)]
+        transforms = ipsec_conf.integ + ipsec_conf.dh + no_esn
         if ipsec_conf.ipsec_proto == Proposal.Protocol.ESP:
-            return Proposal(1, ipsec_conf.ipsec_proto, b'', ipsec_conf.encr + ipsec_conf.integ + no_esn)
-        else:
-            return Proposal(1, ipsec_conf.ipsec_proto, b'', ipsec_conf.integ + no_esn)
+            transforms += ipsec_conf.encr
+        return Proposal(1, ipsec_conf.ipsec_proto, b'', transforms)
 
     def _select_best_ike_sa_proposal(self, peer_payload_sa):
         my_proposal = self._ike_conf_2_proposal()
@@ -592,7 +592,7 @@ class IkeSa(object):
     def spi_r(self):
         return self.peer_spi if self.is_initiator else self.my_spi
 
-    def _generate_child_sa_negotiation_req(self, child_sa):
+    def _generate_child_sa_negotiation_req(self, child_sa, initial):
         result = []
 
         # generate Payload TSi, TSr
@@ -602,8 +602,18 @@ class IkeSa(object):
 
         # generate Payload SA
         proposal = self._ipsec_conf_2_proposal(child_sa.ipsec_conf)
+        if initial:
+            proposal.transforms = [x for x in proposal.transforms if x.type != Transform.DhId]
         proposal.spi = os.urandom(4)
         result.append(PayloadSA([proposal]))
+
+        # generate Payload KE (if required)
+        try:
+            my_dh_group = proposal.get_transform(Transform.Type.DH).id
+            self.dh = DiffieHellman(my_dh_group)
+            result.append(PayloadKE(my_dh_group, self.dh.public_key))
+        except StopIteration:
+            pass
 
         # genereate USE_TRANSPORT_MODE notify if needed
         if child_sa.mode == xfrm.Mode.TRANSPORT:
@@ -616,7 +626,7 @@ class IkeSa(object):
         assert (self.state == IkeSa.State.INIT_REQ_SENT)
 
         # generate the CHILD_SA negotiation payloads
-        child_sa_payloads = self._generate_child_sa_negotiation_req(self.creating_child_sa)
+        child_sa_payloads = self._generate_child_sa_negotiation_req(self.creating_child_sa, initial=True)
 
         # generate IDi
         payload_idi = PayloadIDi(self.configuration.id.id_type, self.configuration.id.id_data)
@@ -651,11 +661,6 @@ class IkeSa(object):
 
         # update peer spi (take it from the payload SA if old_sa_d is not none ie. IKE_SA rekey)
         self.peer_spi = response.spi_r if old_sk_d is None else self.chosen_proposal.spi
-
-        # if this is a rekey, hence spi is not empty, send ours
-        # if self.chosen_proposal.spi:
-        #     self.chosen_proposal.spi = self.my_spi
-        # response_payload_sa = PayloadSA([self.chosen_proposal])
 
         self.dh.compute_secret(payload_ke.ke_data)
         self.log_debug('Generated DH shared secret: {}'.format(hexstring(self.dh.shared_secret)))
@@ -787,11 +792,22 @@ class IkeSa(object):
             # generate the response payload SA with the chosen proposal
             chosen_child_proposal = self._select_best_child_sa_proposal(request_payload_sa, ipsec_conf)
 
+            keyseed = request_payload_nonce.nonce + response_payload_nonce.nonce
+            # if KE exchange is required
+            if chosen_child_proposal.get_transforms(Transform.Type.DH):
+                request_payload_ke = request.get_payload(Payload.Type.KE, True)
+                my_dh_group = chosen_child_proposal.get_transform(Transform.Type.DH).id
+                if my_dh_group != request_payload_ke.dh_group:
+                    raise InvalidKePayload('Invalid DH group used. I want {}'.format(my_dh_group), group=my_dh_group)
+                dh = DiffieHellman(request_payload_ke.dh_group)
+                dh.compute_secret(request_payload_ke.ke_data)
+                keyseed = dh.shared_secret + keyseed
+                self.log_debug('Generated CHILD_SA DH shared secret: {}'.format(hexstring(dh.shared_secret)))
+                response_payloads.append(PayloadKE(dh.group, dh.public_key))
+
             # generate CHILD key material
             child_sa_keyring = self.generate_child_sa_key_material(child_proposal=chosen_child_proposal,
-                                                                   nonce_i=request_payload_nonce.nonce,
-                                                                   nonce_r=response_payload_nonce.nonce,
-                                                                   sk_d=self.ike_sa_keyring.sk_d)
+                                                                   keyseed=keyseed, sk_d=self.ike_sa_keyring.sk_d)
 
             # create the IPsec SAs according to the negotiated CHILD SA
             child_sa = ChildSa(outbound_spi=chosen_child_proposal.spi, inbound_spi=os.urandom(4),
@@ -825,7 +841,7 @@ class IkeSa(object):
             response_payloads.append(PayloadTSr([chosen_tsr]))
 
             return response_payloads
-        except (TsUnacceptable, NoProposalChosen, ChildSaNotFound, TemporaryFailure) as ex:
+        except (TsUnacceptable, NoProposalChosen, ChildSaNotFound, TemporaryFailure, InvalidKePayload) as ex:
             self.log_warning('CHILD_SA negotiation failed. {}'.format(ex))
             return [PayloadNOTIFY.from_exception(ex)]
         # Generic error happening while negotiating the CHILD_SA should be reported as NO_PROPOSAL_CHOSEN
@@ -949,10 +965,17 @@ class IkeSa(object):
             raise NoProposalChosen('Responder did not choose a valid proposal')
 
         # generate CHILD key material
+        keyseed = request_payload_nonce.nonce + response_payload_nonce.nonce
+
+        # if KE exchange is required
+        if chosen_child_proposal.get_transforms(Transform.Type.DH):
+            response_payload_ke = response.get_payload(Payload.Type.KE, True)
+            self.dh.compute_secret(response_payload_ke.ke_data)
+            keyseed = self.dh.shared_secret + keyseed
+            self.log_debug('Generated CHILD_SA DH shared secret: {}'.format(hexstring(self.dh.shared_secret)))
+
         child_sa_keyring = self.generate_child_sa_key_material(child_proposal=chosen_child_proposal,
-                                                               nonce_i=request_payload_nonce.nonce,
-                                                               nonce_r=response_payload_nonce.nonce,
-                                                               sk_d=self.ike_sa_keyring.sk_d)
+                                                               keyseed=keyseed, sk_d=self.ike_sa_keyring.sk_d)
 
         # Check TSi and TSr are subsets of what we sent
         chosen_tsi = response_payload_tsi.traffic_selectors[0]
@@ -1022,7 +1045,7 @@ class IkeSa(object):
         self.creating_child_sa = child_sa
 
         # generate the CHILD_SA negotiation payloads
-        child_sa_payloads = self._generate_child_sa_negotiation_req(child_sa)
+        child_sa_payloads = self._generate_child_sa_negotiation_req(child_sa, initial=False)
         payloads = []
         if rekeyed_child_sa is not None:
             self.rekeying_child_sa = rekeyed_child_sa
@@ -1136,6 +1159,7 @@ class IkeSa(object):
                                                              PayloadNOTIFY.Type.TEMPORARY_FAILURE,
                                                              PayloadNOTIFY.Type.INTERNAL_ADDRESS_FAILURE,
                                                              PayloadNOTIFY.Type.FAILED_CP_REQUIRED,
+                                                             PayloadNOTIFY.Type.INVALID_KE_PAYLOAD,
                                                              PayloadNOTIFY.Type.INVALID_KE_PAYLOAD])
 
         # IKE_SA rekey response
@@ -1163,6 +1187,20 @@ class IkeSa(object):
                 return self.generate_delete_ike_sa_request()
         # CHILD_SA create/rekey response
         else:
+            # Recover from INVALID_KE_PAYLOAD
+            invalid_ke = response.get_notifies(PayloadNOTIFY.Type.INVALID_KE_PAYLOAD, True)
+            if invalid_ke:
+                invalid_ke = invalid_ke[0]
+                self.log_warning("INVALID_KE_PAYLOAD notification received. Trying with the suggested group")
+                # # create DH and Paylaod KE
+                my_dh_group = unpack('>H', invalid_ke.notification_data)[0]
+                self.dh = DiffieHellman(my_dh_group)
+                new_payload_ke = PayloadKE(my_dh_group, self.dh.public_key)
+                payload_ke = self.request.get_payload(Payload.Type.KE, True)
+                payload_ke.dh_group = new_payload_ke.dh_group
+                payload_ke.ke_data = new_payload_ke.ke_data
+                return self.generate_request(Message.Exchange.CREATE_CHILD_SA, self.request.encrypted_payloads)
+
             negotiation_failed = False
             try:
                 self._process_create_child_sa_negotiation_res(response)

@@ -73,7 +73,7 @@ IkeConfiguration = namedtuple('IkeConfiguration',
                               defaults=(None,)*10)
 IpsecConfiguration = namedtuple('IpsecConfiguration',
                                 ['my_subnet', 'index', 'peer_subnet', 'my_port', 'lifetime', 'peer_port', 'ip_proto',
-                                 'mode', 'ipsec_proto', 'encr', 'integ'],
+                                 'mode', 'ipsec_proto', 'encr', 'integ', 'dh'],
                                 defaults=(None,)*11)
 
 
@@ -143,6 +143,7 @@ class Configuration(object):
             ipsec_proto=self._load_from_dict(conf_dict.get('ipsec_proto', 'esp'), _ipsec_proto_name_to_enum),
             encr=self._load_crypto_algs('encr', conf_dict.get('encr', ['aes256']), _encr_name_to_transform),
             integ=self._load_crypto_algs('integ', conf_dict.get('integ', ['sha256']), _integ_name_to_transform),
+            dh=self._load_crypto_algs('dh', conf_dict.get('dh', []), _dh_name_to_transform),
         )
 
     def get_ike_configuration(self, addr):
