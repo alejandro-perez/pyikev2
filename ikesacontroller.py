@@ -127,7 +127,7 @@ class IkeSaController:
         for addr in self.my_addrs:
             udp_sockets[addr] = socket.socket(socket.AF_INET6 if addr.version == 6 else socket.AF_INET, socket.SOCK_DGRAM)
             udp_sockets[addr].bind((str(addr), port))
-            logging.info('Listening from {}:{}'.format(addr, port))
+            logging.info(f'Listening from [{addr}]:{port}')
 
         # create XFRM socket
         xfrm_obj = xfrm.Xfrm()

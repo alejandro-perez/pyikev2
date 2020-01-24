@@ -8,6 +8,7 @@ import socket
 import sys
 from ipaddress import ip_address
 
+import netifaces
 import yaml
 
 from configuration import Configuration
@@ -37,12 +38,17 @@ try:
         for ip in args.ip_address:
             ip_addresses.append(ip_address(ip))
     else:
-        ip_addresses.append(ip_address(socket.gethostbyname(socket.gethostname())))
+        interfaces = [x for x in netifaces.interfaces() if not x.startswith('lo')]
+        for interface in interfaces:
+            addresses = netifaces.ifaddresses(interface)
+            for address in addresses.get(netifaces.AF_INET, []) + addresses.get(netifaces.AF_INET6, []):
+                # avoid link local addresses
+                if '%' not in address['addr']:
+                    ip_addresses.append(ip_address(address['addr']))
 except ValueError as ex:
     print(ex)
     sys.exit(1)
 
-print(ip_addresses)
 # set logger
 logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                     format='[%(asctime)s.%(msecs)03d] [%(levelname)-7s] %(message)s',
