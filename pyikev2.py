@@ -11,7 +11,7 @@ from ipaddress import ip_address
 import netifaces
 import yaml
 
-from configuration import Configuration
+from configuration import Configuration, ConfigurationError
 from ikesacontroller import IkeSaController
 
 __author__ = 'Alejandro Perez <alejandro.perez.mendez@gmail.com>'
@@ -63,10 +63,14 @@ except (FileNotFoundError, yaml.YAMLError) as ex:
     logging.error('Error in configuration file {}:\n{}'.format(args.configuration_file, str(ex)))
     sys.exit(1)
 
-configuration = Configuration(conf_dict)
+try:
+    configuration = Configuration(conf_dict, ip_addresses)
+except ConfigurationError as ex:
+    logging.error(f'Configuration error: {ex}')
+    sys.exit(1)
 
 # create IkeSaController
-ike_sa_controller = IkeSaController(ip_addresses, configuration=configuration)
+ike_sa_controller = IkeSaController(ip_addresses, configuration)
 
 
 def signal_handler(*unused):

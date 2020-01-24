@@ -10,6 +10,7 @@ from ipaddress import ip_address, ip_network
 from select import select
 
 import xfrm
+from configuration import Configuration, ConfigurationError
 from helpers import hexstring
 from ikesa import IkeSa
 from message import (Message, TrafficSelector)
@@ -27,7 +28,7 @@ class IkeSaController:
         # establish policies
         xfrm.Xfrm.flush_policies()
         xfrm.Xfrm.flush_sas()
-        for ike_conf in configuration.ike_configurations:
+        for ike_conf in self.configuration.ike_configurations:
             xfrm.Xfrm.create_policies(ike_conf)
 
     def _get_ike_sa_by_spi(self, spi):

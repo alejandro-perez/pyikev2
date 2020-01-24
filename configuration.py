@@ -84,17 +84,17 @@ class Configuration(object):
     """ Represents the daemon configuration.
     """
 
-    def __init__(self, conf_dict):
+    def __init__(self, conf_dict, my_addresses):
         """ Creates a new Configuration object from a textual dict (e.g. coming from JSON or YAML)
         """
         self.ike_configurations = []
         for connection_name, ikeconfdict in conf_dict.items():
             try:
-                self.ike_configurations.append(self._load_ike_conf(connection_name, ikeconfdict))
+                self.ike_configurations.append(self._load_ike_conf(connection_name, ikeconfdict, my_addresses))
             except KeyError as ex:
                 raise ConfigurationError(f'Mandatory parameter "{ex}" missing for connection "{connection_name}"')
 
-    def _load_ike_conf(self, name, conf_dict):
+    def _load_ike_conf(self, name, conf_dict, my_addresses):
         ikeconf = IkeConfiguration(
             name=name,
             my_addr=self._load_ip_address(conf_dict['my_addr']),
@@ -109,6 +109,10 @@ class Configuration(object):
             dh=self._load_crypto_algs('dh', conf_dict.get('dh', ['14']), _dh_name_to_transform),
             protect=[]
         )
+        if ikeconf.my_addr not in my_addresses:
+            raise ConfigurationError(
+                f'Connection {name} has invalid "my_addr" {ikeconf.my_addr}. You need to listen from it')
+
         for ipsecconf_dict in conf_dict['protect']:
             ikeconf.protect.append(self._load_ipsec_conf(ikeconf, ipsecconf_dict))
         return ikeconf
