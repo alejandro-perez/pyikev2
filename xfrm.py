@@ -371,26 +371,26 @@ class Xfrm(NetlinkProtocol):
             logging.warning('Could not delete IPsec SA with SPI: {}. {}'.format(hexstring(spi), ex))
 
     @classmethod
-    def create_policies(cls, my_addr, peer_addr, ike_conf):
+    def create_policies(cls, ike_conf):
         for ipsec_conf in ike_conf.protect:
             if ipsec_conf.mode == Mode.TUNNEL:
                 src_selector = ipsec_conf.my_subnet
                 dst_selector = ipsec_conf.peer_subnet
             else:
-                src_selector = ip_network(my_addr)
-                dst_selector = ip_network(peer_addr)
+                src_selector = ip_network(ike_conf.my_addr)
+                dst_selector = ip_network(ike_conf.peer_addr)
 
             # generate an index for outbound policies
             index = ipsec_conf.index << 3 | XFRM_POLICY_OUT
             cls._create_policy(src_selector, dst_selector, ipsec_conf.my_port, ipsec_conf.peer_port,
                                ipsec_conf.ip_proto, XFRM_POLICY_OUT, ipsec_conf.ipsec_proto, ipsec_conf.mode,
-                               my_addr, peer_addr, index=index)
+                               ike_conf.my_addr, ike_conf.peer_addr, index=index)
             cls._create_policy(dst_selector, src_selector, ipsec_conf.peer_port, ipsec_conf.my_port,
                                ipsec_conf.ip_proto, XFRM_POLICY_IN, ipsec_conf.ipsec_proto, ipsec_conf.mode,
-                               peer_addr, my_addr)
+                               ike_conf.peer_addr, ike_conf.my_addr)
             cls._create_policy(dst_selector, src_selector, ipsec_conf.peer_port, ipsec_conf.my_port,
                                ipsec_conf.ip_proto, XFRM_POLICY_FWD, ipsec_conf.ipsec_proto, ipsec_conf.mode,
-                               peer_addr, my_addr)
+                               ike_conf.peer_addr, ike_conf.my_addr)
 
     @classmethod
     def create_sa(cls, src, dst, src_sel, dst_sel, ipsec_protocol, spi, enc_algorith, sk_e,

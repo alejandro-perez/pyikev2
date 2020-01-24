@@ -630,7 +630,7 @@ class IkeSa(object):
         child_sa_payloads = self._generate_child_sa_negotiation_req(self.creating_child_sa, initial=True)
 
         # generate IDi
-        payload_idi = PayloadIDi(self.configuration.auth.id.id_type, self.configuration.auth.id.id_data)
+        payload_idi = PayloadIDi(self.configuration.my_auth.id.id_type, self.configuration.my_auth.id.id_data)
 
         # generate Payload AUTH
         ike_sa_init_res = Message.parse(self.ike_sa_init_res_data)
@@ -728,7 +728,7 @@ class IkeSa(object):
 
     def _generate_rsa_auth_payload(self, data_to_be_signed):
         logging.debug("SIGNING: {}".format(hexstring(data_to_be_signed)))
-        return PayloadAUTH(PayloadAUTH.Method.RSA, self.configuration.auth.privkey.sign(data_to_be_signed))
+        return PayloadAUTH(PayloadAUTH.Method.RSA, self.configuration.my_auth.privkey.sign(data_to_be_signed))
 
     def _verify_rsa_auth_payload(self, authdata, data_to_be_signed):
         logging.debug("VERIFYING: {}".format(hexstring(data_to_be_signed)))
@@ -738,10 +738,10 @@ class IkeSa(object):
 
     def _generate_auth_payload(self, message_data, nonce, payload_id, sk_p):
         data_to_be_signed = (message_data + nonce + self.my_crypto.prf.prf(sk_p, payload_id.to_bytes()))
-        if self.configuration.auth.privkey:
+        if self.configuration.my_auth.privkey:
             return self._generate_rsa_auth_payload(data_to_be_signed)
-        elif self.configuration.auth.psk:
-            return self._generate_psk_auth_payload(self.configuration.auth.psk, data_to_be_signed)
+        elif self.configuration.my_auth.psk:
+            return self._generate_psk_auth_payload(self.configuration.my_auth.psk, data_to_be_signed)
         else:
             raise AuthenticationFailed('Could not generate AUTH payload due to a lack of auth configuration')
 
@@ -923,7 +923,7 @@ class IkeSa(object):
         response_payloads = self._process_create_child_sa_negotiation_req(request)
 
         # generate IDr
-        response_payload_idr = PayloadIDr(self.configuration.auth.id.id_type, self.configuration.auth.id.id_data)
+        response_payload_idr = PayloadIDr(self.configuration.my_auth.id.id_type, self.configuration.my_auth.id.id_data)
 
         # generate AUTH payload
         response_payload_auth = self._generate_auth_payload(self.ike_sa_init_res_data,

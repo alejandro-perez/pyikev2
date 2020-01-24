@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 from configuration import Configuration
 from message import TrafficSelector, Message, PayloadNOTIFY
-from protocol import IkeSaController
+from ikesacontroller import IkeSaController
 from xfrm import XfrmUserAcquire, XfrmId, XfrmAddress, XfrmSelector, XfrmUserPolicyInfo, XfrmUserExpire, \
     XfrmUserSaInfo, create_byte_array, XFRMA_TMPL, XfrmUserTmpl
 
@@ -33,48 +33,47 @@ class TestIkeSaController(TestCase):
         self.ip2 = ip_address("192.168.0.2")
         self.addr1 = (self.ip1, 500)
         self.addr2 = (self.ip2, 500)
-        self.configuration1 = Configuration(
-            self.ip1,
-            {
-                "192.168.0.2": {
-                    "id": "alice@openikev2",
-                    "psk": "testing",
-                    "dh": [14],
-                    "integ": ["sha256"],
-                    "prf": ["sha256"],
-                    "protect": [{
-                        "index": 1,
-                        "ip_proto": "tcp",
-                        "mode": "transport",
-                        "lifetime": 5,
-                        "peer_port": 0,
-                        "ipsec_proto": "esp",
-                        "encr": ["aes256", "aes128"],
-                    }]
-                }
-            })
-        self.configuration2 = Configuration(
-            self.ip2,
-            {
-                "192.168.0.1": {
-                    "id": "bob@openikev2",
-                    "psk": "testing",
-                    "dh": [14],
-                    "integ": ["sha256"],
-                    "prf": ["sha256"],
-                    "protect": [{
-                        "index": 2,
-                        "ip_proto": "tcp",
-                        "mode": "transport",
-                        "lifetime": 5,
-                        "peer_port": 23,
-                        "ipsec_proto": "esp",
-                        "encr": ["aes256", "aes128"]
-                    }]
-                }
-            })
-        self.ikesacontroller1 = IkeSaController(my_addr=self.ip1, configuration=self.configuration1)
-        self.ikesacontroller2 = IkeSaController(my_addr=self.ip2, configuration=self.configuration2)
+        self.confdict = {
+            "testconn_alice": {
+                "my_addr": str(self.ip1),
+                "peer_addr": str(self.ip2),
+                "my_auth": {"id": "alice@openikev2", "psk": "testing"},
+                "peer_auth": {"id": "alice@openikev2", "psk": "testing2"},
+                "dh": [14],
+                "integ": ["sha256"],
+                "prf": ["sha256"],
+                "protect": [{
+                    "index": 1,
+                    "ip_proto": "tcp",
+                    "mode": "transport",
+                    "lifetime": 5,
+                    "peer_port": 0,
+                    "ipsec_proto": "esp",
+                    "encr": ["aes256", "aes128"],
+                }]
+            },
+            "testconn_bob": {
+                "my_addr": str(self.ip2),
+                "peer_addr": str(self.ip1),
+                "my_auth": {"id": "alice@openikev2", "psk": "testing2"},
+                "peer_auth": {"id": "alice@openikev2", "psk": "testing"},
+                "dh": [14],
+                "integ": ["sha256"],
+                "prf": ["sha256"],
+                "protect": [{
+                    "index": 2,
+                    "ip_proto": "tcp",
+                    "mode": "transport",
+                    "lifetime": 5,
+                    "peer_port": 23,
+                    "ipsec_proto": "esp",
+                    "encr": ["aes256", "aes128"]
+                }]
+            }
+        }
+        self.configuration = Configuration(self.confdict)
+        self.ikesacontroller1 = IkeSaController(my_addr=self.ip1, configuration=self.configuration)
+        self.ikesacontroller2 = IkeSaController(my_addr=self.ip2, configuration=self.configuration)
 
     @patch('xfrm.Xfrm')
     def test_initial_exchanges(self, mockclass):

@@ -27,8 +27,8 @@ class IkeSaController:
         # establish policies
         xfrm.Xfrm.flush_policies()
         xfrm.Xfrm.flush_sas()
-        for peer_addr, ike_conf in configuration.items():
-            xfrm.Xfrm.create_policies(my_addr, peer_addr, ike_conf)
+        for ike_conf in configuration.ike_configurations:
+            xfrm.Xfrm.create_policies(ike_conf)
 
     def _get_ike_sa_by_spi(self, spi):
         return next(x for x in self.ike_sas if x.my_spi == spi)
@@ -48,7 +48,7 @@ class IkeSaController:
         # if IKE_SA_INIT request, then a new IkeSa must be created
         if header.exchange_type == Message.Exchange.IKE_SA_INIT and header.is_request:
             # look for matching configuration
-            ike_conf = self.configuration.get_ike_configuration(peer_addr[0])
+            ike_conf = self.configuration.get_ike_configuration(ip_address(peer_addr[0]))
             ike_sa = IkeSa(is_initiator=False, peer_spi=header.spi_i, configuration=ike_conf,
                            my_addr=ip_address(my_addr[0]), peer_addr=ip_address(peer_addr[0]))
             self.ike_sas.append(ike_sa)

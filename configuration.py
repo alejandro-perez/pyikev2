@@ -70,47 +70,36 @@ _ipsec_proto_name_to_enum = {
 }
 
 IkeConfiguration = namedtuple('IkeConfiguration',
-                              ['auth', 'peer_auth', 'lifetime', 'dpd', 'encr', 'integ', 'prf', 'dh', 'protect'],
-                              defaults=(None,) * 9)
+                              ['name', 'my_addr', 'peer_addr', 'my_auth', 'peer_auth', 'lifetime', 'dpd', 'encr',
+                               'integ', 'prf', 'dh', 'protect'])
 
-AuthConfiguration = namedtuple('AuthConfiguration', ['psk', 'id', 'privkey', 'pubkey'], defaults=(None,) * 4)
+AuthConfiguration = namedtuple('AuthConfiguration', ['psk', 'id', 'privkey', 'pubkey'])
 
 IpsecConfiguration = namedtuple('IpsecConfiguration',
                                 ['my_subnet', 'index', 'peer_subnet', 'my_port', 'lifetime', 'peer_port', 'ip_proto',
-                                 'mode', 'ipsec_proto', 'encr', 'integ', 'dh'],
-                                defaults=(None,) * 12)
+                                 'mode', 'ipsec_proto', 'encr', 'integ', 'dh'])
 
 
 class Configuration(object):
     """ Represents the daemon configuration.
     """
 
-    def __init__(self, my_addr, conf_dict):
+    def __init__(self, conf_dict):
         """ Creates a new Configuration object from a textual dict (e.g. coming from JSON or YAML)
         """
-        self._configuration = {}
-        for key, value in conf_dict.items():
+        self.ike_configurations = []
+        for connection_name, ikeconfdict in conf_dict.items():
             try:
-                self.my_addr = self._load_ip_address(my_addr)
-                # first result, sockaddr, then address
-                ip = ip_address(socket.getaddrinfo(key, None)[0][4][0])
-            except (ValueError, socket.gaierror, IndexError) as ex:
-                raise ConfigurationError(str(ex))
-            try:
-                self._configuration[ip] = self._load_ike_conf(ip, value)
+                self.ike_configurations.append(self._load_ike_conf(connection_name, ikeconfdict))
             except KeyError as ex:
-                raise ConfigurationError('Mandatory parameter "{}" missing for peer "{}"'.format(str(ex), key))
+                raise ConfigurationError(f'Mandatory parameter "{ex}" missing for connection "{connection_name}"')
 
-    def items(self):
-        return self._configuration.items()
-
-    def _load_ike_conf(self, peer_ip, conf_dict):
-        ipsec_confs = []
-        for ipsec_conf in conf_dict.get('protect', [{}]):
-            ipsec_confs.append(self._load_ipsec_conf(peer_ip, ipsec_conf))
-
-        return IkeConfiguration(
-            auth=self._load_auth_conf(conf_dict['auth']),
+    def _load_ike_conf(self, name, conf_dict):
+        ikeconf = IkeConfiguration(
+            name=name,
+            my_addr=self._load_ip_address(conf_dict['my_addr']),
+            peer_addr=self._load_ip_address(conf_dict['peer_addr']),
+            my_auth=self._load_auth_conf(conf_dict['my_auth']),
             peer_auth=self._load_auth_conf(conf_dict['peer_auth']),
             lifetime=int(conf_dict.get('lifetime', 15 * 60)),
             dpd=int(conf_dict.get('dpd', 60)),
@@ -118,22 +107,26 @@ class Configuration(object):
             integ=self._load_crypto_algs('integ', conf_dict.get('integ', ['sha256']), _integ_name_to_transform),
             prf=self._load_crypto_algs('prf', conf_dict.get('prf', ['sha256']), _prf_name_to_transform),
             dh=self._load_crypto_algs('dh', conf_dict.get('dh', ['14']), _dh_name_to_transform),
-            protect=ipsec_confs
+            protect=[]
         )
+        for ipsecconf_dict in conf_dict['protect']:
+            ikeconf.protect.append(self._load_ipsec_conf(ikeconf, ipsecconf_dict))
+        return ikeconf
 
     @staticmethod
     def _load_ip_network(value):
         try:
             return ip_network(value)
         except ValueError as ex:
-            raise ConfigurationError(str(ex))
+            raise ConfigurationError(f'Could not parse {ex} as an IP network')
 
     @staticmethod
-    def _load_ip_address(value):
+    def _load_ip_address(hostname):
         try:
-            return ip_address(value)
-        except ValueError as ex:
-            raise ConfigurationError(str(ex))
+            my_addr = ip_address(socket.getaddrinfo(hostname, None)[0][4][0])
+            return ip_address(my_addr)
+        except (ValueError, socket.gaierror) as ex:
+            raise ConfigurationError(f'Could not resolve {hostname} into an IP address: {ex}')
 
     def _load_auth_conf(self, conf_dict):
         default_id = 'https://github.com/alejandro-perez/pyikev2'
@@ -144,11 +137,11 @@ class Configuration(object):
             privkey=RsaPrivateKey(conf_dict.get('privkey').encode()) if 'privkey' in conf_dict else None,
         )
 
-    def _load_ipsec_conf(self, peer_ip, conf_dict):
+    def _load_ipsec_conf(self, ikeconf, conf_dict):
         return IpsecConfiguration(
-            my_subnet=self._load_ip_network(conf_dict.get('my_subnet', self.my_addr)),
+            my_subnet=self._load_ip_network(conf_dict.get('my_subnet', ikeconf.my_addr)),
             index=int(conf_dict.get('index', random.randint(0, 2 ** 20))),
-            peer_subnet=self._load_ip_network(conf_dict.get('peer_subnet', peer_ip)),
+            peer_subnet=self._load_ip_network(conf_dict.get('peer_subnet', ikeconf.peer_addr)),
             my_port=int(conf_dict.get('my_port', 0)),
             lifetime=int(conf_dict.get('lifetime', 5 * 60)),
             peer_port=int(conf_dict.get('peer_port', 0)),
@@ -160,25 +153,23 @@ class Configuration(object):
             dh=self._load_crypto_algs('dh', conf_dict.get('dh', []), _dh_name_to_transform),
         )
 
-    def get_ike_configuration(self, addr):
-        addr = ip_address(addr)
+    def get_ike_configuration(self, peer_addr):
         try:
-            found = next(key for key in self._configuration if addr == key)
+            return next(x for x in self.ike_configurations if x.peer_addr == peer_addr)
         except StopIteration:
-            raise ConfigurationNotFound
-        return self._configuration[found]
+            raise ConfigurationNotFound(f'Could not find a configuration for peer addr "{peer_addr}"')
 
     @staticmethod
     def _load_from_dict(key, cnf_dict):
         try:
             return cnf_dict[key]
         except KeyError:
-            raise ConfigurationError('{} not supported'.format(key))
+            raise ConfigurationError(f'I could not understand {key} configuration value')
 
     def _load_crypto_algs(self, key, names, name_to_transform):
         transforms = []
         if type(names) is not list:
-            raise ConfigurationError('{} should be a list.'.format(key))
+            raise ConfigurationError(f'{key} should be a list.')
         for x in names:
             transform = self._load_from_dict(str(x), deepcopy(name_to_transform))
             transforms.append(transform)

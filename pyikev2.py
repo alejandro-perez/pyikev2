@@ -11,7 +11,7 @@ from ipaddress import ip_address
 import yaml
 
 from configuration import Configuration
-from protocol import IkeSaController
+from ikesacontroller import IkeSaController
 
 __author__ = 'Alejandro Perez <alejandro.perez.mendez@gmail.com>'
 __version__ = "0.2"
@@ -54,7 +54,7 @@ except (FileNotFoundError, yaml.YAMLError) as ex:
     logging.error('Error in configuration file {}:\n{}'.format(args.configuration_file, str(ex)))
     sys.exit(1)
 
-configuration = Configuration(ip, conf_dict)
+configuration = Configuration(conf_dict)
 
 # create IkeSaController
 ike_sa_controller = IkeSaController(ip_address(ip), configuration=configuration)

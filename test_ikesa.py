@@ -31,51 +31,50 @@ class TestIkeSa(TestCase):
     def setUp(self, mockclass):
         self.ip1 = ip_address("192.168.0.1")
         self.ip2 = ip_address("192.168.0.2")
-        self.configuration1 = Configuration(
-            self.ip1,
-            {
-                str(self.ip2): {
-                    "auth": {"id": "alice@openikev2", "psk": "testing"},
-                    "peer_auth": {"id": "alice@openikev2", "psk": "testing2"},
-                    "dh": [14],
-                    "integ": ["sha256"],
-                    "prf": ["sha256"],
-                    "protect": [{
-                        "index": 1,
-                        "ip_proto": "tcp",
-                        "mode": "transport",
-                        "lifetime": 5,
-                        "peer_port": 0,
-                        "ipsec_proto": "esp",
-                        "encr": ["aes256", "aes128"],
-                    }]
-                }
-            })
-        self.configuration2 = Configuration(
-            self.ip2,
-            {
-                str(self.ip1): {
-                    "auth": {"id": "alice@openikev2", "psk": "testing2"},
-                    "peer_auth": {"id": "alice@openikev2", "psk": "testing"},
-                    "dh": [14],
-                    "integ": ["sha256"],
-                    "prf": ["sha256"],
-                    "protect": [{
-                        "index": 2,
-                        "ip_proto": "tcp",
-                        "mode": "transport",
-                        "lifetime": 5,
-                        "peer_port": 23,
-                        "ipsec_proto": "esp",
-                        "encr": ["aes256", "aes128"]
-                    }]
-                }
-            })
+        self.confdict = {
+            "testconn_alice": {
+                "my_addr": str(self.ip1),
+                "peer_addr": str(self.ip2),
+                "my_auth": {"id": "alice@openikev2", "psk": "testing"},
+                "peer_auth": {"id": "alice@openikev2", "psk": "testing2"},
+                "dh": [14],
+                "integ": ["sha256"],
+                "prf": ["sha256"],
+                "protect": [{
+                    "index": 1,
+                    "ip_proto": "tcp",
+                    "mode": "transport",
+                    "lifetime": 5,
+                    "peer_port": 0,
+                    "ipsec_proto": "esp",
+                    "encr": ["aes256", "aes128"],
+                }]
+            },
+            "testconn_bob": {
+                "my_addr": str(self.ip2),
+                "peer_addr": str(self.ip1),
+                "my_auth": {"id": "alice@openikev2", "psk": "testing2"},
+                "peer_auth": {"id": "alice@openikev2", "psk": "testing"},
+                "dh": [14],
+                "integ": ["sha256"],
+                "prf": ["sha256"],
+                "protect": [{
+                    "index": 2,
+                    "ip_proto": "tcp",
+                    "mode": "transport",
+                    "lifetime": 5,
+                    "peer_port": 23,
+                    "ipsec_proto": "esp",
+                    "encr": ["aes256", "aes128"]
+                }]
+            }
+        }
+        self.configuration = Configuration(self.confdict)
         self.ike_sa1 = IkeSa(is_initiator=True, peer_spi=b'\0' * 8,
-                             configuration=self.configuration1.get_ike_configuration(self.ip2), my_addr=self.ip1,
+                             configuration=self.configuration.get_ike_configuration(self.ip2), my_addr=self.ip1,
                              peer_addr=self.ip2)
         self.ike_sa2 = IkeSa(is_initiator=False, peer_spi=self.ike_sa1.my_spi,
-                             configuration=self.configuration2.get_ike_configuration(self.ip1), my_addr=self.ip2,
+                             configuration=self.configuration.get_ike_configuration(self.ip1), my_addr=self.ip2,
                              peer_addr=self.ip1)
 
     def assertMessageHasNotification(self, message_data, ikesa, notification_type):
@@ -122,50 +121,11 @@ VfGGep/hUBcHnZyxN7XiFmaOEdE+W4TZ9EZy06W83qPfSYJrKt9n++mlFNWYgFsR
 tFMsP0X9Z6c7QBTt684+NRZ6Te4Jyv/VrKxN/mCSufdQ88s6Wa/KhV8JiWvYs1l+
 sEuNUHHDSswFehNOFQIDAQAB
 -----END PUBLIC KEY-----'''
-
-        self.configuration1 = Configuration(
-            self.ip1,
-            {
-                str(self.ip2): {
-                    "auth": {"id": "alice@openikev2", "privkey": privkey},
-                    "peer_auth": {"id": "alice@openikev2", "psk": "testing2"},
-                    "dh": [14],
-                    "integ": ["sha256"],
-                    "prf": ["sha256"],
-                    "protect": [{
-                        "index": 1,
-                        "ip_proto": "tcp",
-                        "mode": "transport",
-                        "lifetime": 5,
-                        "peer_port": 0,
-                        "ipsec_proto": "esp",
-                        "encr": ["aes256", "aes128"],
-                    }]
-                }
-            })
-        self.configuration2 = Configuration(
-            self.ip2,
-            {
-                str(self.ip1): {
-                    "auth": {"id": "alice@openikev2", "psk": "testing2"},
-                    "peer_auth": {"id": "alice@openikev2", "pubkey": pubkey},
-                    "dh": [14],
-                    "integ": ["sha256"],
-                    "prf": ["sha256"],
-                    "protect": [{
-                        "index": 2,
-                        "ip_proto": "tcp",
-                        "mode": "transport",
-                        "lifetime": 5,
-                        "peer_port": 23,
-                        "ipsec_proto": "esp",
-                        "encr": ["aes256", "aes128"]
-                    }]
-                }
-            })
-
-        self.ike_sa1.configuration = self.configuration1.get_ike_configuration(self.ip2)
-        self.ike_sa2.configuration = self.configuration2.get_ike_configuration(self.ip1)
+        self.confdict['testconn_alice']['my_auth']['privkey'] = privkey
+        self.confdict['testconn_bob']['peer_auth']['pubkey'] = pubkey
+        self.configuration = Configuration(self.confdict)
+        self.ike_sa1.configuration = self.configuration.get_ike_configuration(self.ip2)
+        self.ike_sa2.configuration = self.configuration.get_ike_configuration(self.ip1)
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -258,7 +218,7 @@ sEuNUHHDSswFehNOFQIDAQAB
         self.assertMessageHasNotification(ike_sa_init_res, self.ike_sa2, PayloadNOTIFY.Type.INVALID_KE_PAYLOAD)
         ike_sa_init_req_newgroup = self.ike_sa1.process_message(ike_sa_init_res)
         ike_sa3 = IkeSa(is_initiator=False, peer_spi=self.ike_sa1.my_spi, my_addr=self.ip2, peer_addr=self.ip1,
-                        configuration=self.configuration2.get_ike_configuration(self.ip1))
+                        configuration=self.configuration.get_ike_configuration(self.ip1))
         ike_sa_init_res = ike_sa3.process_message(ike_sa_init_req_newgroup)
         self.ike_sa1.process_message(ike_sa_init_res)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.AUTH_REQ_SENT)
@@ -278,7 +238,7 @@ sEuNUHHDSswFehNOFQIDAQAB
         self.assertMessageHasNotification(ike_sa_init_res, self.ike_sa2, PayloadNOTIFY.Type.COOKIE)
         ike_sa_init_req_cookie = self.ike_sa1.process_message(ike_sa_init_res)
         ike_sa3 = IkeSa(is_initiator=False, peer_spi=self.ike_sa1.my_spi, my_addr=self.ip2, peer_addr=self.ip1,
-                        configuration=self.configuration2.get_ike_configuration(self.ip1))
+                        configuration=self.configuration.get_ike_configuration(self.ip1))
         ike_sa_init_res = ike_sa3.process_message(ike_sa_init_req_cookie)
         self.ike_sa1.process_message(ike_sa_init_res)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.AUTH_REQ_SENT)
