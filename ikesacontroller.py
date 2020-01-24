@@ -18,10 +18,10 @@ __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
 
 class IkeSaController:
-    def __init__(self, my_addr, configuration):
+    def __init__(self, my_addrs, configuration):
         self.ike_sas = []
         self.configuration = configuration
-        self.my_addr = my_addr
+        self.my_addrs = my_addrs
         self.cookie_threshold = 10
         self.cookie_secret = os.urandom(8)
         # establish policies
@@ -48,9 +48,9 @@ class IkeSaController:
         # if IKE_SA_INIT request, then a new IkeSa must be created
         if header.exchange_type == Message.Exchange.IKE_SA_INIT and header.is_request:
             # look for matching configuration
-            ike_conf = self.configuration.get_ike_configuration(ip_address(peer_addr[0]))
+            ike_conf = self.configuration.get_ike_configuration(ip_address(peer_addr))
             ike_sa = IkeSa(is_initiator=False, peer_spi=header.spi_i, configuration=ike_conf,
-                           my_addr=ip_address(my_addr[0]), peer_addr=ip_address(peer_addr[0]))
+                           my_addr=ip_address(my_addr), peer_addr=ip_address(peer_addr))
             self.ike_sas.append(ike_sa)
             if sum(1 for x in self.ike_sas if x.state < IkeSa.State.ESTABLISHED) > self.cookie_threshold:
                 ike_sa.cookie_secret = self.cookie_secret
@@ -108,7 +108,7 @@ class IkeSaController:
         request = ike_sa.process_acquire(small_tsi, small_tsr, xfrm_acquire.policy.index >> 3)
 
         # look for ipsec configuration
-        return request, (str(ike_sa.peer_addr), 500)
+        return request, ike_sa.my_addr, ike_sa.peer_addr
 
     def process_expire(self, xfrm_expire):
         spi = bytes(xfrm_expire.state.id.spi)
@@ -117,62 +117,76 @@ class IkeSaController:
         ike_sa = self._get_ike_sa_by_child_sa_spi(spi)
         if ike_sa:
             request = ike_sa.process_expire(spi, hard)
-            return request, (str(ike_sa.peer_addr), 500)
-        return None, None
+            return request, ike_sa.my_addr, ike_sa.peer_addr
+        return None, None, None
 
     def main_loop(self):
-        # create network socket
-        sock = socket.socket(socket.AF_INET6 if self.my_addr.version == 6 else socket.AF_INET, socket.SOCK_DGRAM)
+        # create network sockets
+        udp_sockets = {}
         port = 500
-        sock.bind((str(self.my_addr), port))
-        logging.info('Listening from {}:{}'.format(self.my_addr, port))
+        for addr in self.my_addrs:
+            udp_sockets[addr] = socket.socket(socket.AF_INET6 if addr.version == 6 else socket.AF_INET, socket.SOCK_DGRAM)
+            udp_sockets[addr].bind((str(addr), port))
+            logging.info('Listening from {}:{}'.format(addr, port))
 
         # create XFRM socket
         xfrm_obj = xfrm.Xfrm()
         xfrm_socket = xfrm_obj.get_socket()
         logging.info('Listening XFRM events.')
 
+        allsockets = list(udp_sockets.values()) + [xfrm_socket]
         # do server
         while True:
-            readable = select([sock, xfrm_socket], [], [], 1)[0]
-            if sock in readable:
-                data, addr = sock.recvfrom(4096)
-                data = self.dispatch_message(data, sock.getsockname(), addr)
-                if data:
-                    sock.sendto(data, addr)
+            try:
+                readable = select(allsockets, [], [], 1)[0]
+                for my_addr, sock in udp_sockets.items():
+                    if sock in readable:
+                        data, peer_addr = sock.recvfrom(4096)
+                        data = self.dispatch_message(data, my_addr, peer_addr[0])
+                        if data:
+                            sock.sendto(data, peer_addr)
 
-            if xfrm_socket in readable:
-                data = xfrm_socket.recv(4096)
-                header, msg, attributes = xfrm_obj.parse_message(data)
-                reply_data, addr = None, None
-                if header.type == xfrm.XFRM_MSG_ACQUIRE:
-                    reply_data, addr = self.process_acquire(msg, attributes)
-                elif header.type == xfrm.XFRM_MSG_EXPIRE:
-                    reply_data, addr = self.process_expire(msg)
-                if reply_data:
-                    sock.sendto(reply_data, addr)
+                if xfrm_socket in readable:
+                    data = xfrm_socket.recv(4096)
+                    header, msg, attributes = xfrm_obj.parse_message(data)
+                    reply_data, my_addr, peer_addr = None, None, None
+                    if header.type == xfrm.XFRM_MSG_ACQUIRE:
+                        reply_data, my_addr, peer_addr = self.process_acquire(msg, attributes)
+                    elif header.type == xfrm.XFRM_MSG_EXPIRE:
+                        reply_data, my_addr, peer_addr = self.process_expire(msg)
+                    if reply_data:
+                        dst_addr = (str(peer_addr), 500)
+                        udp_sockets[my_addr].sendto(reply_data, dst_addr)
 
-            # check retransmissions
-            for ikesa in self.ike_sas:
-                request_data = ikesa.check_retransmission_timer()
-                if request_data:
-                    sock.sendto(request_data, (str(ikesa.peer_addr), 500))
-                if ikesa.state == IkeSa.State.DELETED:
-                    ikesa.delete_child_sas()
-                    self.ike_sas.remove(ikesa)
-                    logging.info('Deleted IKE_SA {}. Count={}'.format(ikesa, len(self.ike_sas)))
+                # check retransmissions
+                for ikesa in self.ike_sas:
+                    request_data = ikesa.check_retransmission_timer()
+                    if request_data:
+                        dst_addr = (str(ikesa.peer_addr), 500)
+                        udp_sockets[ikesa.my_addr].sendto(request_data, dst_addr)
+                    if ikesa.state == IkeSa.State.DELETED:
+                        ikesa.delete_child_sas()
+                        self.ike_sas.remove(ikesa)
+                        logging.info('Deleted IKE_SA {}. Count={}'.format(ikesa, len(self.ike_sas)))
 
-            # start DPD
-            for ikesa in self.ike_sas:
-                request_data = ikesa.check_dead_peer_detection_timer()
-                if request_data:
-                    sock.sendto(request_data, (str(ikesa.peer_addr), 500))
+                # start DPD
+                for ikesa in self.ike_sas:
+                    request_data = ikesa.check_dead_peer_detection_timer()
+                    if request_data:
+                        dst_addr = (str(ikesa.peer_addr), 500)
+                        udp_sockets[ikesa.my_addr].sendto(request_data, dst_addr)
 
-            # start IKE_SA rekeyings
-            for ikesa in self.ike_sas:
-                request_data = ikesa.check_rekey_ike_sa_timer()
-                if request_data:
-                    sock.sendto(request_data, (str(ikesa.peer_addr), 500))
+                # start IKE_SA rekeyings
+                for ikesa in self.ike_sas:
+                    request_data = ikesa.check_rekey_ike_sa_timer()
+                    if request_data:
+                        dst_addr = (str(ikesa.peer_addr), 500)
+                        udp_sockets[ikesa.my_addr].sendto(request_data, dst_addr)
+
+            except socket.gaierror as ex:
+                logging.error(f'Problem sending message: {ex}')
+            except KeyError as ex:
+                logging.error(f'Could not find socket with the appropriate source address: {str(ex)}')
 
     def close(self):
         xfrm.Xfrm.flush_policies()

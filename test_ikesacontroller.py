@@ -31,8 +31,6 @@ class TestIkeSaController(TestCase):
     def setUp(self, mockclass):
         self.ip1 = ip_address("192.168.0.1")
         self.ip2 = ip_address("192.168.0.2")
-        self.addr1 = (self.ip1, 500)
-        self.addr2 = (self.ip2, 500)
         self.confdict = {
             "testconn_alice": {
                 "my_addr": str(self.ip1),
@@ -72,8 +70,8 @@ class TestIkeSaController(TestCase):
             }
         }
         self.configuration = Configuration(self.confdict)
-        self.ikesacontroller1 = IkeSaController(my_addr=self.ip1, configuration=self.configuration)
-        self.ikesacontroller2 = IkeSaController(my_addr=self.ip2, configuration=self.configuration)
+        self.ikesacontroller1 = IkeSaController(my_addrs=[self.ip1], configuration=self.configuration)
+        self.ikesacontroller2 = IkeSaController(my_addrs=[self.ip2], configuration=self.configuration)
 
     @patch('xfrm.Xfrm')
     def test_initial_exchanges(self, mockclass):
@@ -87,11 +85,11 @@ class TestIkeSaController(TestCase):
                                                    proto=TrafficSelector.IpProtocol.TCP),
                                   policy=XfrmUserPolicyInfo(index=1 << 3))
         attributes = {XFRMA_TMPL: XfrmUserTmpl(family=socket.AF_INET)}
-        ike_sa_init_req, peer_addr = self.ikesacontroller1.process_acquire(acquire, attributes)
-        ike_sa_init_res = self.ikesacontroller2.dispatch_message(ike_sa_init_req, self.addr2, self.addr1)
-        ike_auth_req = self.ikesacontroller1.dispatch_message(ike_sa_init_res, self.addr1, self.addr2)
-        ike_auth_res = self.ikesacontroller2.dispatch_message(ike_auth_req, self.addr2, self.addr1)
-        request = self.ikesacontroller1.dispatch_message(ike_auth_res, self.addr1, self.addr2)
+        ike_sa_init_req, my_addr, peer_addr = self.ikesacontroller1.process_acquire(acquire, attributes)
+        ike_sa_init_res = self.ikesacontroller2.dispatch_message(ike_sa_init_req, self.ip2, self.ip1)
+        ike_auth_req = self.ikesacontroller1.dispatch_message(ike_sa_init_res, self.ip1, self.ip2)
+        ike_auth_res = self.ikesacontroller2.dispatch_message(ike_auth_req, self.ip2, self.ip1)
+        request = self.ikesacontroller1.dispatch_message(ike_auth_res, self.ip1, self.ip2)
         self.assertEqual(len(self.ikesacontroller1.ike_sas), 1)
         self.assertEqual(len(self.ikesacontroller1.ike_sas), 1)
         self.assertIsNone(request)
@@ -105,7 +103,7 @@ class TestIkeSaController(TestCase):
             state=XfrmUserSaInfo(
                 id=XfrmId(spi=create_byte_array(self.ikesacontroller1.ike_sas[0].child_sas[0].inbound_spi))),
             hard=False)
-        rekey_child_sa_req, peer_addr = self.ikesacontroller1.process_expire(expire)
+        rekey_child_sa_req, my_addr, peer_addr = self.ikesacontroller1.process_expire(expire)
         self.assertIsNotNone(rekey_child_sa_req)
 
     @patch('xfrm.Xfrm')
@@ -117,7 +115,7 @@ class TestIkeSaController(TestCase):
             state=XfrmUserSaInfo(
                 id=XfrmId(spi=create_byte_array(b'1234'))),
             hard=False)
-        rekey_child_sa_req, peer_addr = self.ikesacontroller1.process_expire(expire)
+        rekey_child_sa_req, my_addr, peer_addr = self.ikesacontroller1.process_expire(expire)
         self.assertIsNone(rekey_child_sa_req)
 
     @patch('xfrm.Xfrm')
@@ -129,11 +127,11 @@ class TestIkeSaController(TestCase):
             state=XfrmUserSaInfo(
                 id=XfrmId(spi=create_byte_array(self.ikesacontroller1.ike_sas[0].child_sas[0].inbound_spi))),
             hard=False)
-        rekey_child_sa_req, peer_addr = self.ikesacontroller1.process_expire(expire)
+        rekey_child_sa_req, my_addr, peer_addr = self.ikesacontroller1.process_expire(expire)
         message = Message.parse(rekey_child_sa_req, crypto=self.ikesacontroller1.ike_sas[0].my_crypto)
         message.spi_r = b'12345678'
         rekey_child_sa_req = message.to_bytes()
-        response = self.ikesacontroller2.dispatch_message(rekey_child_sa_req, self.addr2, self.addr1)
+        response = self.ikesacontroller2.dispatch_message(rekey_child_sa_req, self.ip2, self.ip1)
         self.assertIsNone(response)
 
     @patch('xfrm.Xfrm')
@@ -141,12 +139,12 @@ class TestIkeSaController(TestCase):
         self.test_initial_exchanges()
         self.ikesacontroller1.ike_sas[0].rekey_ike_sa_at = time.time()
         rekey_req = self.ikesacontroller1.ike_sas[0].check_rekey_ike_sa_timer()
-        rekey_res = self.ikesacontroller2.dispatch_message(rekey_req, self.addr2, self.addr1)
-        delete_req = self.ikesacontroller1.dispatch_message(rekey_res, self.addr1, self.addr2)
+        rekey_res = self.ikesacontroller2.dispatch_message(rekey_req, self.ip2, self.ip1)
+        delete_req = self.ikesacontroller1.dispatch_message(rekey_res, self.ip1, self.ip2)
         self.assertEqual(len(self.ikesacontroller1.ike_sas), 2)
         self.assertEqual(len(self.ikesacontroller2.ike_sas), 2)
-        delete_res = self.ikesacontroller2.dispatch_message(delete_req, self.addr2, self.addr1)
-        request = self.ikesacontroller1.dispatch_message(delete_res, self.addr1, self.addr2)
+        delete_res = self.ikesacontroller2.dispatch_message(delete_req, self.ip2, self.ip1)
+        request = self.ikesacontroller1.dispatch_message(delete_res, self.ip1, self.ip2)
         self.assertEqual(len(self.ikesacontroller1.ike_sas), 1)
         self.assertEqual(len(self.ikesacontroller2.ike_sas), 1)
 
@@ -163,8 +161,8 @@ class TestIkeSaController(TestCase):
                                                    proto=TrafficSelector.IpProtocol.TCP),
                                   policy=XfrmUserPolicyInfo(index=1 << 3))
         attributes = {XFRMA_TMPL: XfrmUserTmpl(family=socket.AF_INET)}
-        ike_sa_init_req, peer_addr = self.ikesacontroller1.process_acquire(acquire, attributes)
-        ike_sa_init_res = self.ikesacontroller2.dispatch_message(ike_sa_init_req, self.addr2, self.addr1)
+        ike_sa_init_req, my_addr, peer_addr = self.ikesacontroller1.process_acquire(acquire, attributes)
+        ike_sa_init_res = self.ikesacontroller2.dispatch_message(ike_sa_init_req, self.ip2, self.ip1)
         message = Message.parse(ike_sa_init_res)
         self.assertTrue(message.get_notifies(PayloadNOTIFY.Type.COOKIE))
 

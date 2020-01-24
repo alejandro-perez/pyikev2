@@ -22,7 +22,7 @@ parser = argparse.ArgumentParser(description='Opensource IKEv2 daemon written in
 parser.add_argument('--verbose', '-v', action='store_true',
                     help='Enable (much) more verbosity. WARNING: This will make your key '
                          'material to be shown in the log output!')
-parser.add_argument('--ip-address', '-i', metavar='IPADDR',
+parser.add_argument('--ip-address', '-i', metavar='IPADDR', action='append',
                     help='IP address where the daemon will listen from.')
 parser.add_argument('--configuration-file', '-c', required=True, metavar='FILE',
                     help='Configuration file.')
@@ -32,14 +32,17 @@ parser.add_argument('--version', action='version', version='%(prog)s {}'.format(
 args = parser.parse_args()
 
 try:
+    ip_addresses = []
     if args.ip_address:
-        ip = ip_address(args.ip_address)
+        for ip in args.ip_address:
+            ip_addresses.append(ip_address(ip))
     else:
-        ip = socket.gethostbyname(socket.gethostname())
+        ip_addresses.append(ip_address(socket.gethostbyname(socket.gethostname())))
 except ValueError as ex:
     print(ex)
     sys.exit(1)
 
+print(ip_addresses)
 # set logger
 logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                     format='[%(asctime)s.%(msecs)03d] [%(levelname)-7s] %(message)s',
@@ -57,7 +60,7 @@ except (FileNotFoundError, yaml.YAMLError) as ex:
 configuration = Configuration(conf_dict)
 
 # create IkeSaController
-ike_sa_controller = IkeSaController(ip_address(ip), configuration=configuration)
+ike_sa_controller = IkeSaController(ip_addresses, configuration=configuration)
 
 
 def signal_handler(*unused):
