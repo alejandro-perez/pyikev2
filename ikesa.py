@@ -747,10 +747,10 @@ class IkeSa(object):
 
     def _verify_auth_payload(self, payload_auth, message_data, nonce, payload_id, sk_p):
         data_to_be_signed = (message_data + nonce + self.my_crypto.prf.prf(sk_p, payload_id.to_bytes()))
-        if payload_auth.method == PayloadAUTH.Method.PSK:
+        if payload_auth.method == PayloadAUTH.Method.PSK and self.configuration.peer_auth.psk:
             if self._generate_psk_auth_payload(self.configuration.peer_auth.psk, data_to_be_signed) != payload_auth:
                 raise AuthenticationFailed('PSK authentication failed')
-        elif payload_auth.method == PayloadAUTH.Method.RSA:
+        elif payload_auth.method == PayloadAUTH.Method.RSA and self.configuration.peer_auth.pubkey:
             if not self._verify_rsa_auth_payload(payload_auth.auth_data, data_to_be_signed):
                 raise AuthenticationFailed('RSA authentication failed')
         else:
