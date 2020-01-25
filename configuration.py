@@ -84,7 +84,7 @@ class Configuration(object):
     """ Represents the daemon configuration.
     """
 
-    def __init__(self, conf_dict, my_addresses):
+    def __init__(self, my_addresses, conf_dict):
         """ Creates a new Configuration object from a textual dict (e.g. coming from JSON or YAML)
         """
         self.ike_configurations = []
@@ -92,7 +92,7 @@ class Configuration(object):
             try:
                 self.ike_configurations.append(self._load_ike_conf(connection_name, ikeconfdict, my_addresses))
             except KeyError as ex:
-                raise ConfigurationError(f'Mandatory parameter "{ex}" missing for connection "{connection_name}"')
+                raise ConfigurationError(f'Mandatory parameter {ex} missing for connection "{connection_name}"')
 
     def _load_ike_conf(self, name, conf_dict, my_addresses):
         ikeconf = IkeConfiguration(
@@ -125,18 +125,29 @@ class Configuration(object):
             raise ConfigurationError(f'Could not parse {ex} as an IP network')
 
     @staticmethod
+    def _load_payload_id_type(value):
+        try:
+            addr = ip_address(value)
+            return PayloadID.Type.ID_IPV4_ADDR if addr.version == 4 else PayloadID.Type.ID_IPV6_ADDR
+        except ValueError:
+            pass
+        if '@' in value:
+            return PayloadID.Type.ID_RFC822_ADDR
+        return PayloadID.Type.ID_FQDN
+
+    @staticmethod
     def _load_ip_address(hostname):
         try:
-            my_addr = ip_address(socket.getaddrinfo(hostname, None)[0][4][0])
-            return ip_address(my_addr)
+            addr = ip_address(socket.getaddrinfo(hostname, None)[0][4][0])
+            return ip_address(addr)
         except (ValueError, socket.gaierror) as ex:
             raise ConfigurationError(f'Could not resolve {hostname} into an IP address: {ex}')
 
     def _load_auth_conf(self, conf_dict):
-        default_id = 'https://github.com/alejandro-perez/pyikev2'
+        id_text = conf_dict.get('id', 'https://github.com/alejandro-perez/pyikev2');
         return AuthConfiguration(
             psk=conf_dict['psk'].encode() if 'psk' in conf_dict else None,
-            id=PayloadID(PayloadID.Type.ID_FQDN, conf_dict.get('id', default_id).encode()),
+            id=PayloadID(self._load_payload_id_type(id_text), id_text.encode()),
             pubkey=RsaPublicKey(conf_dict.get('pubkey').encode()) if 'pubkey' in conf_dict else None,
             privkey=RsaPrivateKey(conf_dict.get('privkey').encode()) if 'privkey' in conf_dict else None,
         )

@@ -69,7 +69,7 @@ class TestIkeSa(TestCase):
                 }]
             }
         }
-        self.configuration = Configuration(self.confdict)
+        self.configuration = Configuration([self.ip1, self.ip2], self.confdict)
         self.ike_sa1 = IkeSa(is_initiator=True, peer_spi=b'\0' * 8,
                              configuration=self.configuration.get_ike_configuration(self.ip2), my_addr=self.ip1,
                              peer_addr=self.ip2)
@@ -123,7 +123,7 @@ sEuNUHHDSswFehNOFQIDAQAB
 -----END PUBLIC KEY-----'''
         self.confdict['testconn_alice']['my_auth']['privkey'] = privkey
         self.confdict['testconn_bob']['peer_auth']['pubkey'] = pubkey
-        self.configuration = Configuration(self.confdict)
+        self.configuration = Configuration([self.ip1, self.ip2], self.confdict)
         self.ike_sa1.configuration = self.configuration.get_ike_configuration(self.ip2)
         self.ike_sa2.configuration = self.configuration.get_ike_configuration(self.ip1)
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)

@@ -69,7 +69,7 @@ class TestIkeSaController(TestCase):
                 }]
             }
         }
-        self.configuration = Configuration(self.confdict, my_addresses=[self.ip1, self.ip2])
+        self.configuration = Configuration([self.ip1, self.ip2], self.confdict)
         self.ikesacontroller1 = IkeSaController(my_addrs=[self.ip1], configuration=self.configuration)
         self.ikesacontroller2 = IkeSaController(my_addrs=[self.ip2], configuration=self.configuration)
 
