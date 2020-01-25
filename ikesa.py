@@ -915,6 +915,12 @@ class IkeSa(object):
         ike_sa_init_req = Message.parse(self.ike_sa_init_req_data)
         ike_sa_init_res = Message.parse(self.ike_sa_init_res_data)
 
+        if request_payload_idi.id_type != self.configuration.peer_auth.id.id_type:
+            raise AuthenticationFailed('Received ID type does not match with the configured one for the peer')
+
+        if request_payload_idi.id_data != self.configuration.peer_auth.id.id_data:
+            raise AuthenticationFailed('Received ID data does not match with the configured one for the peer')
+
         self._verify_auth_payload(request_payload_auth, self.ike_sa_init_req_data,
                                   ike_sa_init_res.get_payload(Payload.Type.NONCE).nonce, request_payload_idi,
                                   self.peer_crypto.sk_p)
@@ -1038,6 +1044,12 @@ class IkeSa(object):
         # get some relevant payloads from the message
         response_payload_idr = response.get_payload(Payload.Type.IDr, True)
         response_payload_auth = response.get_payload(Payload.Type.AUTH, True)
+
+        if response_payload_idr.id_type != self.configuration.peer_auth.id.id_type:
+            raise AuthenticationFailed('Received ID type does not match with the configured one for the peer')
+
+        if response_payload_idr.id_data != self.configuration.peer_auth.id.id_data:
+            raise AuthenticationFailed('Received ID data does not match with the configured one for the peer')
 
         ike_sa_init_req = Message.parse(self.ike_sa_init_req_data)
         self._verify_auth_payload(response_payload_auth, self.ike_sa_init_res_data,

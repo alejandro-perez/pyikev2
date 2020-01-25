@@ -36,7 +36,7 @@ class TestIkeSa(TestCase):
                 "my_addr": str(self.ip1),
                 "peer_addr": str(self.ip2),
                 "my_auth": {"id": "alice@openikev2", "psk": "testing"},
-                "peer_auth": {"id": "alice@openikev2", "psk": "testing2"},
+                "peer_auth": {"id": "bob@openikev2", "psk": "testing2"},
                 "dh": [14],
                 "integ": ["sha256"],
                 "prf": ["sha256"],
@@ -53,7 +53,7 @@ class TestIkeSa(TestCase):
             "testconn_bob": {
                 "my_addr": str(self.ip2),
                 "peer_addr": str(self.ip1),
-                "my_auth": {"id": "alice@openikev2", "psk": "testing2"},
+                "my_auth": {"id": "bob@openikev2", "psk": "testing2"},
                 "peer_auth": {"id": "alice@openikev2", "psk": "testing"},
                 "dh": [14],
                 "integ": ["sha256"],
@@ -320,6 +320,80 @@ sEuNUHHDSswFehNOFQIDAQAB
         self.assertEqual(self.ike_sa2.state, IkeSa.State.DELETED)
         self.assertEqual(len(self.ike_sa1.child_sas), 0)
         self.assertEqual(len(self.ike_sa2.child_sas), 0)
+
+    @patch('xfrm.Xfrm')
+    def test_ike_auth_invalid_id_type(self, mockclass):
+        self.confdict['testconn_alice']['my_auth']['id'] = 'carol'
+        self.configuration = Configuration([self.ip1, self.ip2], self.confdict)
+        self.ike_sa1.configuration = self.configuration.get_ike_configuration(self.ip2)
+        small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
+        small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
+        ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
+        ike_sa_init_res = self.ike_sa2.process_message(ike_sa_init_req)
+        ike_auth_req = self.ike_sa1.process_message(ike_sa_init_res)
+        ike_auth_res = self.ike_sa2.process_message(ike_auth_req)
+        request = self.ike_sa1.process_message(ike_auth_res)
+        self.assertIsNone(request)
+        self.assertMessageHasNotification(ike_auth_res, self.ike_sa2, PayloadNOTIFY.Type.AUTHENTICATION_FAILED)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.DELETED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.DELETED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 0)
+        self.assertEqual(len(self.ike_sa2.child_sas), 0)
+
+    @patch('xfrm.Xfrm')
+    def test_ike_auth_invalid_id_type_responder(self, mockclass):
+        self.confdict['testconn_bob']['my_auth']['id'] = 'carol'
+        self.configuration = Configuration([self.ip1, self.ip2], self.confdict)
+        self.ike_sa2.configuration = self.configuration.get_ike_configuration(self.ip1)
+        small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
+        small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
+        ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
+        ike_sa_init_res = self.ike_sa2.process_message(ike_sa_init_req)
+        ike_auth_req = self.ike_sa1.process_message(ike_sa_init_res)
+        ike_auth_res = self.ike_sa2.process_message(ike_auth_req)
+        request = self.ike_sa1.process_message(ike_auth_res)
+        self.assertIsNone(request)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.DELETED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 0)
+        self.assertEqual(len(self.ike_sa2.child_sas), 1)
+
+    @patch('xfrm.Xfrm')
+    def test_ike_auth_invalid_id_data(self, mockclass):
+        self.confdict['testconn_alice']['my_auth']['id'] = 'alice@openikev3'
+        self.configuration = Configuration([self.ip1, self.ip2], self.confdict)
+        self.ike_sa1.configuration = self.configuration.get_ike_configuration(self.ip2)
+        small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
+        small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
+        ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
+        ike_sa_init_res = self.ike_sa2.process_message(ike_sa_init_req)
+        ike_auth_req = self.ike_sa1.process_message(ike_sa_init_res)
+        ike_auth_res = self.ike_sa2.process_message(ike_auth_req)
+        request = self.ike_sa1.process_message(ike_auth_res)
+        self.assertIsNone(request)
+        self.assertMessageHasNotification(ike_auth_res, self.ike_sa2, PayloadNOTIFY.Type.AUTHENTICATION_FAILED)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.DELETED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.DELETED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 0)
+        self.assertEqual(len(self.ike_sa2.child_sas), 0)
+
+    @patch('xfrm.Xfrm')
+    def test_ike_auth_invalid_id_data_responder(self, mockclass):
+        self.confdict['testconn_bob']['my_auth']['id'] = 'carol@openikev2'
+        self.configuration = Configuration([self.ip1, self.ip2], self.confdict)
+        self.ike_sa2.configuration = self.configuration.get_ike_configuration(self.ip1)
+        small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
+        small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
+        ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
+        ike_sa_init_res = self.ike_sa2.process_message(ike_sa_init_req)
+        ike_auth_req = self.ike_sa1.process_message(ike_sa_init_res)
+        ike_auth_res = self.ike_sa2.process_message(ike_auth_req)
+        request = self.ike_sa1.process_message(ike_auth_res)
+        self.assertIsNone(request)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.DELETED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 0)
+        self.assertEqual(len(self.ike_sa2.child_sas), 1)
 
     @patch('xfrm.Xfrm')
     def test_ike_auth_invalid_ts(self, mockclass):
