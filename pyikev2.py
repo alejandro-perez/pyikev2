@@ -64,7 +64,7 @@ except (FileNotFoundError, yaml.YAMLError) as ex:
     sys.exit(1)
 
 try:
-    configuration = Configuration(conf_dict, ip_addresses)
+    configuration = Configuration(ip_addresses, conf_dict)
 except ConfigurationError as ex:
     logging.error(f'Configuration error: {ex}')
     sys.exit(1)

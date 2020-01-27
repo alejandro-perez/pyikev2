@@ -26,7 +26,7 @@ from message import (Message, Payload, PayloadAUTH, PayloadDELETE, PayloadIDi, P
 __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
 Keyring = namedtuple('Keyring', ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er', 'sk_pi', 'sk_pr'])
-ChildSa = namedtuple('ChildSa', ['inbound_spi', 'outbound_spi', 'proposal', 'tsi', 'tsr', 'mode', 'ipsec_conf'])
+ChildSa = namedtuple('ChildSa', ['inbound_spi', 'outbound_spi', 'proposal', 'tsi', 'tsr', 'mode', 'lifetime'])
 ChildSa.__str__ = lambda x: '({}, {})'.format(hexstring(x.inbound_spi), hexstring(x.outbound_spi))
 
 
@@ -393,8 +393,10 @@ class IkeSa(object):
 
         self.log_info("Received acquire from policy with index={}".format(index))
         # Create the ChildSa object with the values we know so far
-        child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, proposal=None, tsi=tsi, tsr=tsr,
-                           mode=ipsec_conf.mode, ipsec_conf=ipsec_conf)
+        conf_tsi, conf_tsr = self._ipsec_conf_2_ts(ipsec_conf)
+        proposal = self._ipsec_conf_2_proposal(ipsec_conf)
+        child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, proposal=proposal, tsi=(tsi, conf_tsi),
+                           tsr=(tsr, conf_tsr), mode=ipsec_conf.mode, lifetime=ipsec_conf.lifetime)
         if self.state == IkeSa.State.INITIAL:
             request = self.generate_ike_sa_init_request(child_sa)
         else:
@@ -419,8 +421,9 @@ class IkeSa(object):
         # if this is a soft expire, rekey the CHILD SA
         if not hard:
             # Create the ChildSa object with the values we know so far
-            new_child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, proposal=None, tsi=child_sa.tsi,
-                                   tsr=child_sa.tsr, mode=child_sa.mode, ipsec_conf=child_sa.ipsec_conf)
+            new_child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, proposal=child_sa.proposal,
+                                   tsi=[child_sa.tsi], tsr=[child_sa.tsr], mode=child_sa.mode,
+                                   lifetime=child_sa.lifetime)
             request = self.generate_create_child_sa_request(new_child_sa, child_sa)
         # if this is a hard expire, delete the CHILD SA
         else:
@@ -597,28 +600,27 @@ class IkeSa(object):
         result = []
 
         # generate Payload TSi, TSr
-        tsi, tsr = self._ipsec_conf_2_ts(child_sa.ipsec_conf)
-        result.append(PayloadTSi([child_sa.tsi, tsi]))
-        result.append(PayloadTSr([child_sa.tsr, tsr]))
+        result.append(PayloadTSi(child_sa.tsi))
+        result.append(PayloadTSr(child_sa.tsr))
 
         # generate Payload SA
-        proposal = self._ipsec_conf_2_proposal(child_sa.ipsec_conf)
         if initial:
-            proposal.transforms = [x for x in proposal.transforms if x.type != Transform.DhId]
-        proposal.spi = os.urandom(4)
-        result.append(PayloadSA([proposal]))
+            child_sa.proposal.transforms = [x for x in child_sa.proposal.transforms if x.type != Transform.DhId]
+        child_sa.proposal.spi = child_sa.inbound_spi
+        result.append(PayloadSA([child_sa.proposal]))
 
         # generate Payload KE (if required)
         try:
-            my_dh_group = proposal.get_transform(Transform.Type.DH).id
+            my_dh_group = child_sa.proposal.get_transform(Transform.Type.DH).id
             self.dh = DiffieHellman(my_dh_group)
             result.append(PayloadKE(my_dh_group, self.dh.public_key))
         except StopIteration:
             pass
 
-        # genereate USE_TRANSPORT_MODE notify if needed
+        # generate USE_TRANSPORT_MODE notify if needed
         if child_sa.mode == xfrm.Mode.TRANSPORT:
             result.append(PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.USE_TRANSPORT_MODE, b'', b''))
+
         return result
 
     def generate_ike_auth_request(self):
@@ -836,7 +838,7 @@ class IkeSa(object):
             # create the IPsec SAs according to the negotiated CHILD SA
             child_sa = ChildSa(outbound_spi=chosen_child_proposal.spi, inbound_spi=os.urandom(4),
                                proposal=chosen_child_proposal, tsi=chosen_tsr, tsr=chosen_tsi, mode=mode,
-                               ipsec_conf=ipsec_conf)
+                               lifetime=ipsec_conf.lifetime)
 
             self.child_sas.append(child_sa)
             if ipsec_conf.ipsec_proto == Proposal.Protocol.ESP:
@@ -844,16 +846,14 @@ class IkeSa(object):
             else:
                 encr_transform = None
             lifetime = ipsec_conf.lifetime + random.randint(0, 5) if ipsec_conf.lifetime != -1 else -1
-            xfrm.Xfrm.create_sa(self.my_addr, self.peer_addr, chosen_tsr, chosen_tsi,
-                                chosen_child_proposal.protocol_id,
-                                child_sa.outbound_spi, encr_transform, child_sa_keyring.sk_er,
-                                chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
-                                child_sa_keyring.sk_ar, mode, lifetime)
-            xfrm.Xfrm.create_sa(self.peer_addr, self.my_addr, chosen_tsi, chosen_tsr,
-                                chosen_child_proposal.protocol_id,
-                                child_sa.inbound_spi, encr_transform, child_sa_keyring.sk_ei,
-                                chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
-                                child_sa_keyring.sk_ai, mode, lifetime)
+            xfrm.Xfrm.create_sa(self.my_addr, self.peer_addr, child_sa.tsi, child_sa.tsr,
+                                child_sa.proposal.protocol_id, child_sa.outbound_spi, encr_transform,
+                                child_sa_keyring.sk_er, child_sa.proposal.get_transform(Transform.Type.INTEG).id,
+                                child_sa_keyring.sk_ar, child_sa.mode, child_sa.lifetime)
+            xfrm.Xfrm.create_sa(self.peer_addr, self.my_addr, child_sa.tsr, child_sa.tsi,
+                                child_sa.proposal.protocol_id, child_sa.inbound_spi, encr_transform,
+                                child_sa_keyring.sk_ei, child_sa.proposal.get_transform(Transform.Type.INTEG).id,
+                                child_sa_keyring.sk_ai, child_sa.mode, child_sa.lifetime)
             self.log_info('Created CHILD_SA {} with lifetime = {}'.format(child_sa, lifetime))
 
             # generate the response Payload SA
@@ -985,8 +985,7 @@ class IkeSa(object):
 
         # Check responder provided a valid proposal
         chosen_child_proposal = response_payload_sa.proposals[0]
-        my_proposal = request_payload_sa.proposals[0]
-        intersection = my_proposal.intersection(chosen_child_proposal)
+        intersection = self.creating_child_sa.proposal.intersection(chosen_child_proposal)
         if intersection is None or intersection != chosen_child_proposal:
             raise NoProposalChosen('Responder did not choose a valid proposal')
 
@@ -1011,28 +1010,28 @@ class IkeSa(object):
         if not matches_tsi or not matches_tsr:
             raise TsUnacceptable('Responder did not select a subset of our proposed TS.')
 
-        # recover ipsec configuration from Acquire's Index
-        ipsec_conf = self.creating_child_sa.ipsec_conf
-
         # create the IPsec SAs according to the negotiated CHILD SA
-        child_sa = ChildSa(outbound_spi=chosen_child_proposal.spi, inbound_spi=request_payload_sa.proposals[0].spi,
-                           proposal=chosen_child_proposal, tsi=chosen_tsi, tsr=chosen_tsr, mode=request_mode,
-                           ipsec_conf=ipsec_conf)
-        self.child_sas.append(child_sa)
+        self.creating_child_sa = self.creating_child_sa._replace(outbound_spi=chosen_child_proposal.spi,
+                                                                 proposal=chosen_child_proposal, tsi=chosen_tsi,
+                                                                 tsr=chosen_tsr)
+        self.child_sas.append(self.creating_child_sa)
 
         encr_transform = None
         if chosen_child_proposal.protocol_id == Proposal.Protocol.ESP:
             encr_transform = chosen_child_proposal.get_transform(Transform.Type.ENCR).id
-        lifetime = ipsec_conf.lifetime + random.randint(0, 5) if ipsec_conf.lifetime != -1 else -1
-        xfrm.Xfrm.create_sa(self.my_addr, self.peer_addr, chosen_tsi, chosen_tsr, chosen_child_proposal.protocol_id,
-                            child_sa.outbound_spi, encr_transform, child_sa_keyring.sk_ei,
-                            chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
-                            child_sa_keyring.sk_ai, request_mode, lifetime)
-        xfrm.Xfrm.create_sa(self.peer_addr, self.my_addr, chosen_tsr, chosen_tsi, chosen_child_proposal.protocol_id,
-                            child_sa.inbound_spi, encr_transform, child_sa_keyring.sk_er,
-                            chosen_child_proposal.get_transform(Transform.Type.INTEG).id,
-                            child_sa_keyring.sk_ar, request_mode, lifetime)
-        self.log_info('Created CHILD_SA {}'.format(child_sa))
+        lifetime = (self.creating_child_sa.lifetime + random.randint(0, 5)
+                    if self.creating_child_sa.lifetime != -1 else -1)
+        xfrm.Xfrm.create_sa(self.my_addr, self.peer_addr, self.creating_child_sa.tsi, self.creating_child_sa.tsr,
+                            self.creating_child_sa.proposal.protocol_id,
+                            self.creating_child_sa.outbound_spi, encr_transform, child_sa_keyring.sk_ei,
+                            self.creating_child_sa.proposal.get_transform(Transform.Type.INTEG).id,
+                            child_sa_keyring.sk_ai, self.creating_child_sa.mode, lifetime)
+        xfrm.Xfrm.create_sa(self.peer_addr, self.my_addr, self.creating_child_sa.tsr, self.creating_child_sa.tsi,
+                            self.creating_child_sa.proposal.protocol_id,
+                            self.creating_child_sa.inbound_spi, encr_transform, child_sa_keyring.sk_er,
+                            self.creating_child_sa.proposal.get_transform(Transform.Type.INTEG).id,
+                            child_sa_keyring.sk_ar, self.creating_child_sa.mode, self.creating_child_sa.lifetime)
+        self.log_info(f'Created CHILD_SA {self.creating_child_sa}')
 
     def process_ike_auth_response(self, response):
         self._check_in_states(response, [IkeSa.State.AUTH_REQ_SENT])
@@ -1244,7 +1243,6 @@ class IkeSa(object):
             except IkeSaError as ex:
                 self.log_warning(f'CHILD_SA could not be created: {ex}')
             return None
-
 
     def process_informational_response(self, response):
         """ Processes a CREATE_CHILD_SA response message
