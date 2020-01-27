@@ -1230,27 +1230,21 @@ class IkeSa(object):
                 payload_ke.ke_data = new_payload_ke.ke_data
                 return self.generate_request(Message.Exchange.CREATE_CHILD_SA, self.request.encrypted_payloads)
 
-            negotiation_failed = False
+            prev_state = self.state
+            self.state = IkeSa.State.ESTABLISHED
             try:
                 self._process_create_child_sa_negotiation_res(response)
+                if prev_state == IkeSa.State.REK_CHILD_REQ_SENT:
+                    # CHILD_SA might have been deleted while we were waiting for our response
+                    if self.rekeying_child_sa in self.child_sas:
+                        return self.generate_delete_child_sa_request(self.rekeying_child_sa)
+                    else:
+                        self.log_warning(f'CHILD_SA {self.rekeying_child_sa} was already deleted. '
+                                         f'Not starting a DELETE exchange')
             except IkeSaError as ex:
-                self.log_warning(str(ex))
-                negotiation_failed = True
-            if self.state == IkeSa.State.NEW_CHILD_REQ_SENT:
-                self.state = IkeSa.State.ESTABLISHED
-                return None
-            elif self.state == IkeSa.State.REK_CHILD_REQ_SENT:
-                self.state = IkeSa.State.ESTABLISHED
-                # CHILD_SA might have been deleted while we were waiting for our response
-                if self.rekeying_child_sa not in self.child_sas:
-                    self.log_warning('CHILD_SA {} was already deleted. Not starting a DELETE exchange'
-                                     ''.format(self.rekeying_child_sa))
-                    return None
-                # CHILD_SA negotiation might have failed due to several reasons.
-                # In that case, do not start a delete exchange and wait for the hard expiry
-                if negotiation_failed:
-                    return None
-                return self.generate_delete_child_sa_request(self.rekeying_child_sa)
+                self.log_warning(f'CHILD_SA could not be created: {ex}')
+            return None
+
 
     def process_informational_response(self, response):
         """ Processes a CREATE_CHILD_SA response message
@@ -1261,8 +1255,8 @@ class IkeSa(object):
 
         if self.state == IkeSa.State.DEL_CHILD_REQ_SENT:
             if self.deleting_child_sa not in self.child_sas:
-                self.log_warning('CHILD_SA {} was already deleted by the peer. Omitting actual deletion'
-                                 ''.format(self.deleting_child_sa))
+                self.log_warning(f'CHILD_SA {self.deleting_child_sa} was already deleted by the peer. '
+                                 f'Omitting actual deletion')
             else:
                 # delete our side of the
                 xfrm.Xfrm.delete_sa(self.peer_addr, self.deleting_child_sa.proposal.protocol_id,
@@ -1270,7 +1264,7 @@ class IkeSa(object):
                 xfrm.Xfrm.delete_sa(self.my_addr, self.deleting_child_sa.proposal.protocol_id,
                                     self.deleting_child_sa.inbound_spi)
                 self.child_sas.remove(self.deleting_child_sa)
-                self.log_info('Removing CHILD_SA {}'.format(self.deleting_child_sa))
+                self.log_info(f'Removing CHILD_SA {self.deleting_child_sa}')
             self.state = IkeSa.State.ESTABLISHED
             return None
 
