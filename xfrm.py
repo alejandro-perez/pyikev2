@@ -372,6 +372,11 @@ class Xfrm(NetlinkProtocol):
             logging.warning('Could not delete IPsec SA with SPI: {}. {}'.format(hexstring(spi), ex))
 
     @classmethod
+    def delete_child_sa(cls, ike_sa, child_sa):
+        cls.delete_sa(ike_sa.peer_addr, child_sa.proposal.protocol_id, child_sa.outbound_spi)
+        cls.delete_sa(ike_sa.my_addr, child_sa.proposal.protocol_id, child_sa.inbound_spi)
+
+    @classmethod
     def create_policies(cls, ike_conf):
         for ipsec_conf in ike_conf.protect:
             if ipsec_conf.mode == Mode.TUNNEL:

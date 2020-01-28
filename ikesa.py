@@ -143,8 +143,7 @@ class IkeSa(object):
 
     def delete_child_sas(self):
         for child_sa in self.child_sas:
-            xfrm.Xfrm.delete_sa(self.peer_addr, child_sa.proposal.protocol_id, child_sa.outbound_spi)
-            xfrm.Xfrm.delete_sa(self.my_addr, child_sa.proposal.protocol_id, child_sa.inbound_spi)
+            xfrm.Xfrm.delete_child_sa(self, child_sa)
         self.child_sas.clear()
 
     def generate_child_sa_key_material(self, child_proposal, keyseed, sk_d):
@@ -1100,8 +1099,7 @@ class IkeSa(object):
                 for del_spi in delete_payload.spis:
                     child_sa = self.get_child_sa(del_spi)
                     if child_sa is not None and child_sa.proposal.protocol_id == delete_payload.protocol_id:
-                        xfrm.Xfrm.delete_sa(self.peer_addr, child_sa.proposal.protocol_id, child_sa.outbound_spi)
-                        xfrm.Xfrm.delete_sa(self.my_addr, child_sa.proposal.protocol_id, child_sa.inbound_spi)
+                        xfrm.Xfrm.delete_child_sa(self, child_sa)
                         self.child_sas.remove(child_sa)
                         response_payloads.append(PayloadDELETE(delete_payload.protocol_id, [child_sa.inbound_spi]))
                         self.log_info('Removing CHILD_SA {}'.format(child_sa))
@@ -1230,10 +1228,8 @@ class IkeSa(object):
                                  f'Omitting actual deletion')
             else:
                 # delete our side of the
-                xfrm.Xfrm.delete_sa(self.peer_addr, self.deleting_child_sa.proposal.protocol_id,
-                                    self.deleting_child_sa.outbound_spi)
-                xfrm.Xfrm.delete_sa(self.my_addr, self.deleting_child_sa.proposal.protocol_id,
-                                    self.deleting_child_sa.inbound_spi)
+
+                xfrm.Xfrm.delete_child_sa(self, self.deleting_child_sa)
                 self.child_sas.remove(self.deleting_child_sa)
                 self.log_info(f'Removing CHILD_SA {self.deleting_child_sa}')
             self.state = IkeSa.State.ESTABLISHED
