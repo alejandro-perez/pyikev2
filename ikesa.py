@@ -10,7 +10,7 @@ import os
 import random
 import time
 import traceback
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 from hmac import HMAC
 from struct import unpack
 
@@ -96,6 +96,16 @@ class IkeSa(object):
 
     def __str__(self):
         return hexstring(self.my_spi)
+
+    def to_dict(self):
+        result = OrderedDict({
+            'my_spi': hexstring(self.my_spi),
+            'peer_spi': hexstring(self.peer_spi),
+            'my_addr': str(self.my_addr),
+            'peer_addr': str(self.peer_addr),
+            'child_sas': [str(x) for x in self.child_sas]
+        })
+        return result
 
     def log_msg(self, level, message):
         logging.log(level, 'IKE_SA: {}. {}'.format(self, message))
@@ -1090,10 +1100,12 @@ class IkeSa(object):
             self.log_info('Peer requested DEAD-PEER-DETECTION')
 
         for delete_payload in delete_payloads:
-            # if protocol is IKE, just mark the IKE SA for removal and return  emtpy INFORMATIONAL exchange
+            # if protocol is IKE, just mark the IKE SA for removal and return emtpy INFORMATIONAL exchange
             if delete_payload.protocol_id == Proposal.Protocol.IKE:
                 self.log_info('Deleting this IKE_SA')
                 self.state = IkeSa.State.DELETED
+                response_payloads = []
+                break
             # if protocol is either AH or ESP, delete the Child SAs and return the inbound SPI
             elif delete_payload.protocol_id in (Proposal.Protocol.AH, Proposal.Protocol.ESP):
                 for del_spi in delete_payload.spis:

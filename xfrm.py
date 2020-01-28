@@ -411,7 +411,7 @@ class Xfrm(NetlinkProtocol):
                       if child_sa.proposal.protocol_id == Proposal.Protocol.ESP else None)
         lifetime = child_sa.lifetime + random.randint(0, 5) if child_sa.lifetime != -1 else -1
 
-        # if we are responders, swap the keys for the purpose of creating keys
+        # if we are responders, swap the keys for the purpose (since TS are swapped as well)
         if is_initiator:
             sk_ei, sk_er, sk_ai, sk_ar = keyring.sk_ei, keyring.sk_er, keyring.sk_ai, keyring.sk_ar
         else:

@@ -3,6 +3,7 @@
 
 """ This module defines the classes for the protocol handling.
 """
+import json
 import logging
 import os
 import socket
@@ -130,12 +131,18 @@ class IkeSaController:
             udp_sockets[addr].bind((str(addr), port))
             logging.info(f'Listening from [{addr}]:{port}')
 
+        self.control_socket = control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        control_addr = ("127.0.0.1", 9999)
+        control_socket.bind(control_addr)
+        control_socket.listen()
+        logging.info(f'Listening control events on [{control_addr[0]}]:{control_addr[1]}')
+
         # create XFRM socket
         xfrm_obj = xfrm.Xfrm()
         xfrm_socket = xfrm_obj.get_socket()
         logging.info('Listening XFRM events.')
 
-        allsockets = list(udp_sockets.values()) + [xfrm_socket]
+        allsockets = list(udp_sockets.values()) + [xfrm_socket, control_socket]
         # do server
         while True:
             try:
@@ -158,6 +165,15 @@ class IkeSaController:
                     if reply_data:
                         dst_addr = (str(peer_addr), 500)
                         udp_sockets[my_addr].sendto(reply_data, dst_addr)
+
+                if control_socket in readable:
+                    conn, addr = control_socket.accept()
+                    data = conn.recv(4096)
+                    result = []
+                    for ikesa in self.ike_sas:
+                        result.append(ikesa.to_dict())
+                    conn.sendall(json.dumps(result).encode())
+                    conn.close()
 
                 # check retransmissions
                 for ikesa in self.ike_sas:
@@ -192,3 +208,5 @@ class IkeSaController:
     def close(self):
         xfrm.Xfrm.flush_policies()
         xfrm.Xfrm.flush_sas()
+        logging.info('Closing IKE_SA controller')
+        self.control_socket.close()
