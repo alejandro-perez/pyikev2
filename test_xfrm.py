@@ -8,6 +8,7 @@ import unittest
 from ipaddress import ip_address, ip_network
 
 from configuration import IkeConfiguration, IpsecConfiguration
+from ikesa import ChildSa
 from xfrm import Xfrm, Mode, XfrmAddress
 from message import TrafficSelector, Proposal, Transform
 

@@ -5,6 +5,7 @@
     API to access to the IPsec features of the kernel
 """
 import logging
+import random
 import socket
 from ctypes import (c_ubyte, c_uint16, c_uint32, c_uint64, BigEndianStructure)
 from ipaddress import ip_address, ip_network
@@ -398,6 +399,27 @@ class Xfrm(NetlinkProtocol):
         cls._create_sa(src_sel.get_network(), dst_sel.get_network(), src_sel.get_port(),
                        dst_sel.get_port(), spi, src_sel.ip_proto, ipsec_protocol, mode, src,
                        dst, enc_algorith, sk_e, auth_algorithm, sk_a, lifetime)
+
+    @classmethod
+    def create_child_sa(cls, ike_sa, child_sa, keyring, is_initiator):
+        encr_alg = (child_sa.proposal.get_transform(Transform.Type.ENCR).id
+                      if child_sa.proposal.protocol_id == Proposal.Protocol.ESP else None)
+        lifetime = child_sa.lifetime + random.randint(0, 5) if child_sa.lifetime != -1 else -1
+
+        # if we are responders, swap the keys for the purpose of creating keys
+        if is_initiator:
+            sk_ei, sk_er, sk_ai, sk_ar = keyring.sk_ei, keyring.sk_er, keyring.sk_ai, keyring.sk_ar
+        else:
+            sk_ei, sk_er, sk_ai, sk_ar = keyring.sk_er, keyring.sk_ei, keyring.sk_ar, keyring.sk_ai
+
+        cls._create_sa(child_sa.tsi.get_network(), child_sa.tsr.get_network(), child_sa.tsi.get_port(),
+                       child_sa.tsr.get_port(), child_sa.outbound_spi, child_sa.tsi.ip_proto,
+                       child_sa.proposal.protocol_id, child_sa.mode, ike_sa.my_addr, ike_sa.peer_addr,
+                       encr_alg, sk_ei, child_sa.proposal.get_transform(Transform.Type.INTEG).id, sk_ai, lifetime)
+        cls._create_sa(child_sa.tsr.get_network(), child_sa.tsi.get_network(), child_sa.tsr.get_port(),
+                       child_sa.tsi.get_port(), child_sa.inbound_spi, child_sa.tsr.ip_proto,
+                       child_sa.proposal.protocol_id, child_sa.mode, ike_sa.peer_addr, ike_sa.my_addr,
+                       encr_alg, sk_er, child_sa.proposal.get_transform(Transform.Type.INTEG).id, sk_ar, lifetime)
 
     @classmethod
     def get_socket(cls):
