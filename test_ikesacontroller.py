@@ -27,7 +27,7 @@ logging.basicConfig(level=logging.DEBUG,
 
 
 class TestIkeSaController(TestCase):
-    @patch('xfrm.Xfrm')
+    @patch('xfrm.Xfrm.send_recv')
     def setUp(self, mockclass):
         self.ip1 = ip_address("192.168.0.1")
         self.ip2 = ip_address("192.168.0.2")
@@ -73,7 +73,7 @@ class TestIkeSaController(TestCase):
         self.ikesacontroller1 = IkeSaController(my_addrs=[self.ip1], configuration=self.configuration)
         self.ikesacontroller2 = IkeSaController(my_addrs=[self.ip2], configuration=self.configuration)
 
-    @patch('xfrm.Xfrm')
+    @patch('xfrm.Xfrm.send_recv')
     def test_initial_exchanges(self, mockclass):
         # initial exchanges
         acquire = XfrmUserAcquire(id=XfrmId(daddr=XfrmAddress.from_ipaddr(ip_address("192.168.0.2"))),
@@ -94,7 +94,7 @@ class TestIkeSaController(TestCase):
         self.assertEqual(len(self.ikesacontroller1.ike_sas), 1)
         self.assertIsNone(request)
 
-    @patch('xfrm.Xfrm')
+    @patch('xfrm.Xfrm.send_recv')
     def test_expire(self, mockclass):
         # initial exchanges
         self.test_initial_exchanges()
@@ -106,7 +106,7 @@ class TestIkeSaController(TestCase):
         rekey_child_sa_req, my_addr, peer_addr = self.ikesacontroller1.process_expire(expire)
         self.assertIsNotNone(rekey_child_sa_req)
 
-    @patch('xfrm.Xfrm')
+    @patch('xfrm.Xfrm.send_recv')
     def test_expire_invalid_spi(self, mockclass):
         # initial exchanges
         self.test_initial_exchanges()
@@ -118,7 +118,7 @@ class TestIkeSaController(TestCase):
         rekey_child_sa_req, my_addr, peer_addr = self.ikesacontroller1.process_expire(expire)
         self.assertIsNone(rekey_child_sa_req)
 
-    @patch('xfrm.Xfrm')
+    @patch('xfrm.Xfrm.send_recv')
     def test_invalid_spi(self, mockclass):
         # initial exchanges
         self.test_initial_exchanges()
@@ -134,7 +134,7 @@ class TestIkeSaController(TestCase):
         response = self.ikesacontroller2.dispatch_message(rekey_child_sa_req, self.ip2, self.ip1)
         self.assertIsNone(response)
 
-    @patch('xfrm.Xfrm')
+    @patch('xfrm.Xfrm.send_recv')
     def test_ike_sa_rekey(self, mockclass):
         self.test_initial_exchanges()
         self.ikesacontroller1.ike_sas[0].rekey_ike_sa_at = time.time()
@@ -148,7 +148,7 @@ class TestIkeSaController(TestCase):
         self.assertEqual(len(self.ikesacontroller1.ike_sas), 1)
         self.assertEqual(len(self.ikesacontroller2.ike_sas), 1)
 
-    @patch('xfrm.Xfrm')
+    @patch('xfrm.Xfrm.send_recv')
     def test_cookie(self, mockclass):
         # initial exchanges
         self.ikesacontroller2.cookie_threshold = 0
