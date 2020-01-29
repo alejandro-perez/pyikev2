@@ -28,6 +28,11 @@ __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 Keyring = namedtuple('Keyring', ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er', 'sk_pi', 'sk_pr'])
 ChildSa = namedtuple('ChildSa', ['inbound_spi', 'outbound_spi', 'proposal', 'tsi', 'tsr', 'mode', 'lifetime'])
 ChildSa.__str__ = lambda x: '({}, {})'.format(hexstring(x.inbound_spi), hexstring(x.outbound_spi))
+ChildSa.to_dict = lambda x: {'inbound_spi': hexstring(x.inbound_spi), 'outbound_spi': hexstring(x.outbound_spi),
+                             'protocol': Proposal.Protocol.safe_name(x.proposal.protocol_id),
+                             'mode': xfrm.Mode.safe_name(x.mode),
+                             'selectors': '[{}]:{}-[{}]:{}'.format(x.tsi.get_network(), x.tsi.get_port(),
+                                                                   x.tsr.get_network(), x.tsr.get_port())}
 
 
 class IkeSaStateError(Exception):
@@ -107,13 +112,12 @@ class IkeSa(object):
             'state': IkeSa.State.safe_name(self.state),
             'msg_id': self.my_msg_id,
             'rekey_in': int(self.rekey_ike_sa_at - time.time()),
-            'child_sas': [{'inbound_spi': hexstring(x.inbound_spi), 'outbound_spi': hexstring(x.outbound_spi)}
-                          for x in self.child_sas]
+            'child_sas': [x.to_dict() for x in self.child_sas]
         })
         return result
 
     def log_msg(self, level, message):
-        logging.log(level, 'IKE_SA: {}. {}'.format(self, message))
+        logging.log(level, f'IKE_SA: {self}. {message}')
 
     def log_error(self, message):
         self.log_msg(logging.ERROR, message)
