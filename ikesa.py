@@ -99,11 +99,16 @@ class IkeSa(object):
 
     def to_dict(self):
         result = OrderedDict({
-            'my_spi': hexstring(self.my_spi),
-            'peer_spi': hexstring(self.peer_spi),
             'my_addr': str(self.my_addr),
             'peer_addr': str(self.peer_addr),
-            'child_sas': [str(x) for x in self.child_sas]
+            'my_spi': hexstring(self.my_spi),
+            'peer_spi': hexstring(self.peer_spi),
+            'is_initiator': self.is_initiator,
+            'state': IkeSa.State.safe_name(self.state),
+            'msg_id': self.my_msg_id,
+            'rekey_in': int(self.rekey_ike_sa_at - time.time()),
+            'child_sas': [{'inbound_spi': hexstring(x.inbound_spi), 'outbound_spi': hexstring(x.outbound_spi)}
+                          for x in self.child_sas]
         })
         return result
 
