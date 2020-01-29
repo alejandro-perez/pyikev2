@@ -132,6 +132,7 @@ class IkeSaController:
             logging.info(f'Listening from [{addr}]:{port}')
 
         self.control_socket = control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.control_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         control_addr = ("127.0.0.1", 9999)
         control_socket.bind(control_addr)
         control_socket.listen()
