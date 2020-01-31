@@ -77,11 +77,9 @@ class NetlinkProtocol(object):
     @staticmethod
     def _attribute_factory(code, data):
         class _Internal(NetlinkStructure):
-            _fields_ = (
-                ('len', c_uint16),
-                ('code', c_uint16),
-                ('data', type(data)),
-            )
+            _fields_ = (('len', c_uint16),
+                        ('code', c_uint16),
+                        ('data', type(data)))
 
         return _Internal(code=code, len=sizeof(_Internal), data=data)
 
@@ -137,5 +135,5 @@ class NetlinkProtocol(object):
             if header.type == NLMSG_DONE:
                 break
             data = data[header.length:]
-            responses.append((header, payload, attributes),)
+            responses.append((header, payload, attributes), )
         return responses
