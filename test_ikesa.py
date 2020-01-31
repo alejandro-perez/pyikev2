@@ -195,7 +195,7 @@ sEuNUHHDSswFehNOFQIDAQAB
 
     @patch('xfrm.Xfrm.send_recv')
     def test_ike_sa_init_no_proposal_chosen(self, mockclass):
-        self.ike_sa1.configuration.dh[0].id = Transform.DhId.DH_16
+        self.ike_sa1.configuration.dh[0] = Transform(Transform.Type.DH, Transform.DhId.DH_16)
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)

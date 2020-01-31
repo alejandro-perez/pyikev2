@@ -349,7 +349,6 @@ class IkeSa(object):
         except KeyError:
             self.log_error("I don't know how to handle this message. Please, implement a handler!")
             return None
-
         try:
             request = handler(message)
             # If there is a another request to be sent, serialise it and return it
@@ -886,12 +885,6 @@ class IkeSa(object):
                                                                    'request' if message.is_request else 'response',
                                                                    self.state.name))
 
-    def _check_established(self, message):
-        return self._check_in_states(message, range(IkeSa.State.ESTABLISHED, IkeSa.State.REKEYED))
-
-    def _check_established_or_rekeyed(self, message):
-        return self._check_in_states(message, range(IkeSa.State.ESTABLISHED, IkeSa.State.REKEYED + 1))
-
     def check_retransmission_timer(self):
         # retransmissions only when we sent a request
         if (self.state in range(IkeSa.State.NEW_CHILD_REQ_SENT, IkeSa.State.REKEYED)
@@ -1102,7 +1095,8 @@ class IkeSa(object):
     def process_informational_request(self, request):
         """ Processes an INFORMATIONAL request
         """
-        self._check_established_or_rekeyed(request)
+        self._check_in_states(request, range(IkeSa.State.ESTABLISHED, IkeSa.State.REKEYED + 1))
+
         response_payloads = []
         delete_payloads = request.get_payloads(Payload.Type.DELETE, True)
         if not delete_payloads:
@@ -1133,7 +1127,7 @@ class IkeSa(object):
     def process_create_child_sa_request(self, request):
         """ Processes a CREATE_CHILD_SA message and returns response
         """
-        self._check_established(request)
+        self._check_in_states(request, range(IkeSa.State.ESTABLISHED, IkeSa.State.REKEYED))
 
         # determine whether this concerns to IKE_SA or CHILD_SA
         payload_sa = request.get_payload(Payload.Type.SA, True)
