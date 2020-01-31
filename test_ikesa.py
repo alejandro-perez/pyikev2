@@ -77,6 +77,11 @@ class TestIkeSa(TestCase):
                              configuration=self.configuration.get_ike_configuration(self.ip1), my_addr=self.ip2,
                              peer_addr=self.ip1)
 
+    def update_ike_sas_configuration(self):
+        self.configuration = Configuration([self.ip1, self.ip2], self.confdict)
+        self.ike_sa1.configuration = self.configuration.get_ike_configuration(self.ip2)
+        self.ike_sa2.configuration = self.configuration.get_ike_configuration(self.ip1)
+
     def assertMessageHasNotification(self, message_data, ikesa, notification_type):
         message = Message.parse(message_data, crypto=ikesa.my_crypto)
         self.assertTrue(message.get_notifies(notification_type, ikesa.my_crypto is not None))
@@ -123,9 +128,7 @@ sEuNUHHDSswFehNOFQIDAQAB
 -----END PUBLIC KEY-----'''
         self.confdict['testconn_alice']['my_auth']['privkey'] = privkey
         self.confdict['testconn_bob']['peer_auth']['pubkey'] = pubkey
-        self.configuration = Configuration([self.ip1, self.ip2], self.confdict)
-        self.ike_sa1.configuration = self.configuration.get_ike_configuration(self.ip2)
-        self.ike_sa2.configuration = self.configuration.get_ike_configuration(self.ip1)
+        self.update_ike_sas_configuration()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -156,10 +159,9 @@ sEuNUHHDSswFehNOFQIDAQAB
     @patch('xfrm.Xfrm.send_recv')
     def test_create_child_with_ke(self, mockclass):
         self.test_initial_exchanges_transport()
-        self.ike_sa1.configuration.protect[0] = self.ike_sa1.configuration.protect[0]._replace(
-            dh=[Transform(Transform.Type.DH, Transform.DhId.DH_14)])
-        self.ike_sa2.configuration.protect[0] = self.ike_sa2.configuration.protect[0]._replace(
-            dh=[Transform(Transform.Type.DH, Transform.DhId.DH_14)])
+        self.confdict['testconn_alice']['protect'][0]['dh'] = [14]
+        self.confdict['testconn_bob']['protect'][0]['dh'] = [14]
+        self.update_ike_sas_configuration()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         create_child_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -174,11 +176,9 @@ sEuNUHHDSswFehNOFQIDAQAB
     @patch('xfrm.Xfrm.send_recv')
     def test_create_child_invalid_ke(self, mockclass):
         self.test_initial_exchanges_transport()
-        self.ike_sa1.configuration.protect[0] = self.ike_sa1.configuration.protect[0]._replace(
-            dh=[Transform(Transform.Type.DH, Transform.DhId.DH_18),
-                Transform(Transform.Type.DH, Transform.DhId.DH_14)])
-        self.ike_sa2.configuration.protect[0] = self.ike_sa2.configuration.protect[0]._replace(
-            dh=[Transform(Transform.Type.DH, Transform.DhId.DH_14)])
+        self.confdict['testconn_alice']['protect'][0]['dh'] = [18, 14]
+        self.confdict['testconn_bob']['protect'][0]['dh'] = [14]
+        self.update_ike_sas_configuration()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         create_child_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -195,7 +195,8 @@ sEuNUHHDSswFehNOFQIDAQAB
 
     @patch('xfrm.Xfrm.send_recv')
     def test_ike_sa_init_no_proposal_chosen(self, mockclass):
-        self.ike_sa1.configuration.dh[0] = Transform(Transform.Type.DH, Transform.DhId.DH_16)
+        self.confdict['testconn_alice']['dh'] = [16]
+        self.update_ike_sas_configuration()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -210,7 +211,8 @@ sEuNUHHDSswFehNOFQIDAQAB
 
     @patch('xfrm.Xfrm.send_recv')
     def test_ike_sa_init_invalid_ke(self, mockclass):
-        self.ike_sa1.configuration.dh.insert(0, Transform(Transform.Type.DH, Transform.DhId.DH_16))
+        self.confdict['testconn_alice']['dh'] = [16, 14]
+        self.update_ike_sas_configuration()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -250,8 +252,8 @@ sEuNUHHDSswFehNOFQIDAQAB
 
     @patch('xfrm.Xfrm.send_recv')
     def test_ike_auth_no_proposal_chosen(self, mockclass):
-        self.ike_sa1.configuration.protect[0] = self.ike_sa1.configuration.protect[0]._replace(
-            ipsec_proto=Proposal.Protocol.AH)
+        self.confdict['testconn_alice']['protect'][0]['ipsec_proto'] = 'ah'
+        self.update_ike_sas_configuration()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -268,7 +270,8 @@ sEuNUHHDSswFehNOFQIDAQAB
 
     @patch('xfrm.Xfrm.send_recv')
     def test_ike_auth_invalid_mode(self, mockclass):
-        self.ike_sa2.configuration.protect[0] = self.ike_sa2.configuration.protect[0]._replace(mode=xfrm.Mode.TUNNEL)
+        self.confdict['testconn_bob']['protect'][0]['mode'] = 'tunnel'
+        self.update_ike_sas_configuration()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -324,8 +327,7 @@ sEuNUHHDSswFehNOFQIDAQAB
     @patch('xfrm.Xfrm.send_recv')
     def test_ike_auth_invalid_id_type(self, mockclass):
         self.confdict['testconn_alice']['my_auth']['id'] = 'carol'
-        self.configuration = Configuration([self.ip1, self.ip2], self.confdict)
-        self.ike_sa1.configuration = self.configuration.get_ike_configuration(self.ip2)
+        self.update_ike_sas_configuration()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -343,8 +345,7 @@ sEuNUHHDSswFehNOFQIDAQAB
     @patch('xfrm.Xfrm.send_recv')
     def test_ike_auth_invalid_id_type_responder(self, mockclass):
         self.confdict['testconn_bob']['my_auth']['id'] = 'carol'
-        self.configuration = Configuration([self.ip1, self.ip2], self.confdict)
-        self.ike_sa2.configuration = self.configuration.get_ike_configuration(self.ip1)
+        self.update_ike_sas_configuration()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -361,8 +362,7 @@ sEuNUHHDSswFehNOFQIDAQAB
     @patch('xfrm.Xfrm.send_recv')
     def test_ike_auth_invalid_id_data(self, mockclass):
         self.confdict['testconn_alice']['my_auth']['id'] = 'alice@openikev3'
-        self.configuration = Configuration([self.ip1, self.ip2], self.confdict)
-        self.ike_sa1.configuration = self.configuration.get_ike_configuration(self.ip2)
+        self.update_ike_sas_configuration()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -380,8 +380,7 @@ sEuNUHHDSswFehNOFQIDAQAB
     @patch('xfrm.Xfrm.send_recv')
     def test_ike_auth_invalid_id_data_responder(self, mockclass):
         self.confdict['testconn_bob']['my_auth']['id'] = 'carol@openikev2'
-        self.configuration = Configuration([self.ip1, self.ip2], self.confdict)
-        self.ike_sa2.configuration = self.configuration.get_ike_configuration(self.ip1)
+        self.update_ike_sas_configuration()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -397,8 +396,8 @@ sEuNUHHDSswFehNOFQIDAQAB
 
     @patch('xfrm.Xfrm.send_recv')
     def test_ike_auth_invalid_ts(self, mockclass):
-        self.ike_sa2.configuration.protect[0] = self.ike_sa2.configuration.protect[0]._replace(
-            my_subnet=ip_network("10.0.0.0/24"))
+        self.confdict['testconn_bob']['protect'][0]['my_subnet'] = "10.0.0.0/24"
+        self.update_ike_sas_configuration()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         ike_sa_init_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
@@ -555,8 +554,8 @@ sEuNUHHDSswFehNOFQIDAQAB
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
         # create additional CHILD_SA
-        self.ike_sa2.configuration.protect[0] = self.ike_sa2.configuration.protect[0]._replace(
-            my_subnet=ip_network("10.0.0.0/24"))
+        self.confdict['testconn_bob']['protect'][0]['my_subnet'] = "10.0.0.0/24"
+        self.update_ike_sas_configuration()
         create_child_sa_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
         create_child_sa_res = self.ike_sa2.process_message(create_child_sa_req)
         request = self.ike_sa1.process_message(create_child_sa_res)

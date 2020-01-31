@@ -328,8 +328,8 @@ class Proposal:
         return None
 
     def __eq__(self, other):
-        return ((self.num, self.protocol_id, self.spi, set(self.transforms))
-                == (other.num, other.protocol_id, other.spi, set(other.transforms)))
+        return ((self.protocol_id, set(self.transforms))
+                == (other.protocol_id, set(other.transforms)))
 
     def is_subset(self, other):
         intersection = self.intersection(other)
@@ -687,16 +687,12 @@ class TrafficSelector(object):
     def is_subset(self, other):
         if self.ts_type != other.ts_type:
             return False
-
         if other.ip_proto != TrafficSelector.IpProtocol.ANY and self.ip_proto != other.ip_proto:
             return False
-
         if self.start_port < other.start_port or self.end_port > other.end_port:
             return False
-
         if self.start_addr < other.start_addr or self.end_addr > other.end_addr:
             return False
-
         return True
 
     def __eq__(self, other):

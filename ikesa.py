@@ -28,10 +28,10 @@ __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 Keyring = namedtuple('Keyring', ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er', 'sk_pi', 'sk_pr'])
 ChildSa = namedtuple('ChildSa', ['inbound_spi', 'outbound_spi', 'proposal', 'tsi', 'tsr', 'mode', 'lifetime'])
 ChildSa.__str__ = lambda x: '({}, {})'.format(hexstring(x.inbound_spi), hexstring(x.outbound_spi))
-ChildSa.to_dict = lambda x: {'inbound_spi': hexstring(x.inbound_spi), 'outbound_spi': hexstring(x.outbound_spi),
+ChildSa.to_dict = lambda x: {'spis': str(x),
                              'protocol': Proposal.Protocol.safe_name(x.proposal.protocol_id),
                              'mode': xfrm.Mode.safe_name(x.mode),
-                             'selectors': '[{}]:{}-[{}]:{}'.format(x.tsi.get_network(), x.tsi.get_port(),
+                             'selectors': '[{}]:{} <-> [{}]:{}'.format(x.tsi.get_network(), x.tsi.get_port(),
                                                                    x.tsr.get_network(), x.tsr.get_port())}
 
 
@@ -194,20 +194,12 @@ class IkeSa(object):
                 return intersection
         raise NoProposalChosen('Could not find a suitable matching Proposal')
 
-    def _ike_conf_2_proposal(self):
-        return Proposal(1, Proposal.Protocol.IKE, b'', (self.configuration.encr + self.configuration.integ
-                                                        + self.configuration.prf + self.configuration.dh))
-
     def _ipsec_conf_2_proposal(self, ipsec_conf):
         no_esn = [Transform(Transform.Type.ESN, Transform.EsnId.NO_ESN)]
         transforms = ipsec_conf.integ + ipsec_conf.dh + no_esn
         if ipsec_conf.ipsec_proto == Proposal.Protocol.ESP:
             transforms += ipsec_conf.encr
         return Proposal(1, ipsec_conf.ipsec_proto, b'', transforms)
-
-    def _select_best_ike_sa_proposal(self, peer_payload_sa):
-        my_proposal = self._ike_conf_2_proposal()
-        return self._select_best_sa_proposal(my_proposal, peer_payload_sa)
 
     def _select_best_child_sa_proposal(self, peer_payload_sa, ipsec_conf):
         my_proposal = self._ipsec_conf_2_proposal(ipsec_conf)
@@ -491,7 +483,7 @@ class IkeSa(object):
                 raise CookieRequired('COOKIE is required', cookie=expected_cookie)
 
         # select the proposal and generate a response Payload SA
-        self.chosen_proposal = self._select_best_ike_sa_proposal(payload_sa)
+        self.chosen_proposal = self._select_best_sa_proposal(self.configuration.proposal, payload_sa)
         # if this is a rekey, hence spi is not empty, send ours
         if self.chosen_proposal.spi:
             self.chosen_proposal.spi = self.my_spi
@@ -544,15 +536,15 @@ class IkeSa(object):
 
     def _generate_ike_sa_negotiation_request(self):
         # create the Payload SA
-        my_proposal = self._ike_conf_2_proposal()
-        my_proposal.spi = self.my_spi
-        payload_sa = PayloadSA([my_proposal])
+        self.chosen_proposal = self.configuration.proposal
+        self.chosen_proposal.spi = self.my_spi
+        payload_sa = PayloadSA([self.chosen_proposal])
 
         # generate payload NONCE
         payload_nonce = PayloadNONCE()
 
         # create DH and Paylaod KE
-        my_dh_group = my_proposal.get_transform(Transform.Type.DH).id
+        my_dh_group = self.chosen_proposal.get_transform(Transform.Type.DH).id
         self.dh = DiffieHellman(my_dh_group)
         payload_ke = PayloadKE(my_dh_group, self.dh.public_key)
 
@@ -668,13 +660,14 @@ class IkeSa(object):
 
     def process_ike_sa_negotiation_response(self, response, nonce, encrypted=False, old_sk_d=None):
         """ Process a IKE_SA negotiation response (SA, Ni, KEi)
-            It sets self.chosen_proposal and self.ike_sa_keyring as a result
         """
         payload_sa = response.get_payload(Payload.Type.SA, encrypted)
         payload_nonce = response.get_payload(Payload.Type.NONCE, encrypted)
         payload_ke = response.get_payload(Payload.Type.KE, encrypted)
 
         # select the peers proposal.
+        if not payload_sa.proposals[0].is_subset(self.chosen_proposal):
+            raise NoProposalChosen('Responder proposal is not a subset of what we sent')
         self.chosen_proposal = payload_sa.proposals[0]
 
         # update peer spi (take it from the payload SA if old_sa_d is not none ie. IKE_SA rekey)

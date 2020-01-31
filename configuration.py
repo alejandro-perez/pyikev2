@@ -69,8 +69,8 @@ _ipsec_proto_name_to_enum = {
 }
 
 IkeConfiguration = namedtuple('IkeConfiguration',
-                              ['name', 'my_addr', 'peer_addr', 'my_auth', 'peer_auth', 'lifetime', 'dpd', 'encr',
-                               'integ', 'prf', 'dh', 'protect'])
+                              ['name', 'my_addr', 'peer_addr', 'my_auth', 'peer_auth', 'lifetime', 'dpd', 'proposal',
+                               'protect'])
 
 AuthConfiguration = namedtuple('AuthConfiguration', ['psk', 'id', 'privkey', 'pubkey'])
 
@@ -94,6 +94,11 @@ class Configuration(object):
                 raise ConfigurationError(f'Mandatory parameter {ex} missing for connection "{connection_name}"')
 
     def _load_ike_conf(self, name, conf_dict, my_addresses):
+        encr = self._load_crypto_algs('encr', conf_dict.get('encr', ['aes256']), _encr_name_to_transform)
+        integ = self._load_crypto_algs('integ', conf_dict.get('integ', ['sha256']), _integ_name_to_transform)
+        prf = self._load_crypto_algs('prf', conf_dict.get('prf', ['sha256']), _prf_name_to_transform)
+        dh = self._load_crypto_algs('dh', conf_dict.get('dh', ['14']), _dh_name_to_transform)
+        proposal = Proposal(1, Proposal.Protocol.IKE, b'', encr + integ + prf + dh)
         ikeconf = IkeConfiguration(
             name=name,
             my_addr=self._load_ip_address(conf_dict['my_addr']),
@@ -102,10 +107,7 @@ class Configuration(object):
             peer_auth=self._load_auth_conf(conf_dict['peer_auth']),
             lifetime=int(conf_dict.get('lifetime', 15 * 60)),
             dpd=int(conf_dict.get('dpd', 60)),
-            encr=self._load_crypto_algs('encr', conf_dict.get('encr', ['aes256']), _encr_name_to_transform),
-            integ=self._load_crypto_algs('integ', conf_dict.get('integ', ['sha256']), _integ_name_to_transform),
-            prf=self._load_crypto_algs('prf', conf_dict.get('prf', ['sha256']), _prf_name_to_transform),
-            dh=self._load_crypto_algs('dh', conf_dict.get('dh', ['14']), _dh_name_to_transform),
+            proposal=proposal,
             protect=[]
         )
         if ikeconf.my_addr not in my_addresses:
@@ -152,6 +154,7 @@ class Configuration(object):
         )
 
     def _load_ipsec_conf(self, ikeconf, conf_dict):
+
         return IpsecConfiguration(
             my_subnet=self._load_ip_network(conf_dict.get('my_subnet', ikeconf.my_addr)),
             index=int(conf_dict.get('index', random.randint(0, 2 ** 20))),
