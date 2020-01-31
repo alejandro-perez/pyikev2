@@ -1,0 +1,46 @@
+test-tunnel:
+  # Endpoints for the connection
+  my_addr: 172.50.1.3
+  peer_addr: 172.50.1.2
+
+  # our authentication details
+  my_auth:
+    id: bob.openikev2
+    psk: testing
+
+  # peer's authentication details
+  peer_auth:
+    id: alice.openikev2
+    pubkey: |
+      -----BEGIN PUBLIC KEY-----
+      MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDEkT4cscvAVzUjuK4rsCvETPix
+      VfGGep/hUBcHnZyxN7XiFmaOEdE+W4TZ9EZy06W83qPfSYJrKt9n++mlFNWYgFsR
+      tFMsP0X9Z6c7QBTt684+NRZ6Te4Jyv/VrKxN/mCSufdQ88s6Wa/KhV8JiWvYs1l+
+      sEuNUHHDSswFehNOFQIDAQAB
+      -----END PUBLIC KEY-----
+
+  # IKE_SA lifetime (in seconds)
+  lifetime: 600
+
+  # dead peer detection (in seconds)
+  dpd: 60
+
+  # IKE_SA crypto algorithms to use
+  encr: [aes256, aes128]
+  integ: [sha512, sha256, sha1]
+  prf: [sha512, sha256, sha1]
+  dh: [18, 17, 16, 15, 14]
+
+  # list of traffic to protect (ie. policies)
+  protect:
+    - my_subnet: 172.50.1.3   # If omitted will take the value of "my_addr" above
+      my_port: 23
+      peer_subnet: 172.50.1.2 # If omitted will take the value of "peer_addr" above
+      peer_port: 0
+      ip_proto: tcp
+      mode: transport
+      lifetime: 60
+      ipsec_proto: esp
+      encr: [aes256, aes128]
+      integ: [sha512, sha256, sha1]
+      dh: [18]

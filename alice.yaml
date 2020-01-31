@@ -1,0 +1,55 @@
+test-tunnel:
+  # Endpoints for the connection
+  my_addr: 172.50.1.2
+  peer_addr: 172.50.1.3
+
+  # our authentication details
+  my_auth:
+    id: alice.openikev2
+    privkey: |
+      -----BEGIN RSA PRIVATE KEY-----
+      MIICXQIBAAKBgQDEkT4cscvAVzUjuK4rsCvETPixVfGGep/hUBcHnZyxN7XiFmaO
+      EdE+W4TZ9EZy06W83qPfSYJrKt9n++mlFNWYgFsRtFMsP0X9Z6c7QBTt684+NRZ6
+      Te4Jyv/VrKxN/mCSufdQ88s6Wa/KhV8JiWvYs1l+sEuNUHHDSswFehNOFQIDAQAB
+      AoGAQDmIhs2c2hJkXXCJD+M22aOgmiiPirXkKTUG4UkhGlIujlltVrwBlxNF/ASx
+      Q/FdNLG1703QW/2dExefBn4hL2jYObHAwFVGaiBLBEa0RzzkhHdQ0AE5Q0sPZL1w
+      MW6TbIvI7DkXlTb8A1TaVrgQLf3AAtBs/6VQj7SkvfctLV0CQQDu0+jYXPGxIXeM
+      QDCR2HzNu7IcvV0tyRqgToqFVf6tLFu60mX/kKgGPubcjU5qmU8D4Mqw3aEoJVs1
+      nDCZ8NarAkEA0rNyn7/Usf/yV+pyuzylUw++0tw5bGd+16R3xebdExj9tEARfGcQ
+      1KnmjeNGSbIN8se1lSYFqpjuu8R0BrNuPwJAaqDZ+J+mmPrkMQ4HoVYSgpgmcYZq
+      L6L17FSkq9s1FYQUgFiniW7AVemHkTjVpepEyOp4FHcfGJl1G35chJ5ueQJBAMv+
+      lxyZorkPf7eksp4bEkl/9hW6yBHvhfwMLTY61ZG24XMRkJxsQPxU3nZDM/sH279R
+      obmcjWHlHUZH5rnSIQsCQQCDGkbQJcDHS0bRSjVryAHZ8jQTTjTPBUAtHjzr4Xn0
+      IFf9L0pXd5MDpf5FhuOofyKzFYd08dMG1J/hm6DLFX0F
+      -----END RSA PRIVATE KEY-----
+
+  # peer's authentication details
+  peer_auth:
+    id: bob.openikev2
+    psk: testing
+
+  # IKE_SA lifetime (in seconds)
+  lifetime: 600
+
+  # dead peer detection (in seconds)
+  dpd: 60
+
+  # IKE_SA crypto algorithms to use
+  encr: [aes256, aes128]
+  integ: [sha512, sha256, sha1]
+  prf: [sha512, sha256, sha1]
+  dh: [18, 17, 16, 15, 14]
+
+  # list of traffic to protect (ie. policies)
+  protect:
+    - my_subnet: 172.50.1.2   # If omitted will take the value of "my_addr" above
+      my_port: 0
+      peer_subnet: 172.50.1.3 # If omitted will take the value of "peer_addr" above
+      peer_port: 23
+      ip_proto: tcp
+      mode: transport
+      lifetime: 60
+      ipsec_proto: esp
+      encr: [aes256, aes128]
+      integ: [sha512, sha256, sha1]
+      dh: [18]
