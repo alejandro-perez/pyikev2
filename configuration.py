@@ -6,7 +6,6 @@
 import random
 import socket
 from collections import namedtuple
-from copy import deepcopy
 from ipaddress import ip_address, ip_network
 
 import xfrm
@@ -144,7 +143,7 @@ class Configuration(object):
             raise ConfigurationError(f'Could not resolve {hostname} into an IP address: {ex}')
 
     def _load_auth_conf(self, conf_dict):
-        id_text = conf_dict.get('id', 'https://github.com/alejandro-perez/pyikev2');
+        id_text = conf_dict.get('id', 'https://github.com/alejandro-perez/pyikev2')
         return AuthConfiguration(
             psk=conf_dict['psk'].encode() if 'psk' in conf_dict else None,
             id=PayloadID(self._load_payload_id_type(id_text), id_text.encode()),
@@ -186,6 +185,6 @@ class Configuration(object):
         if type(names) is not list:
             raise ConfigurationError(f'{key} should be a list.')
         for x in names:
-            transform = self._load_from_dict(str(x), deepcopy(name_to_transform))
+            transform = self._load_from_dict(str(x), name_to_transform)
             transforms.append(transform)
         return transforms
