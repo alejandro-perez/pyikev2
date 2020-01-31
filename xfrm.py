@@ -379,24 +379,21 @@ class Xfrm(NetlinkProtocol):
     @classmethod
     def create_policies(cls, ike_conf):
         for ipsec_conf in ike_conf.protect:
-            if ipsec_conf.mode == Mode.TUNNEL:
-                src_selector = ipsec_conf.my_subnet
-                dst_selector = ipsec_conf.peer_subnet
-            else:
-                src_selector = ip_network(ike_conf.my_addr)
-                dst_selector = ip_network(ike_conf.peer_addr)
+            src_selector = ipsec_conf.my_ts.get_network()
+            dst_selector = ipsec_conf.peer_ts.get_network()
+            src_port = ipsec_conf.my_ts.get_port()
+            dst_port = ipsec_conf.peer_ts.get_port()
+            ip_proto = ipsec_conf.my_ts.ip_proto
+            ipsec_proto = ipsec_conf.proposal.protocol_id
 
             # generate an index for outbound policies
             index = ipsec_conf.index << 3 | XFRM_POLICY_OUT
-            cls._create_policy(src_selector, dst_selector, ipsec_conf.my_port, ipsec_conf.peer_port,
-                               ipsec_conf.ip_proto, XFRM_POLICY_OUT, ipsec_conf.proposal.protocol_id, ipsec_conf.mode,
-                               ike_conf.my_addr, ike_conf.peer_addr, index=index)
-            cls._create_policy(dst_selector, src_selector, ipsec_conf.peer_port, ipsec_conf.my_port,
-                               ipsec_conf.ip_proto, XFRM_POLICY_IN, ipsec_conf.proposal.protocol_id, ipsec_conf.mode,
-                               ike_conf.peer_addr, ike_conf.my_addr)
-            cls._create_policy(dst_selector, src_selector, ipsec_conf.peer_port, ipsec_conf.my_port,
-                               ipsec_conf.ip_proto, XFRM_POLICY_FWD, ipsec_conf.proposal.protocol_id, ipsec_conf.mode,
-                               ike_conf.peer_addr, ike_conf.my_addr)
+            cls._create_policy(src_selector, dst_selector, src_port, dst_port, ip_proto, XFRM_POLICY_OUT, ipsec_proto,
+                               ipsec_conf.mode, ike_conf.my_addr, ike_conf.peer_addr, index=index)
+            cls._create_policy(dst_selector, src_selector, dst_port, src_port, ip_proto, XFRM_POLICY_IN, ipsec_proto,
+                               ipsec_conf.mode, ike_conf.peer_addr, ike_conf.my_addr)
+            cls._create_policy(dst_selector, src_selector, dst_port, src_port, ip_proto, XFRM_POLICY_FWD, ipsec_proto,
+                               ipsec_conf.mode, ike_conf.peer_addr, ike_conf.my_addr)
 
     @classmethod
     def create_sa(cls, src, dst, src_sel, dst_sel, ipsec_protocol, spi, enc_algorith, sk_e,
@@ -408,7 +405,8 @@ class Xfrm(NetlinkProtocol):
     @classmethod
     def create_child_sa(cls, ike_sa, child_sa, keyring, is_initiator):
         encr_alg = (child_sa.proposal.get_transform(Transform.Type.ENCR).id
-                      if child_sa.proposal.protocol_id == Proposal.Protocol.ESP else None)
+                    if child_sa.proposal.protocol_id == Proposal.Protocol.ESP else None)
+        integ_alg = child_sa.proposal.get_transform(Transform.Type.INTEG).id
         lifetime = child_sa.lifetime + random.randint(0, 5) if child_sa.lifetime != -1 else -1
 
         # if we are responders, swap the keys for the purpose (since TS are swapped as well)
@@ -417,14 +415,17 @@ class Xfrm(NetlinkProtocol):
         else:
             sk_ei, sk_er, sk_ai, sk_ar = keyring.sk_er, keyring.sk_ei, keyring.sk_ar, keyring.sk_ai
 
-        cls._create_sa(child_sa.tsi.get_network(), child_sa.tsr.get_network(), child_sa.tsi.get_port(),
-                       child_sa.tsr.get_port(), child_sa.outbound_spi, child_sa.tsi.ip_proto,
-                       child_sa.proposal.protocol_id, child_sa.mode, ike_sa.my_addr, ike_sa.peer_addr,
-                       encr_alg, sk_ei, child_sa.proposal.get_transform(Transform.Type.INTEG).id, sk_ai, lifetime)
-        cls._create_sa(child_sa.tsr.get_network(), child_sa.tsi.get_network(), child_sa.tsr.get_port(),
-                       child_sa.tsi.get_port(), child_sa.inbound_spi, child_sa.tsr.ip_proto,
-                       child_sa.proposal.protocol_id, child_sa.mode, ike_sa.peer_addr, ike_sa.my_addr,
-                       encr_alg, sk_er, child_sa.proposal.get_transform(Transform.Type.INTEG).id, sk_ar, lifetime)
+        src_selector = child_sa.tsi.get_network()
+        dst_selector = child_sa.tsr.get_network()
+        src_port = child_sa.tsi.get_port()
+        dst_port = child_sa.tsr.get_port()
+        ip_proto = child_sa.tsi.ip_proto
+        ipsec_proto = child_sa.proposal.protocol_id
+
+        cls._create_sa(src_selector, dst_selector, src_port, dst_port, child_sa.outbound_spi, ip_proto, ipsec_proto,
+                       child_sa.mode, ike_sa.my_addr, ike_sa.peer_addr, encr_alg, sk_ei, integ_alg, sk_ai, lifetime)
+        cls._create_sa(dst_selector, src_selector, dst_port, src_port, child_sa.inbound_spi, ip_proto, ipsec_proto,
+                       child_sa.mode, ike_sa.peer_addr, ike_sa.my_addr, encr_alg, sk_er, integ_alg, sk_ar, lifetime)
 
     @classmethod
     def get_socket(cls):

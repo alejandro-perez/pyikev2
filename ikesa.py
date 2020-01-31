@@ -32,7 +32,7 @@ ChildSa.to_dict = lambda x: {'spis': str(x),
                              'protocol': Proposal.Protocol.safe_name(x.proposal.protocol_id),
                              'mode': xfrm.Mode.safe_name(x.mode),
                              'selectors': '[{}]:{} <-> [{}]:{}'.format(x.tsi.get_network(), x.tsi.get_port(),
-                                                                   x.tsr.get_network(), x.tsr.get_port())}
+                                                                       x.tsr.get_network(), x.tsr.get_port())}
 
 
 class IkeSaStateError(Exception):
@@ -194,13 +194,6 @@ class IkeSa(object):
                 return intersection
         raise NoProposalChosen('Could not find a suitable matching Proposal')
 
-    def _ipsec_conf_2_ts(self, ipsec_conf):
-        """ Generates traffic selectors based on an ipsec configuration
-        """
-        conf_tsi = TrafficSelector.from_network(ipsec_conf.my_subnet, ipsec_conf.my_port, ipsec_conf.ip_proto)
-        conf_tsr = TrafficSelector.from_network(ipsec_conf.peer_subnet, ipsec_conf.peer_port, ipsec_conf.ip_proto)
-        return conf_tsi, conf_tsr
-
     def _get_ipsec_configuration(self, payload_tsi, payload_tsr):
         """ Find matching IPsec configuration.
             It iterates over the received TS in reversed order and returns the
@@ -210,13 +203,12 @@ class IkeSa(object):
         for tsi in reversed(payload_tsi.traffic_selectors):
             for tsr in reversed(payload_tsr.traffic_selectors):
                 for ipsec_conf in self.configuration.protect:
-                    conf_tsi, conf_tsr = self._ipsec_conf_2_ts(ipsec_conf)
                     # look for a larger policy
-                    if tsi.is_subset(conf_tsi) and tsr.is_subset(conf_tsr):
-                        return ipsec_conf, tsi, tsr
+                    if tsi.is_subset(ipsec_conf.peer_ts) and tsr.is_subset(ipsec_conf.my_ts):
+                        return ipsec_conf, tsr, tsi
                     # look for a smaller policy
-                    elif conf_tsi.is_subset(tsi) and conf_tsr.is_subset(tsr):
-                        return ipsec_conf, conf_tsi, conf_tsr
+                    elif ipsec_conf.peer_ts.is_subset(tsi) and ipsec_conf.my_ts.is_subset(tsr):
+                        return ipsec_conf, ipsec_conf.my_ts, ipsec_conf.peer_ts
         raise TsUnacceptable('TS could not be matched with any IPsec configuration')
 
     def log_message(self, message, data, send=True):
@@ -391,9 +383,9 @@ class IkeSa(object):
 
         self.log_info("Received acquire from policy with index={}".format(index))
         # Create the ChildSa object with the values we know so far
-        conf_tsi, conf_tsr = self._ipsec_conf_2_ts(ipsec_conf)
-        child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, proposal=ipsec_conf.proposal, tsi=(tsi, conf_tsi),
-                           tsr=(tsr, conf_tsr), mode=ipsec_conf.mode, lifetime=ipsec_conf.lifetime)
+        child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, proposal=ipsec_conf.proposal,
+                           tsi=(tsi, ipsec_conf.my_ts), tsr=(tsr, ipsec_conf.peer_ts), mode=ipsec_conf.mode,
+                           lifetime=ipsec_conf.lifetime)
         if self.state == IkeSa.State.INITIAL:
             request = self.generate_ike_sa_init_request(child_sa)
         else:
@@ -800,8 +792,8 @@ class IkeSa(object):
             response_payloads.append(response_payload_nonce)
 
             # Find matching IPsec configuration and narrow TS (reverse order as we are responders)
-            ipsec_conf, chosen_tsr, chosen_tsi = self._get_ipsec_configuration(request_payload_tsr,
-                                                                               request_payload_tsi)
+            ipsec_conf, chosen_tsr, chosen_tsi = self._get_ipsec_configuration(request_payload_tsi,
+                                                                               request_payload_tsr)
 
             # check which mode peer wants and compare to ours
             mode = xfrm.Mode.TUNNEL

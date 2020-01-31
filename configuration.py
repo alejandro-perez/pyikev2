@@ -75,8 +75,7 @@ IkeConfiguration = namedtuple('IkeConfiguration',
 AuthConfiguration = namedtuple('AuthConfiguration', ['psk', 'id', 'privkey', 'pubkey'])
 
 IpsecConfiguration = namedtuple('IpsecConfiguration',
-                                ['my_subnet', 'index', 'peer_subnet', 'my_port', 'lifetime', 'peer_port', 'ip_proto',
-                                 'mode', 'proposal'])
+                                ['my_ts', 'index', 'peer_ts', 'lifetime', 'mode', 'proposal'])
 
 
 class Configuration(object):
@@ -98,7 +97,6 @@ class Configuration(object):
         integ = self._load_crypto_algs('integ', conf_dict.get('integ', ['sha256']), _integ_name_to_transform)
         prf = self._load_crypto_algs('prf', conf_dict.get('prf', ['sha256']), _prf_name_to_transform)
         dh = self._load_crypto_algs('dh', conf_dict.get('dh', ['14']), _dh_name_to_transform)
-        proposal = Proposal(1, Proposal.Protocol.IKE, b'', encr + integ + prf + dh)
         ikeconf = IkeConfiguration(
             name=name,
             my_addr=self._load_ip_address(conf_dict['my_addr']),
@@ -107,7 +105,7 @@ class Configuration(object):
             peer_auth=self._load_auth_conf(conf_dict['peer_auth']),
             lifetime=int(conf_dict.get('lifetime', 15 * 60)),
             dpd=int(conf_dict.get('dpd', 60)),
-            proposal=proposal,
+            proposal=Proposal(1, Proposal.Protocol.IKE, b'', encr + integ + prf + dh),
             protect=[]
         )
         if ikeconf.my_addr not in my_addresses:
@@ -161,18 +159,20 @@ class Configuration(object):
         dh = self._load_crypto_algs('dh', conf_dict.get('dh', []), _dh_name_to_transform)
         if ipsec_proto == Proposal.Protocol.AH:
             encr = []
-        proposal = Proposal(1, ipsec_proto, b'', encr + integ + dh + no_esn)
+
+        ip_proto = self._load_from_dict(conf_dict.get('ip_proto', 'any'), _ip_proto_name_to_enum)
+        my_subnet = self._load_ip_network(conf_dict.get('my_subnet', ikeconf.my_addr))
+        my_port = int(conf_dict.get('my_port', 0))
+        peer_subnet = self._load_ip_network(conf_dict.get('peer_subnet', ikeconf.peer_addr))
+        peer_port = int(conf_dict.get('peer_port', 0))
 
         return IpsecConfiguration(
-            my_subnet=self._load_ip_network(conf_dict.get('my_subnet', ikeconf.my_addr)),
             index=int(conf_dict.get('index', random.randint(0, 2 ** 20))),
-            peer_subnet=self._load_ip_network(conf_dict.get('peer_subnet', ikeconf.peer_addr)),
-            my_port=int(conf_dict.get('my_port', 0)),
+            my_ts=TrafficSelector.from_network(my_subnet, my_port, ip_proto),
+            peer_ts=TrafficSelector.from_network(peer_subnet, peer_port, ip_proto),
             lifetime=int(conf_dict.get('lifetime', 5 * 60)),
-            peer_port=int(conf_dict.get('peer_port', 0)),
-            ip_proto=self._load_from_dict(conf_dict.get('ip_proto', 'any'), _ip_proto_name_to_enum),
             mode=self._load_from_dict(conf_dict.get('mode', 'transport'), _mode_name_to_enum),
-            proposal=proposal,
+            proposal=Proposal(1, ipsec_proto, b'', encr + integ + dh + no_esn),
         )
 
     def get_ike_configuration(self, peer_addr):
