@@ -16,7 +16,7 @@ from struct import unpack
 
 import xfrm
 from crypto import Cipher, Crypto, DiffieHellman, Integrity, Prf
-from helpers import SafeIntEnum, hexstring
+from helpers import SafeIntEnum
 from message import (AuthenticationFailed, ChildSaNotFound, IkeSaError, InvalidKePayload,
                      NoProposalChosen, TemporaryFailure, TsUnacceptable, CookieRequired)
 from message import (Message, Payload, PayloadAUTH, PayloadDELETE, PayloadIDi, PayloadIDr, PayloadKE, PayloadNONCE,
@@ -27,7 +27,7 @@ __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
 Keyring = namedtuple('Keyring', ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er', 'sk_pi', 'sk_pr'])
 ChildSa = namedtuple('ChildSa', ['inbound_spi', 'outbound_spi', 'proposal', 'tsi', 'tsr', 'mode', 'lifetime'])
-ChildSa.__str__ = lambda x: '({}, {})'.format(hexstring(x.inbound_spi), hexstring(x.outbound_spi))
+ChildSa.__str__ = lambda x: '({}, {})'.format(x.inbound_spi.hex(), x.outbound_spi.hex())
 ChildSa.to_dict = lambda x: {'spis': str(x),
                              'protocol': Proposal.Protocol.safe_name(x.proposal.protocol_id),
                              'mode': xfrm.Mode.safe_name(x.mode),
@@ -100,14 +100,14 @@ class IkeSa(object):
         self.dh = None
 
     def __str__(self):
-        return hexstring(self.my_spi)
+        return self.my_spi.hex()
 
     def to_dict(self):
         result = OrderedDict({
             'my_addr': str(self.my_addr),
             'peer_addr': str(self.peer_addr),
-            'my_spi': hexstring(self.my_spi),
-            'peer_spi': hexstring(self.peer_spi),
+            'my_spi': self.my_spi.hex(),
+            'peer_spi': self.peer_spi.hex(),
             'is_initiator': self.is_initiator,
             'state': IkeSa.State.safe_name(self.state),
             'msg_id': self.my_msg_id,
@@ -143,7 +143,7 @@ class IkeSa(object):
         else:
             skeyseed = prf.prf(old_sk_d, shared_secret + nonce_i + nonce_r)
 
-        self.log_debug('Generated SKEYSEED: {}'.format(hexstring(skeyseed)))
+        self.log_debug(f'Generated SKEYSEED: {skeyseed.hex()}')
 
         keymat = prf.prfplus(skeyseed, nonce_i + nonce_r + spi_i + spi_r,
                              prf.key_size * 3 + integ.key_size * 2 + cipher.key_size * 2)
@@ -155,9 +155,9 @@ class IkeSa(object):
         self.my_crypto = crypto_i if self.is_initiator else crypto_r
         self.peer_crypto = crypto_r if self.is_initiator else crypto_i
 
-        for keyname in ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er', 'sk_pi', 'sk_pr']:
-            hexkey = hexstring(getattr(ike_sa_keyring, keyname))
-            self.log_debug('Generated {}: {}'.format(keyname, hexkey))
+        for keyname in ('sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er', 'sk_pi', 'sk_pr'):
+            hexkey = getattr(ike_sa_keyring, keyname).hex()
+            self.log_debug(f'Generated {keyname}: {hexkey}')
         return ike_sa_keyring
 
     def delete_child_sas(self):
@@ -178,10 +178,9 @@ class IkeSa(object):
         sk_ei, sk_ai, sk_er, sk_ar = unpack('>{0}s{1}s{0}s{1}s'.format(encr_key_size, integ_key_size), keymat)
         child_sa_keyring = Keyring(None, sk_ai, sk_ar, sk_ei, sk_er, None, None)
 
-        self.log_debug('Generated sk_ai: {}'.format(hexstring(sk_ai)))
-        self.log_debug('Generated sk_ar: {}'.format(hexstring(sk_ar)))
-        self.log_debug('Generated sk_ei: {}'.format(hexstring(sk_ei)))
-        self.log_debug('Generated sk_er: {}'.format(hexstring(sk_er)))
+        for keyname in ('sk_ai', 'sk_ar', 'sk_ei', 'sk_er'):
+            hexkey = getattr(child_sa_keyring, keyname).hex()
+            self.log_debug(f'Generated {keyname}: {hexkey}')
 
         return child_sa_keyring
 
@@ -360,7 +359,7 @@ class IkeSa(object):
         if (message.exchange_type != Message.Exchange.IKE_SA_INIT
                 and (message.spi_i, message.spi_r) != (self.spi_i, self.spi_r)):
             self.log_error('Received a message with wrong SPI values. Expected: {}. Ignoring'
-                           ''.format((hexstring(self.spi_i), hexstring(self.spi_r))))
+                           ''.format(self.spi_i.hex(), self.spi_r.hex()))
             return None
 
         # receiving any kind of message from the peer resets the DPD timer
@@ -403,10 +402,10 @@ class IkeSa(object):
 
         child_sa = self.get_child_sa(spi)
         if child_sa is None:
-            self.log_debug("Received expire for unknown CHILD_SA with spi {}".format(hexstring(spi)))
+            self.log_debug(f'Received expire for unknown CHILD_SA with spi {spi.hex()}')
             return None
 
-        self.log_info("Received expire for CHILD_SA {}. Hard={}".format(child_sa, hard))
+        self.log_info(f"Received expire for CHILD_SA {child_sa}. Hard={hard}")
         # if this is a soft expire, rekey the CHILD SA
         if not hard:
             # Create the ChildSa object with the values we know so far
@@ -478,7 +477,7 @@ class IkeSa(object):
             raise InvalidKePayload('Invalid DH group used. I want {}'.format(my_dh_group), group=my_dh_group)
         dh = DiffieHellman(payload_ke.dh_group)
         dh.compute_secret(payload_ke.ke_data)
-        self.log_debug('Generated DH shared secret: {}'.format(hexstring(dh.shared_secret)))
+        self.log_debug(f'Generated DH shared secret: {dh.shared_secret.hex()}')
         response_payload_ke = PayloadKE(dh.group, dh.public_key)
 
         # generate IKE SA key material
@@ -654,7 +653,7 @@ class IkeSa(object):
         self.peer_spi = response.spi_r if old_sk_d is None else self.chosen_proposal.spi
 
         self.dh.compute_secret(payload_ke.ke_data)
-        self.log_debug('Generated DH shared secret: {}'.format(hexstring(self.dh.shared_secret)))
+        self.log_debug(f'Generated DH shared secret: {self.dh.shared_secret.hex()}')
 
         # generate IKE SA key material
         self.ike_sa_keyring = self.generate_ike_sa_key_material(
@@ -719,11 +718,9 @@ class IkeSa(object):
         return PayloadAUTH(PayloadAUTH.Method.PSK, self.my_crypto.prf.prf(keypad, data_to_be_signed))
 
     def _generate_rsa_auth_payload(self, data_to_be_signed):
-        logging.debug("SIGNING: {}".format(hexstring(data_to_be_signed)))
         return PayloadAUTH(PayloadAUTH.Method.RSA, self.configuration.my_auth.privkey.sign(data_to_be_signed))
 
     def _verify_rsa_auth_payload(self, authdata, data_to_be_signed):
-        logging.debug("VERIFYING: {}".format(hexstring(data_to_be_signed)))
         if not self.configuration.peer_auth.pubkey:
             return False
         return self.configuration.peer_auth.pubkey.verify(authdata, data_to_be_signed)
@@ -818,7 +815,7 @@ class IkeSa(object):
                 dh = DiffieHellman(request_payload_ke.dh_group)
                 dh.compute_secret(request_payload_ke.ke_data)
                 keyseed = dh.shared_secret + keyseed
-                self.log_debug('Generated CHILD_SA DH shared secret: {}'.format(hexstring(dh.shared_secret)))
+                self.log_debug(f'Generated CHILD_SA DH shared secret: {dh.shared_secret.hex()}')
                 response_payloads.append(PayloadKE(dh.group, dh.public_key))
 
             # generate CHILD key material
@@ -969,7 +966,7 @@ class IkeSa(object):
             response_payload_ke = response.get_payload(Payload.Type.KE, True)
             self.dh.compute_secret(response_payload_ke.ke_data)
             keyseed = self.dh.shared_secret + keyseed
-            self.log_debug('Generated CHILD_SA DH shared secret: {}'.format(hexstring(self.dh.shared_secret)))
+            self.log_debug(f'Generated CHILD_SA DH shared secret: {self.dh.shared_secret.hex()}')
 
         child_sa_keyring = self.generate_child_sa_key_material(child_proposal=chosen_child_proposal,
                                                                keyseed=keyseed, sk_d=self.ike_sa_keyring.sk_d)
@@ -1093,7 +1090,7 @@ class IkeSa(object):
                         self.log_info('Removing CHILD_SA {}'.format(child_sa))
                     else:
                         self.log_warning('The indicated SPI could not be found when attempting to delete a '
-                                         'Child SA: {}'.format(hexstring(del_spi)))
+                                         f'Child SA: {del_spi.hex()}')
 
         return self.generate_response(Message.Exchange.INFORMATIONAL, response_payloads)
 

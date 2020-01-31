@@ -6,7 +6,6 @@
 import unittest
 
 from crypto import Prf, Cipher, DiffieHellman, Integrity, RsaPrivateKey, RsaPublicKey
-from helpers import hexstring
 from message import Transform
 
 __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
@@ -53,7 +52,8 @@ class TestCrypto(unittest.TestCase):
     def test_integrity(self):
         integrity = Integrity(Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA2_512_256))
         checksum = integrity.compute(b'supersecret', b'This is a long message')
-        self.assertEqual(checksum, b'\x0e\xb2\x8a\xa0N\x14\x0b$\x9a\x8c/\x9d<\x83\xd2\xf8\x94\x12\x1a\xbc\xd4b~\xd5\xd0\xa5\x02-\x0f\x8fcC')
+        self.assertEqual(checksum,
+                         b'\x0e\xb2\x8a\xa0N\x14\x0b$\x9a\x8c/\x9d<\x83\xd2\xf8\x94\x12\x1a\xbc\xd4b~\xd5\xd0\xa5\x02-\x0f\x8fcC')
 
 
 class TestRsa(unittest.TestCase):

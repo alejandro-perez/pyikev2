@@ -3,6 +3,7 @@ Python implementation of the IKEv2 protocol. It provides:
 
 * Complete IKEv2 message parsing and generation.
 * Support of PSK and RSA (raw keys) authentication
+* Support for IPv4 and IPv6
 * Support for creating CHILD_SAs using the Linux XFRM interface
 * Logging of all the message exchanges for easy inspection.
 * Single-thread model, with no locks for easier understanding.

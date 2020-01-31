@@ -8,14 +8,12 @@ import logging
 import random
 import socket
 from ctypes import (c_ubyte, c_uint16, c_uint32, c_uint64, BigEndianStructure)
-from ipaddress import ip_address, ip_network
-from random import SystemRandom
+from ipaddress import ip_address
 from struct import unpack_from
 
-from helpers import SafeIntEnum, hexstring
+from helpers import SafeIntEnum
 from message import Proposal, Transform
-from netlink import (NetlinkStructure, NetlinkProtocol, NLM_F_REQUEST, NLM_F_ACK, NLM_F_DUMP,
-                     NetlinkError)
+from netlink import (NetlinkStructure, NetlinkProtocol, NLM_F_REQUEST, NLM_F_ACK, NetlinkError)
 
 __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
@@ -369,7 +367,7 @@ class Xfrm(NetlinkProtocol):
         try:
             cls.send_recv(XFRM_MSG_DELSA, (NLM_F_REQUEST | NLM_F_ACK), xfrm_id)
         except NetlinkError as ex:
-            logging.warning('Could not delete IPsec SA with SPI: {}. {}'.format(hexstring(spi), ex))
+            logging.warning(f'Could not delete IPsec SA with SPI: {spi.hex()}. {ex}')
 
     @classmethod
     def delete_child_sa(cls, ike_sa, child_sa):

@@ -9,10 +9,6 @@ from enum import Enum
 __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
 
-def hexstring(data):
-    return codecs.encode(data, 'hex').decode()
-
-
 class SafeEnum(Enum):
     @classmethod
     def safe_name(cls, value):

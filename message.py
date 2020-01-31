@@ -5,13 +5,12 @@
 """
 import logging
 import os
-
 from collections import OrderedDict
 from ipaddress import ip_address, ip_network
 from random import SystemRandom
 from struct import error as struct_error, pack, pack_into, unpack_from
 
-from helpers import SafeIntEnum, hexstring
+from helpers import SafeIntEnum
 
 __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
@@ -126,7 +125,7 @@ class PayloadKE(Payload):
         result = super(PayloadKE, self).to_dict()
         result.update(OrderedDict([
             ('dh_group', self.dh_group),
-            ('ke_data', hexstring(self.ke_data))]))
+            ('ke_data', self.ke_data.hex())]))
         return result
 
 
@@ -301,7 +300,7 @@ class Proposal:
         return OrderedDict([
             ('num', self.num),
             ('protocol_id', Proposal.Protocol.safe_name(self.protocol_id)),
-            ('spi', hexstring(self.spi)),
+            ('spi', self.spi.hex()),
             ('transforms', [x.to_dict() for x in self.transforms]),
         ])
 
@@ -421,7 +420,7 @@ class PayloadNONCE(Payload):
 
     def to_dict(self):
         result = super(PayloadNONCE, self).to_dict()
-        result.update(OrderedDict([('nonce', hexstring(self.nonce))]))
+        result.update(OrderedDict([('nonce', self.nonce.hex())]))
         return result
 
 
@@ -516,9 +515,9 @@ class PayloadNOTIFY(Payload):
         result = super(PayloadNOTIFY, self).to_dict()
         result.update(OrderedDict([
             ('protocol_id', Proposal.Protocol.safe_name(self.protocol_id)),
-            ('spi', hexstring(self.spi)),
+            ('spi', self.spi.hex()),
             ('notification_type', PayloadNOTIFY.Type.safe_name(self.notification_type)),
-            ('notification_data', hexstring(self.notification_data))]))
+            ('notification_data', self.notification_data.hex())]))
         return result
 
     def is_error(self):
@@ -566,7 +565,7 @@ class PayloadID(Payload):
         elif self.id_type in (PayloadID.Type.ID_IPV4_ADDR, PayloadID.Type.ID_IPV6_ADDR):
             return str(ip_address(self.id_data.decode())),
         else:
-            return hexstring(self.id_data)
+            return self.id_data.hex()
 
     def to_dict(self):
         result = super(PayloadID, self).to_dict()
@@ -615,7 +614,7 @@ class PayloadAUTH(Payload):
         result = super(PayloadAUTH, self).to_dict()
         result.update(OrderedDict([
             ('method', PayloadAUTH.Method.safe_name(self.method)),
-            ('auth_data', hexstring(self.auth_data)), ]))
+            ('auth_data', self.auth_data.hex()), ]))
         return result
 
     def __eq__(self, other):
@@ -782,7 +781,7 @@ class PayloadSK(Payload):
 
     def to_dict(self):
         result = super(PayloadSK, self).to_dict()
-        result.update(OrderedDict([('ciphertext', hexstring(self.ciphertext))]))
+        result.update(OrderedDict([('ciphertext', self.ciphertext.hex())]))
         return result
 
 
@@ -817,7 +816,7 @@ class PayloadDELETE(Payload):
         result = super(PayloadDELETE, self).to_dict()
         result.update(OrderedDict([
             ('protocol_id', Proposal.Protocol.safe_name(self.protocol_id)),
-            ('spis', [hexstring(x) for x in self.spis])]))
+            ('spis', [x.hex() for x in self.spis])]))
         return result
 
 
@@ -1000,8 +999,8 @@ class Message:
 
     def to_dict(self):
         return OrderedDict([
-            ('spi_i', hexstring(self.spi_i)),
-            ('spi_r', hexstring(self.spi_r)),
+            ('spi_i', self.spi_i.hex()),
+            ('spi_r', self.spi_r.hex()),
             ('major', self.major),
             ('minor', self.minor),
             ('exchange_type', Message.Exchange.safe_name(self.exchange_type)),

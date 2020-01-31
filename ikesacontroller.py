@@ -11,8 +11,6 @@ from ipaddress import ip_address, ip_network
 from select import select
 
 import xfrm
-from configuration import Configuration, ConfigurationError
-from helpers import hexstring
 from ikesa import IkeSa
 from message import (Message, TrafficSelector)
 
@@ -56,8 +54,7 @@ class IkeSaController:
             self.ike_sas.append(ike_sa)
             if sum(1 for x in self.ike_sas if x.state < IkeSa.State.ESTABLISHED) > self.cookie_threshold:
                 ike_sa.cookie_secret = self.cookie_secret
-            logging.info('Starting the creation of IKE SA with SPI={}. Count={}'.format(hexstring(ike_sa.my_spi),
-                                                                                        len(self.ike_sas)))
+            logging.info(f'Starting the creation of IKE SA={ike_sa}. Count={len(self.ike_sas)}')
 
         # else, look for the IkeSa in the dict
         else:
@@ -65,7 +62,7 @@ class IkeSaController:
             try:
                 ike_sa = self._get_ike_sa_by_spi(my_spi)
             except StopIteration:
-                logging.warning('Received message for unknown SPI={}. Omitting.'.format(hexstring(my_spi)))
+                logging.warning(f'Received message for unknown SPI={my_spi.hex()}. Omitting.')
                 return None
 
         # generate the reply (if any)
@@ -74,14 +71,13 @@ class IkeSaController:
         # if rekeyed, add the new IkeSa
         if ike_sa.state in (IkeSa.State.REKEYED, IkeSa.State.DEL_AFTER_REKEY_IKE_SA_REQ_SENT):
             self.ike_sas.append(ike_sa.new_ike_sa)
-            logging.info('IKE SA with SPI={} created by rekey. Count={}'.format(hexstring(ike_sa.new_ike_sa.my_spi),
-                                                                                len(self.ike_sas)))
+            logging.info(f'IKE SA={ike_sa.new_ike_sa} created by rekey. Count={len(self.ike_sas)}')
 
         # if the IKE_SA needs to be closed
         if ike_sa.state == IkeSa.State.DELETED:
             ike_sa.delete_child_sas()
             self.ike_sas.remove(ike_sa)
-            logging.info('Deleted IKE_SA with SPI={}. Count={}'.format(hexstring(ike_sa.my_spi), len(self.ike_sas)))
+            logging.info(f'Deleted IKE_SA={ike_sa}. Count={len(self.ike_sas)}')
 
         return reply
 
@@ -100,8 +96,7 @@ class IkeSaController:
             ike_sa = IkeSa(is_initiator=True, peer_spi=b'\0'*8, configuration=ike_conf, my_addr=my_addr,
                            peer_addr=peer_addr)
             self.ike_sas.append(ike_sa)
-            logging.info('Starting the creation of IKE SA with SPI={}. Count={}'
-                         ''.format(hexstring(ike_sa.my_spi), len(self.ike_sas)))
+            logging.info(f'Starting the creation of IKE SA={ike_sa}. Count={len(self.ike_sas)}')
         sel_family = xfrm_acquire.sel.family
         small_tsi = TrafficSelector.from_network(ip_network(xfrm_acquire.sel.saddr.to_ipaddr(sel_family)),
                                                  xfrm_acquire.sel.sport, xfrm_acquire.sel.proto)
@@ -115,7 +110,7 @@ class IkeSaController:
     def process_expire(self, xfrm_expire):
         spi = bytes(xfrm_expire.state.id.spi)
         hard = xfrm_expire.hard
-        logging.debug('Received EXPIRE for spi {}. Hard={}'.format(hexstring(spi), hard))
+        logging.debug(f'Received EXPIRE for CHILD_SA SPI={spi.hex()}. Hard={hard}')
         ike_sa = self._get_ike_sa_by_child_sa_spi(spi)
         if ike_sa:
             request = ike_sa.process_expire(spi, hard)
