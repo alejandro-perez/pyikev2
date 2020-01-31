@@ -171,7 +171,7 @@ class Configuration(object):
             my_ts=TrafficSelector.from_network(my_subnet, my_port, ip_proto),
             peer_ts=TrafficSelector.from_network(peer_subnet, peer_port, ip_proto),
             lifetime=int(conf_dict.get('lifetime', 5 * 60)),
-            mode=self._load_from_dict(conf_dict.get('mode', 'transport'), _mode_name_to_enum),
+            mode=self._load_from_dict(conf_dict.get('mode', 'tunnel'), _mode_name_to_enum),
             proposal=Proposal(1, ipsec_proto, b'', encr + integ + dh + no_esn),
         )
 
