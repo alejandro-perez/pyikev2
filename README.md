@@ -28,7 +28,7 @@ Finally, in a different terminal, execute in "alice":
 telnet bob
 ```
 You should see something similar to the following (on "alice"):
-```bash
+```text
 [2020-01-31 15:51:41.122] [INFO   ] Listening from [172.50.1.2]:500
 [2020-01-31 15:51:41.122] [INFO   ] Listening from [172.100.1.2]:500
 [2020-01-31 15:51:41.122] [INFO   ] Listening control events on [127.0.0.1]:9999
@@ -43,8 +43,7 @@ You should see something similar to the following (on "alice"):
 ```
 
 If you want to see more detailed output, run it with the `-v` parameter. You should see something such as:
-```bash
-root@26c60f70748e:/code# python3 pyikev2.py -c alice.yaml -v
+```text
 [2020-01-31 15:53:30.075] [INFO   ] Listening from [172.50.1.2]:500
 [2020-01-31 15:53:30.075] [INFO   ] Listening from [2001::2]:500
 [2020-01-31 15:53:30.075] [INFO   ] Listening from [172.100.1.2]:500
