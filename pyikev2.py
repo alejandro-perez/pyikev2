@@ -15,7 +15,7 @@ from configuration import Configuration, ConfigurationError
 from ikesacontroller import IkeSaController
 
 __author__ = 'Alejandro Perez <alejandro.perez.mendez@gmail.com>'
-__version__ = "0.2"
+__version__ = "0.3"
 
 # parses the arguments
 parser = argparse.ArgumentParser(description='Opensource IKEv2 daemon written in Python.',
