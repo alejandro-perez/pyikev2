@@ -76,7 +76,7 @@ AuthConfiguration = namedtuple('AuthConfiguration', ['psk', 'id', 'privkey', 'pu
 
 IpsecConfiguration = namedtuple('IpsecConfiguration',
                                 ['my_subnet', 'index', 'peer_subnet', 'my_port', 'lifetime', 'peer_port', 'ip_proto',
-                                 'mode', 'ipsec_proto', 'encr', 'integ', 'dh'])
+                                 'mode', 'proposal'])
 
 
 class Configuration(object):
@@ -154,6 +154,14 @@ class Configuration(object):
         )
 
     def _load_ipsec_conf(self, ikeconf, conf_dict):
+        no_esn = [Transform(Transform.Type.ESN, Transform.EsnId.NO_ESN)]
+        ipsec_proto = self._load_from_dict(conf_dict.get('ipsec_proto', 'esp'), _ipsec_proto_name_to_enum)
+        encr = self._load_crypto_algs('encr', conf_dict.get('encr', ['aes256']), _encr_name_to_transform)
+        integ = self._load_crypto_algs('integ', conf_dict.get('integ', ['sha256']), _integ_name_to_transform)
+        dh = self._load_crypto_algs('dh', conf_dict.get('dh', []), _dh_name_to_transform)
+        if ipsec_proto == Proposal.Protocol.AH:
+            encr = []
+        proposal = Proposal(1, ipsec_proto, b'', encr + integ + dh + no_esn)
 
         return IpsecConfiguration(
             my_subnet=self._load_ip_network(conf_dict.get('my_subnet', ikeconf.my_addr)),
@@ -164,10 +172,7 @@ class Configuration(object):
             peer_port=int(conf_dict.get('peer_port', 0)),
             ip_proto=self._load_from_dict(conf_dict.get('ip_proto', 'any'), _ip_proto_name_to_enum),
             mode=self._load_from_dict(conf_dict.get('mode', 'transport'), _mode_name_to_enum),
-            ipsec_proto=self._load_from_dict(conf_dict.get('ipsec_proto', 'esp'), _ipsec_proto_name_to_enum),
-            encr=self._load_crypto_algs('encr', conf_dict.get('encr', ['aes256']), _encr_name_to_transform),
-            integ=self._load_crypto_algs('integ', conf_dict.get('integ', ['sha256']), _integ_name_to_transform),
-            dh=self._load_crypto_algs('dh', conf_dict.get('dh', []), _dh_name_to_transform),
+            proposal=proposal,
         )
 
     def get_ike_configuration(self, peer_addr):

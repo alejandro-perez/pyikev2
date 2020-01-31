@@ -389,13 +389,13 @@ class Xfrm(NetlinkProtocol):
             # generate an index for outbound policies
             index = ipsec_conf.index << 3 | XFRM_POLICY_OUT
             cls._create_policy(src_selector, dst_selector, ipsec_conf.my_port, ipsec_conf.peer_port,
-                               ipsec_conf.ip_proto, XFRM_POLICY_OUT, ipsec_conf.ipsec_proto, ipsec_conf.mode,
+                               ipsec_conf.ip_proto, XFRM_POLICY_OUT, ipsec_conf.proposal.protocol_id, ipsec_conf.mode,
                                ike_conf.my_addr, ike_conf.peer_addr, index=index)
             cls._create_policy(dst_selector, src_selector, ipsec_conf.peer_port, ipsec_conf.my_port,
-                               ipsec_conf.ip_proto, XFRM_POLICY_IN, ipsec_conf.ipsec_proto, ipsec_conf.mode,
+                               ipsec_conf.ip_proto, XFRM_POLICY_IN, ipsec_conf.proposal.protocol_id, ipsec_conf.mode,
                                ike_conf.peer_addr, ike_conf.my_addr)
             cls._create_policy(dst_selector, src_selector, ipsec_conf.peer_port, ipsec_conf.my_port,
-                               ipsec_conf.ip_proto, XFRM_POLICY_FWD, ipsec_conf.ipsec_proto, ipsec_conf.mode,
+                               ipsec_conf.ip_proto, XFRM_POLICY_FWD, ipsec_conf.proposal.protocol_id, ipsec_conf.mode,
                                ike_conf.peer_addr, ike_conf.my_addr)
 
     @classmethod

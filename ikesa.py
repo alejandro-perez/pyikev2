@@ -194,17 +194,6 @@ class IkeSa(object):
                 return intersection
         raise NoProposalChosen('Could not find a suitable matching Proposal')
 
-    def _ipsec_conf_2_proposal(self, ipsec_conf):
-        no_esn = [Transform(Transform.Type.ESN, Transform.EsnId.NO_ESN)]
-        transforms = ipsec_conf.integ + ipsec_conf.dh + no_esn
-        if ipsec_conf.ipsec_proto == Proposal.Protocol.ESP:
-            transforms += ipsec_conf.encr
-        return Proposal(1, ipsec_conf.ipsec_proto, b'', transforms)
-
-    def _select_best_child_sa_proposal(self, peer_payload_sa, ipsec_conf):
-        my_proposal = self._ipsec_conf_2_proposal(ipsec_conf)
-        return self._select_best_sa_proposal(my_proposal, peer_payload_sa)
-
     def _ipsec_conf_2_ts(self, ipsec_conf):
         """ Generates traffic selectors based on an ipsec configuration
         """
@@ -403,8 +392,7 @@ class IkeSa(object):
         self.log_info("Received acquire from policy with index={}".format(index))
         # Create the ChildSa object with the values we know so far
         conf_tsi, conf_tsr = self._ipsec_conf_2_ts(ipsec_conf)
-        proposal = self._ipsec_conf_2_proposal(ipsec_conf)
-        child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, proposal=proposal, tsi=(tsi, conf_tsi),
+        child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, proposal=ipsec_conf.proposal, tsi=(tsi, conf_tsi),
                            tsr=(tsr, conf_tsr), mode=ipsec_conf.mode, lifetime=ipsec_conf.lifetime)
         if self.state == IkeSa.State.INITIAL:
             request = self.generate_ike_sa_init_request(child_sa)
@@ -826,7 +814,7 @@ class IkeSa(object):
                 raise TsUnacceptable('Invalid mode requested')
 
             # generate the response payload SA with the chosen proposal
-            chosen_child_proposal = self._select_best_child_sa_proposal(request_payload_sa, ipsec_conf)
+            chosen_child_proposal = self._select_best_sa_proposal(ipsec_conf.proposal, request_payload_sa)
 
             keyseed = request_payload_nonce.nonce + response_payload_nonce.nonce
             # if KE exchange is required
