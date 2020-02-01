@@ -8,10 +8,10 @@ import logging
 import random
 import socket
 from ctypes import (c_ubyte, c_uint16, c_uint32, c_uint64, BigEndianStructure)
+from enum import Enum
 from ipaddress import ip_address
 from struct import unpack_from
 
-from helpers import SafeIntEnum
 from message import Proposal, Transform
 from netlink import (NetlinkStructure, NetlinkProtocol, NLM_F_REQUEST, NLM_F_ACK, NetlinkError)
 
@@ -91,7 +91,7 @@ def create_byte_array(data, size=None):
     return (c_ubyte * size)(*data)
 
 
-class Mode(SafeIntEnum):
+class Mode(int, Enum):
     TRANSPORT = XFRM_MODE_TRANSPORT
     TUNNEL = XFRM_MODE_TUNNEL
 

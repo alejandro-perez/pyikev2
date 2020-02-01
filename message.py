@@ -6,11 +6,10 @@
 import logging
 import os
 from collections import OrderedDict
+from enum import Enum
 from ipaddress import ip_address, ip_network
 from random import SystemRandom
 from struct import error as struct_error, pack, pack_into, unpack_from
-
-from helpers import SafeIntEnum
 
 __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
@@ -66,6 +65,15 @@ class ChildSaNotFound(IkeSaError):
         self.protocol = protocol
 
 
+class SafeIntEnum(int, Enum):
+    @classmethod
+    def _missing_(cls, value):
+        obj = int.__new__(cls, value)
+        obj._name_ = f'{cls.__name__}_{value}'
+        obj._value_ = value
+        return obj
+
+
 class Payload:
     class Type(SafeIntEnum):
         NONE = 0
@@ -93,11 +101,11 @@ class Payload:
 
     def to_dict(self):
         return OrderedDict([
-            ('type', Payload.Type.safe_name(self.type)),
+            ('type', self.type.name),
             ('critical', self.critical)])
 
     def __str__(self):
-        return Payload.Type.safe_name(self.type)
+        return self.type.name
 
 
 class PayloadKE(Payload):
@@ -192,8 +200,8 @@ class Transform:
     }
 
     def __init__(self, type, id, keylen=None):
-        self.type = type
-        self.id = id
+        self.type = self.Type(type)
+        self.id = self._transform_id_enums.get(type, self.EncrId)(id)
         self.keylen = keylen
 
     @classmethod
@@ -222,9 +230,8 @@ class Transform:
         return data
 
     def to_dict(self):
-        id_name = Transform._transform_id_enums[self.type].safe_name(self.id)
-        result = OrderedDict([('type', Transform.Type.safe_name(self.type)),
-                              ('id', id_name)])
+        result = OrderedDict([('type', self.type.name),
+                              ('id', self.id.name)])
         if self.keylen:
             result['keylen'] = self.keylen
         return result
@@ -245,7 +252,7 @@ class Proposal:
 
     def __init__(self, num, protocol_id, spi, transforms):
         self.num = num
-        self.protocol_id = protocol_id
+        self.protocol_id = self.Protocol(protocol_id)
         self.spi = spi
         self.transforms = transforms
         if len(self.transforms) == 0:
@@ -299,7 +306,7 @@ class Proposal:
     def to_dict(self):
         return OrderedDict([
             ('num', self.num),
-            ('protocol_id', Proposal.Protocol.safe_name(self.protocol_id)),
+            ('protocol_id', self.protocol_id.name),
             ('spi', self.spi.hex()),
             ('transforms', [x.to_dict() for x in self.transforms]),
         ])
@@ -460,8 +467,8 @@ class PayloadNOTIFY(Payload):
 
     def __init__(self, protocol_id, notification_type, spi, notification_data, critical=False):
         super(PayloadNOTIFY, self).__init__(critical)
-        self.protocol_id = protocol_id
-        self.notification_type = notification_type
+        self.protocol_id = Proposal.Protocol(protocol_id)
+        self.notification_type = self.Type(notification_type)
         self.spi = spi
         self.notification_data = notification_data
 
@@ -494,7 +501,7 @@ class PayloadNOTIFY(Payload):
     @classmethod
     def parse(cls, data, critical=False):
         try:
-            (protocol_id, spi_size, notification_type) = unpack_from('>BBH', data)
+            protocol_id, spi_size, notification_type = unpack_from('>BBH', data)
         except struct_error:
             raise InvalidSyntax('Error parsing Payload Notify.')
         if spi_size > 0:
@@ -514,9 +521,9 @@ class PayloadNOTIFY(Payload):
     def to_dict(self):
         result = super(PayloadNOTIFY, self).to_dict()
         result.update(OrderedDict([
-            ('protocol_id', Proposal.Protocol.safe_name(self.protocol_id)),
+            ('protocol_id', self.protocol_id.name),
             ('spi', self.spi.hex()),
-            ('notification_type', PayloadNOTIFY.Type.safe_name(self.notification_type)),
+            ('notification_type', self.notification_type.name),
             ('notification_data', self.notification_data.hex())]))
         return result
 
@@ -524,11 +531,11 @@ class PayloadNOTIFY(Payload):
         return self.notification_type < 16384
 
     def __str__(self):
-        return 'N({})'.format(PayloadNOTIFY.Type.safe_name(self.notification_type))
+        return f'N({self.notification_type.name})'
 
 
 class PayloadID(Payload):
-    type = None
+    type = Payload.Type.NONE
 
     class Type(SafeIntEnum):
         ID_IPV4_ADDR = 1
@@ -541,7 +548,7 @@ class PayloadID(Payload):
 
     def __init__(self, id_type, id_data, critical=False):
         super(PayloadID, self).__init__(critical)
-        self.id_type = id_type
+        self.id_type = self.Type(id_type)
         self.id_data = id_data
 
     @classmethod
@@ -570,8 +577,8 @@ class PayloadID(Payload):
     def to_dict(self):
         result = super(PayloadID, self).to_dict()
         result.update(OrderedDict([
-            ('id_type', PayloadID.Type.safe_name(self.id_type)),
-            ('id_data', self._id_data_str()), ]))
+            ('id_type', self.id_type.name),
+            ('id_data', self._id_data_str())]))
         return result
 
 
@@ -593,7 +600,7 @@ class PayloadAUTH(Payload):
 
     def __init__(self, method, auth_data, critical=False):
         super(PayloadAUTH, self).__init__(critical)
-        self.method = method
+        self.method = self.Method(method)
         self.auth_data = auth_data
 
     @classmethod
@@ -613,7 +620,7 @@ class PayloadAUTH(Payload):
     def to_dict(self):
         result = super(PayloadAUTH, self).to_dict()
         result.update(OrderedDict([
-            ('method', PayloadAUTH.Method.safe_name(self.method)),
+            ('method', self.method.name),
             ('auth_data', self.auth_data.hex()), ]))
         return result
 
@@ -635,8 +642,8 @@ class TrafficSelector(object):
         MH = 135
 
     def __init__(self, ts_type, ip_proto, start_port, end_port, start_addr, end_addr):
-        self.ts_type = ts_type
-        self.ip_proto = ip_proto
+        self.ts_type = self.Type(ts_type)
+        self.ip_proto = self.IpProtocol(ip_proto)
         self.start_port = start_port
         self.end_port = end_port
         self.start_addr = start_addr
@@ -678,8 +685,8 @@ class TrafficSelector(object):
 
     def to_dict(self):
         return OrderedDict([
-            ('ts_type', TrafficSelector.Type.safe_name(self.ts_type)),
-            ('ip_proto', TrafficSelector.IpProtocol.safe_name(self.ip_proto)),
+            ('ts_type', self.ts_type.name),
+            ('ip_proto', self.ip_proto.name),
             ('port-range', '{} - {}'.format(self.start_port, self.end_port)),
             ('addr-range', '{} - {}'.format(self.start_addr, self.end_addr))])
 
@@ -702,7 +709,7 @@ class TrafficSelector(object):
 
 
 class PayloadTS(Payload):
-    type = None
+    type = Payload.Type.NONE
 
     def __init__(self, traffic_selectors, critical=False):
         super(PayloadTS, self).__init__(critical)
@@ -790,7 +797,7 @@ class PayloadDELETE(Payload):
 
     def __init__(self, protocol_id, spis, critical=False):
         super(PayloadDELETE, self).__init__(critical)
-        self.protocol_id = protocol_id
+        self.protocol_id = Proposal.Protocol(protocol_id)
         self.spis = spis
 
     @classmethod
@@ -815,7 +822,7 @@ class PayloadDELETE(Payload):
     def to_dict(self):
         result = super(PayloadDELETE, self).to_dict()
         result.update(OrderedDict([
-            ('protocol_id', Proposal.Protocol.safe_name(self.protocol_id)),
+            ('protocol_id', self.protocol_id.name),
             ('spis', [x.hex() for x in self.spis])]))
         return result
 
@@ -848,7 +855,7 @@ class Message:
         self.spi_r = spi_r
         self.major = major
         self.minor = minor
-        self.exchange_type = exchange_type
+        self.exchange_type = self.Exchange(exchange_type)
         self.is_response = is_response
         self.can_use_higher_version = can_use_higher_version
         self.is_initiator = is_initiator
@@ -869,7 +876,7 @@ class Message:
         while payload_type != Payload.Type.NONE:
             # Read payload common header
             try:
-                (next_payload_type, critical, length) = unpack_from('>BBH', data, offset)
+                next_payload_type, critical, length = unpack_from('>BBH', data, offset)
             except struct_error as ex:
                 raise InvalidSyntax(ex)
             critical = bool(critical >> 7)
@@ -886,7 +893,7 @@ class Message:
                 # offset is increased in any case
                 payloads.append(payload)
             except KeyError:
-                logging.warning('Unrecognized payload with type {}'.format(Payload.Type.safe_name(payload_type)))
+                logging.warning(f'Unrecognized payload with type {payload_type.name}')
                 if critical:
                     raise UnsupportedCriticalPayload
 
@@ -924,7 +931,7 @@ class Message:
 
         if not header_only:
             # parse unencrypted payloads
-            message.payloads = cls._parse_payloads(data[28:], header[2])
+            message.payloads = cls._parse_payloads(data[28:], Payload.Type(header[2]))
 
             # if there is a Payload SK
             if (message.payloads and message.payloads[-1].type == Payload.Type.SK
@@ -1003,7 +1010,7 @@ class Message:
             ('spi_r', self.spi_r.hex()),
             ('major', self.major),
             ('minor', self.minor),
-            ('exchange_type', Message.Exchange.safe_name(self.exchange_type)),
+            ('exchange_type', self.exchange_type.name),
             ('is_request', self.is_request),
             ('is_response', self.is_response),
             ('can_use_higher_version', self.can_use_higher_version),
@@ -1033,5 +1040,4 @@ class Message:
         try:
             return self.get_payloads(payload_type, encrypted)[0]
         except IndexError:
-            raise PayloadNotFound('Required payload {} was not found in message'
-                                  ''.format(Payload.Type.safe_name(payload_type)))
+            raise PayloadNotFound(f'Required payload {payload_type.name} was not found in message')

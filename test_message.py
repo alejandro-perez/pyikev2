@@ -320,18 +320,11 @@ class TestPayloadDELETE(TestPayloadMixin, unittest.TestCase):
 class TestMessage(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
         super(TestMessage, self).setUp()
-        transform1 = Transform(Transform.Type.INTEG,
-                               Transform.IntegId.AUTH_HMAC_SHA1_96)
+        transform1 = Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96)
         transform2 = Transform(Transform.Type.PRF, Transform.PrfId.PRF_HMAC_SHA1)
-        transform3 = Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC,
-                               256)
-        proposal1 = Proposal(
-            20, Proposal.Protocol.IKE, b'aspiwhatever',
-            [transform1, transform2, transform3]
-        )
-        proposal2 = Proposal(
-            20, Proposal.Protocol.IKE, b'anotherone', [transform3]
-        )
+        transform3 = Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC, 256)
+        proposal1 = Proposal( 20, Proposal.Protocol.IKE, b'aspiwhatever',[transform1, transform2, transform3])
+        proposal2 = Proposal(20, Proposal.Protocol.IKE, b'anotherone', [transform3])
         payload_sa = PayloadSA([proposal1, proposal2])
         payload_nonce = PayloadNONCE()
         payload_ke = PayloadKE(5, b'1234567890' * 10)

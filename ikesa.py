@@ -11,17 +11,16 @@ import random
 import time
 import traceback
 from collections import namedtuple, OrderedDict
+from enum import IntEnum
 from hmac import HMAC
 from struct import unpack
 
 import xfrm
 from crypto import Cipher, Crypto, DiffieHellman, Integrity, Prf
-from helpers import SafeIntEnum
 from message import (AuthenticationFailed, ChildSaNotFound, IkeSaError, InvalidKePayload,
                      NoProposalChosen, TemporaryFailure, TsUnacceptable, CookieRequired)
 from message import (Message, Payload, PayloadAUTH, PayloadDELETE, PayloadIDi, PayloadIDr, PayloadKE, PayloadNONCE,
-                     PayloadNOTIFY, PayloadSA, PayloadTSi, PayloadTSr, PayloadVENDOR, Proposal, TrafficSelector,
-                     Transform)
+                     PayloadNOTIFY, PayloadSA, PayloadTSi, PayloadTSr, PayloadVENDOR, Proposal, Transform)
 
 __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
@@ -29,8 +28,8 @@ Keyring = namedtuple('Keyring', ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er', 'sk
 ChildSa = namedtuple('ChildSa', ['inbound_spi', 'outbound_spi', 'proposal', 'tsi', 'tsr', 'mode', 'lifetime'])
 ChildSa.__str__ = lambda x: '({}, {})'.format(x.inbound_spi.hex(), x.outbound_spi.hex())
 ChildSa.to_dict = lambda x: {'spis': str(x),
-                             'protocol': Proposal.Protocol.safe_name(x.proposal.protocol_id),
-                             'mode': xfrm.Mode.safe_name(x.mode),
+                             'protocol': x.proposal.protocol_id,
+                             'mode': x.mode.name,
                              'selectors': '[{}]:{} <-> [{}]:{}'.format(x.tsi.get_network(), x.tsi.get_port(),
                                                                        x.tsr.get_network(), x.tsr.get_port())}
 
@@ -46,7 +45,7 @@ class IkeSa(object):
     MAX_RETRANSMISSIONS = 4
     RETRANSMISSION_DELAY = 2
 
-    class State(SafeIntEnum):
+    class State(IntEnum):
         # Non-established states
         INITIAL = 0
         INIT_RES_SENT = 1
@@ -109,7 +108,7 @@ class IkeSa(object):
             'my_spi': self.my_spi.hex(),
             'peer_spi': self.peer_spi.hex(),
             'is_initiator': self.is_initiator,
-            'state': IkeSa.State.safe_name(self.state),
+            'state': self.state.name,
             'msg_id': self.my_msg_id,
             'rekey_in': int(self.rekey_ike_sa_at - time.time()),
             'child_sas': [x.to_dict() for x in self.child_sas]
@@ -213,7 +212,7 @@ class IkeSa(object):
     def log_message(self, message, data, send=True):
         self.log_info('{} {} {} ({} bytes) {} {} [{}]'
                       ''.format('Sent' if send else 'Received',
-                                Message.Exchange.safe_name(message.exchange_type),
+                                message.exchange_type.name,
                                 'response' if message.is_response else 'request',
                                 len(data),
                                 'to' if send else 'from',
@@ -668,8 +667,8 @@ class IkeSa(object):
     def abort_on_error_notifies(self, message, encrypted=False, ignore=None):
         for notification in message.get_payloads(Payload.Type.NOTIFY, encrypted=encrypted):
             if notification.is_error() and (ignore is None or notification.notification_type not in ignore):
-                raise IkeSaError('Could not establish IKE_SA due to error notification received: {}'.format(
-                    PayloadNOTIFY.Type.safe_name(notification.notification_type)))
+                raise IkeSaError(f'Could not establish IKE_SA due to error notification '
+                                 f'received: {notification.notification_type.name}')
 
     def process_ike_sa_init_response(self, response):
         """ Processes a IKE_SA_INIT response message
@@ -757,8 +756,7 @@ class IkeSa(object):
 
             # if we are doing anything with the IKE_SA (either rekeying or deleting), return TEMPORARY_FAILURE
             if self.state in (IkeSa.State.REK_IKE_SA_REQ_SENT, IkeSa.State.DEL_IKE_SA_REQ_SENT):
-                raise TemporaryFailure(
-                    'The IKE_SA state ({}) does not accept new CHILD_SAs'.format(IkeSa.State.safe_name(self.state)))
+                raise TemporaryFailure(f'The IKE_SA state ({self.state.name}) does not accept new CHILD_SAs')
 
             # handle REKEY specifics
             rekey_notify = request.get_notifies(PayloadNOTIFY.Type.REKEY_SA, encrypted=True)
@@ -851,7 +849,7 @@ class IkeSa(object):
     def _check_in_states(self, message, list_of_valid_states):
         if self.state not in list_of_valid_states:
             raise IkeSaStateError(
-                'Cannot process an {} {} when in state {}.'.format(Message.Exchange.safe_name(message.exchange_type),
+                'Cannot process an {} {} when in state {}.'.format(message.exchange_type.name,
                                                                    'request' if message.is_request else 'response',
                                                                    self.state.name))
 
@@ -920,8 +918,7 @@ class IkeSa(object):
                       PayloadNOTIFY.Type.CHILD_SA_NOT_FOUND, PayloadNOTIFY.Type.TEMPORARY_FAILURE,
                       PayloadNOTIFY.Type.NO_ADDITIONAL_SAS):
             if response.get_notifies(error, True):
-                raise IkeSaError('CHILD_SA negotiation failed because {}. Skipping creation of CHILD_SA.'.format(
-                    PayloadNOTIFY.Type.safe_name(error)))
+                raise IkeSaError(f'CHILD_SA negotiation failed because {error.name}. Skipping creation of CHILD_SA.')
 
         # get some relevant payloads from the message
         response_payload_sa = response.get_payload(Payload.Type.SA, True)
