@@ -12,7 +12,7 @@ import cryptography.hazmat.backends.openssl.backend
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization, hashes
-from cryptography.hazmat.primitives.asymmetric import dh, padding
+from cryptography.hazmat.primitives.asymmetric import dh, padding, ec
 from cryptography.hazmat.primitives.ciphers import Cipher as _Cipher, algorithms, modes
 
 from message import Transform, InvalidSyntax
@@ -109,7 +109,7 @@ class Cipher:
         return os.urandom(self.block_size)
 
 
-class DiffieHellman:
+class MODPDH:
     _group_dict = {
         # 14, MODP2048
         Transform.DhId.DH_14:
@@ -251,23 +251,56 @@ class DiffieHellman:
 
     def __init__(self, group):
         self.group = group
-        self._n_bytes = len(self._group_dict[group]) // 2
-        self._module = int(self._group_dict[self.group], 16)
-        self._pn = dh.DHParameterNumbers(self._module, 2)
+        self.key_len = len(self._group_dict[group]) // 2
+        module = int(self._group_dict[self.group], 16)
+        self._pn = dh.DHParameterNumbers(module, 2)
         self._parameters = self._pn.parameters(self.backend)
-        self._generate_keys()
         self.shared_secret = None
-
-    def _generate_keys(self):
         self._private_key = self._parameters.generate_private_key()
         public_key_int = self._private_key.public_key().public_numbers().y
-        self.public_key = public_key_int.to_bytes(self._n_bytes, 'big')
+        self.public_key = public_key_int.to_bytes(self.key_len, 'big')
 
     def compute_secret(self, peer_public_key):
         peer_public_key_int = int.from_bytes(peer_public_key, 'big')
         peer_public_numbers = dh.DHPublicNumbers(peer_public_key_int, self._pn)
         peer_public_key = peer_public_numbers.public_key(self.backend)
         self.shared_secret = self._private_key.exchange(peer_public_key)
+
+
+class ECDH:
+    _ec_groups = {
+        Transform.DhId.DH_19: ec.SECP256R1(),
+        Transform.DhId.DH_20: ec.SECP384R1(),
+        Transform.DhId.DH_21: ec.SECP521R1(),
+    }
+
+    backend = cryptography.hazmat.backends.openssl.backend
+
+    def __init__(self, group):
+        self.group = group
+        self._private_key = ec.generate_private_key(self._ec_groups[group], backend=self.backend)
+        # Trick to get the ceil of the division
+        self.key_len = (self._private_key.key_size + 7) // 8
+        self.shared_secret = None
+        public_numbers = self._private_key.public_key().public_numbers()
+        self.public_key = (public_numbers.x.to_bytes(self.key_len, 'big')
+                           + public_numbers.y.to_bytes(self.key_len, 'big'))
+
+    def compute_secret(self, peer_public_key):
+        x = int.from_bytes(peer_public_key[:self.key_len], 'big')
+        y = int.from_bytes(peer_public_key[self.key_len:], 'big')
+        peer_public_numbers = ec.EllipticCurvePublicNumbers(x, y, self._ec_groups[self.group])
+        peer_public_key = peer_public_numbers.public_key(self.backend)
+        self.shared_secret = self._private_key.exchange(ec.ECDH(), peer_public_key)
+
+
+class DiffieHellman:
+    @classmethod
+    def from_group(cls, group):
+        try:
+            return MODPDH(group)
+        except KeyError:
+            return ECDH(group)
 
 
 class Integrity:

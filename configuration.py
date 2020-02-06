@@ -41,14 +41,22 @@ _prf_name_to_transform = {
 }
 
 _dh_name_to_transform = {
-    '1': Transform(Transform.Type.DH, Transform.DhId.DH_1),
-    '2': Transform(Transform.Type.DH, Transform.DhId.DH_2),
-    '5': Transform(Transform.Type.DH, Transform.DhId.DH_5),
     '14': Transform(Transform.Type.DH, Transform.DhId.DH_14),
     '15': Transform(Transform.Type.DH, Transform.DhId.DH_15),
     '16': Transform(Transform.Type.DH, Transform.DhId.DH_16),
     '17': Transform(Transform.Type.DH, Transform.DhId.DH_17),
     '18': Transform(Transform.Type.DH, Transform.DhId.DH_18),
+    '19': Transform(Transform.Type.DH, Transform.DhId.DH_19),
+    '20': Transform(Transform.Type.DH, Transform.DhId.DH_20),
+    '21': Transform(Transform.Type.DH, Transform.DhId.DH_21),
+    'modp2048': Transform(Transform.Type.DH, Transform.DhId.DH_14),
+    'modp3072': Transform(Transform.Type.DH, Transform.DhId.DH_15),
+    'modp4096': Transform(Transform.Type.DH, Transform.DhId.DH_16),
+    'modp6144': Transform(Transform.Type.DH, Transform.DhId.DH_17),
+    'modp8192': Transform(Transform.Type.DH, Transform.DhId.DH_18),
+    'ecp256': Transform(Transform.Type.DH, Transform.DhId.DH_19),
+    'ecp384': Transform(Transform.Type.DH, Transform.DhId.DH_20),
+    'ecp521': Transform(Transform.Type.DH, Transform.DhId.DH_21),
 }
 
 _ip_proto_name_to_enum = {
