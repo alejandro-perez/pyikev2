@@ -13,10 +13,9 @@ from ipaddress import ip_address, ip_network
 from unittest import TestCase
 from unittest.mock import patch
 
-import xfrm
 from configuration import Configuration
-from message import TrafficSelector, Transform, Proposal, Message, Payload, PayloadAUTH, PayloadNOTIFY
 from ikesa import IkeSa
+from message import TrafficSelector, Proposal, Message, Payload, PayloadNOTIFY
 
 logging.indent = 2
 logging.basicConfig(level=logging.DEBUG,
@@ -37,7 +36,7 @@ class TestIkeSa(TestCase):
                 "peer_addr": str(self.ip2),
                 "my_auth": {"id": "alice@openikev2", "psk": "testing"},
                 "peer_auth": {"id": "bob@openikev2", "psk": "testing2"},
-                "dh": [14],
+                "dh": ['modp2048'],
                 "integ": ["sha256"],
                 "prf": ["sha256"],
                 "protect": [{
@@ -55,7 +54,7 @@ class TestIkeSa(TestCase):
                 "peer_addr": str(self.ip1),
                 "my_auth": {"id": "bob@openikev2", "psk": "testing2"},
                 "peer_auth": {"id": "alice@openikev2", "psk": "testing"},
-                "dh": [14],
+                "dh": ['modp2048'],
                 "integ": ["sha256"],
                 "prf": ["sha256"],
                 "protect": [{
