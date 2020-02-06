@@ -772,8 +772,14 @@ class IkeSa(object):
                 # if we are rekeying that SA, note there will be a redundant SA
                 if self.state == IkeSa.State.REK_CHILD_REQ_SENT and rekeyed_child_sa == self.rekeying_child_sa:
                     raise TemporaryFailure('The indicated SPI is already being rekeyed')
+
+                if (request_payload_tsi.traffic_selectors != [rekeyed_child_sa.tsr]
+                        or request_payload_tsr.traffic_selectors != [rekeyed_child_sa.tsi]):
+                    raise TsUnacceptable('Proposed Traffic Selectors do not match with those for the rekeyed CHILD_SA')
+
                 response_payloads.append(PayloadNOTIFY(request_payload_sa.proposals[0].protocol_id,
                                                        PayloadNOTIFY.Type.REKEY_SA, rekeyed_child_sa.inbound_spi, b''))
+
 
             # source of nonces is different for the initial exchange
             if request.exchange_type == Message.Exchange.IKE_AUTH:
@@ -926,12 +932,6 @@ class IkeSa(object):
         response_payload_tsr = response.get_payload(Payload.Type.TSr, True)
         response_transport_mode = response.get_notifies(PayloadNOTIFY.Type.USE_TRANSPORT_MODE, True)
 
-        # recover some relevant payloads from the request
-        request_payload_sa = self.request.get_payload(Payload.Type.SA, True)
-        request_payload_tsi = self.request.get_payload(Payload.Type.TSi, True)
-        request_payload_tsr = self.request.get_payload(Payload.Type.TSr, True)
-        request_transport_mode = self.request.get_notifies(PayloadNOTIFY.Type.USE_TRANSPORT_MODE, True)
-
         # source of nonces is different for the initial exchange
         if response.exchange_type == Message.Exchange.IKE_AUTH:
             # parse IKE_SA_INIT req and response
@@ -944,10 +944,9 @@ class IkeSa(object):
             response_payload_nonce = response.get_payload(Payload.Type.NONCE, True)
 
         # check mode is consistent
-        request_mode = xfrm.Mode.TRANSPORT if request_transport_mode else xfrm.Mode.TUNNEL
         response_mode = xfrm.Mode.TRANSPORT if response_transport_mode else xfrm.Mode.TUNNEL
-        if request_mode != response_mode:
-            raise TsUnacceptable('Invalid mode requested {} vs {}'.format(request_mode, response_mode))
+        if self.creating_child_sa.mode != response_mode:
+            raise TsUnacceptable(f'Invalid mode requested {self.creating_child_sa.mode} vs {response_mode}')
 
         # Check responder provided a valid proposal
         chosen_child_proposal = response_payload_sa.proposals[0]
@@ -971,8 +970,8 @@ class IkeSa(object):
         # Check TSi and TSr are subsets of what we sent
         chosen_tsi = response_payload_tsi.traffic_selectors[0]
         chosen_tsr = response_payload_tsr.traffic_selectors[0]
-        matches_tsi = [x for x in request_payload_tsi.traffic_selectors if chosen_tsi.is_subset(x)]
-        matches_tsr = [x for x in request_payload_tsr.traffic_selectors if chosen_tsr.is_subset(x)]
+        matches_tsi = [x for x in self.creating_child_sa.tsi if chosen_tsi.is_subset(x)]
+        matches_tsr = [x for x in self.creating_child_sa.tsr if chosen_tsr.is_subset(x)]
         if not matches_tsi or not matches_tsr:
             raise TsUnacceptable('Responder did not select a subset of our proposed TS.')
 

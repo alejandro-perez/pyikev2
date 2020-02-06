@@ -610,6 +610,23 @@ sEuNUHHDSswFehNOFQIDAQAB
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
 
     @patch('xfrm.Xfrm.send_recv')
+    def test_rekey_child_sa_invalid_ts(self, mockclass):
+        self.test_initial_exchanges_transport()
+        create_child_sa_req = self.ike_sa1.process_expire(self.ike_sa1.child_sas[0].inbound_spi)
+        message = Message.parse(create_child_sa_req, crypto=self.ike_sa1.my_crypto)
+        message.get_payload(Payload.Type.TSi, True).traffic_selectors.append(
+            TrafficSelector.from_network(ip_network("193.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP))
+        create_child_sa_req = message.to_bytes()
+        create_child_sa_res = self.ike_sa2.process_message(create_child_sa_req)
+        delete_child_sa_req = self.ike_sa1.process_message(create_child_sa_res)
+        self.assertIsNone(delete_child_sa_req)
+        self.assertMessageHasNotification(create_child_sa_res, self.ike_sa2, PayloadNOTIFY.Type.TS_UNACCEPTABLE)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 1)
+        self.assertEqual(len(self.ike_sa2.child_sas), 1)
+
+    @patch('xfrm.Xfrm.send_recv')
     def test_rekey_child_sa_invalid_spi_responder(self, mockclass):
         self.test_initial_exchanges_transport()
         self.ike_sa2.child_sas = []
