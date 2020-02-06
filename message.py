@@ -176,6 +176,9 @@ class Transform:
         DH_16 = 16
         DH_17 = 17
         DH_18 = 18
+        DH_19 = 19
+        DH_20 = 20
+        DH_21 = 21
 
     class IntegId(SafeIntEnum):
         INTEG_NONE = 0

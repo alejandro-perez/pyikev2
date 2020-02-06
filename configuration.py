@@ -49,6 +49,9 @@ _dh_name_to_transform = {
     '16': Transform(Transform.Type.DH, Transform.DhId.DH_16),
     '17': Transform(Transform.Type.DH, Transform.DhId.DH_17),
     '18': Transform(Transform.Type.DH, Transform.DhId.DH_18),
+    '19': Transform(Transform.Type.DH, Transform.DhId.DH_19),
+    '20': Transform(Transform.Type.DH, Transform.DhId.DH_20),
+    '21': Transform(Transform.Type.DH, Transform.DhId.DH_21),
 }
 
 _ip_proto_name_to_enum = {

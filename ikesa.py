@@ -474,7 +474,7 @@ class IkeSa(object):
         my_dh_group = self.chosen_proposal.get_transform(Transform.Type.DH).id
         if my_dh_group != payload_ke.dh_group:
             raise InvalidKePayload('Invalid DH group used. I want {}'.format(my_dh_group), group=my_dh_group)
-        dh = DiffieHellman(payload_ke.dh_group)
+        dh = DiffieHellman.from_group(payload_ke.dh_group)
         dh.compute_secret(payload_ke.ke_data)
         self.log_debug(f'Generated DH shared secret: {dh.shared_secret.hex()}')
         response_payload_ke = PayloadKE(dh.group, dh.public_key)
@@ -523,7 +523,7 @@ class IkeSa(object):
 
         # create DH and Paylaod KE
         my_dh_group = self.chosen_proposal.get_transform(Transform.Type.DH).id
-        self.dh = DiffieHellman(my_dh_group)
+        self.dh = DiffieHellman.from_group(my_dh_group)
         payload_ke = PayloadKE(my_dh_group, self.dh.public_key)
 
         return [payload_sa, payload_nonce, payload_ke]
@@ -592,14 +592,14 @@ class IkeSa(object):
 
         # generate Payload SA
         if initial:
-            child_sa.proposal.transforms = [x for x in child_sa.proposal.transforms if x.type != Transform.DhId]
+            child_sa.proposal.transforms = [x for x in child_sa.proposal.transforms if x.type != Transform.Type.DH]
         child_sa.proposal.spi = child_sa.inbound_spi
         result.append(PayloadSA([child_sa.proposal]))
 
         # generate Payload KE (if required)
         try:
             my_dh_group = child_sa.proposal.get_transform(Transform.Type.DH).id
-            self.dh = DiffieHellman(my_dh_group)
+            self.dh = DiffieHellman.from_group(my_dh_group)
             result.append(PayloadKE(my_dh_group, self.dh.public_key))
         except StopIteration:
             pass
@@ -682,7 +682,7 @@ class IkeSa(object):
             self.log_warning("INVALID_KE_PAYLOAD notification received. Trying with the suggested group")
             # # create DH and Paylaod KE
             my_dh_group = unpack('>H', invalid_ke.notification_data)[0]
-            self.dh = DiffieHellman(my_dh_group)
+            self.dh = DiffieHellman.from_group(my_dh_group)
             new_payload_ke = PayloadKE(my_dh_group, self.dh.public_key)
             payload_ke = self.request.get_payload(Payload.Type.KE)
             payload_ke.dh_group = new_payload_ke.dh_group
@@ -810,7 +810,7 @@ class IkeSa(object):
                 my_dh_group = chosen_child_proposal.get_transform(Transform.Type.DH).id
                 if my_dh_group != request_payload_ke.dh_group:
                     raise InvalidKePayload('Invalid DH group used. I want {}'.format(my_dh_group), group=my_dh_group)
-                dh = DiffieHellman(request_payload_ke.dh_group)
+                dh = DiffieHellman.from_group(request_payload_ke.dh_group)
                 dh.compute_secret(request_payload_ke.ke_data)
                 keyseed = dh.shared_secret + keyseed
                 self.log_debug(f'Generated CHILD_SA DH shared secret: {dh.shared_secret.hex()}')
@@ -1175,7 +1175,7 @@ class IkeSa(object):
                 self.log_warning("INVALID_KE_PAYLOAD notification received. Trying with the suggested group")
                 # # create DH and Paylaod KE
                 my_dh_group = unpack('>H', invalid_ke.notification_data)[0]
-                self.dh = DiffieHellman(my_dh_group)
+                self.dh = DiffieHellman.from_group(my_dh_group)
                 new_payload_ke = PayloadKE(my_dh_group, self.dh.public_key)
                 payload_ke = self.request.get_payload(Payload.Type.KE, True)
                 payload_ke.dh_group = new_payload_ke.dh_group
