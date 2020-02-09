@@ -36,7 +36,7 @@ class TestIkeSa(TestCase):
                 "peer_addr": str(self.ip2),
                 "my_auth": {"id": "alice@openikev2", "psk": "testing"},
                 "peer_auth": {"id": "bob@openikev2", "psk": "testing2"},
-                "dh": ['modp2048'],
+                "dh": ['ecp256'],
                 "integ": ["sha256"],
                 "prf": ["sha256"],
                 "protect": [{
@@ -54,7 +54,7 @@ class TestIkeSa(TestCase):
                 "peer_addr": str(self.ip1),
                 "my_auth": {"id": "bob@openikev2", "psk": "testing2"},
                 "peer_auth": {"id": "alice@openikev2", "psk": "testing"},
-                "dh": ['modp2048'],
+                "dh": ['ecp256'],
                 "integ": ["sha256"],
                 "prf": ["sha256"],
                 "protect": [{
@@ -210,7 +210,7 @@ sEuNUHHDSswFehNOFQIDAQAB
 
     @patch('xfrm.Xfrm.send_recv')
     def test_ike_sa_init_invalid_ke(self, mockclass):
-        self.confdict['testconn_alice']['dh'] = [16, 14]
+        self.confdict['testconn_alice']['dh'].insert(0, 16)
         self.update_ike_sas_configuration()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)

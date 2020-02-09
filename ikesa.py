@@ -678,17 +678,9 @@ class IkeSa(object):
         # Recover from INVALID_KE_PAYLOAD
         invalid_ke = response.get_notifies(PayloadNOTIFY.Type.INVALID_KE_PAYLOAD)
         if invalid_ke:
-            invalid_ke = invalid_ke[0]
-            self.log_warning("INVALID_KE_PAYLOAD notification received. Trying with the suggested group")
-            # # create DH and Paylaod KE
-            my_dh_group = unpack('>H', invalid_ke.notification_data)[0]
-            self.dh = DiffieHellman.from_group(my_dh_group)
-            new_payload_ke = PayloadKE(my_dh_group, self.dh.public_key)
-            payload_ke = self.request.get_payload(Payload.Type.KE)
-            payload_ke.dh_group = new_payload_ke.dh_group
-            payload_ke.ke_data = new_payload_ke.ke_data
-            self.ike_sa_init_req_data = self.request.to_bytes()
             self.my_msg_id = 0
+            self.dh, self.request = self.handle_invalid_ke(invalid_ke)
+            self.ike_sa_init_req_data = self.request.to_bytes()
             return self.request
 
         # Recover from COOKIE
@@ -779,7 +771,6 @@ class IkeSa(object):
 
                 response_payloads.append(PayloadNOTIFY(request_payload_sa.proposals[0].protocol_id,
                                                        PayloadNOTIFY.Type.REKEY_SA, rekeyed_child_sa.inbound_spi, b''))
-
 
             # source of nonces is different for the initial exchange
             if request.exchange_type == Message.Exchange.IKE_AUTH:
@@ -1126,6 +1117,23 @@ class IkeSa(object):
         except StopIteration:
             return None
 
+    def handle_invalid_ke(self, invalid_ke):
+        invalid_ke = invalid_ke[0]
+        encrypted = self.request.exchange_type > Message.Exchange.IKE_SA_INIT
+        my_proposal = self.request.get_payload(Payload.Type.SA, encrypted).proposals[0]
+        suggested_group = unpack('>H', invalid_ke.notification_data)[0]
+        self.log_warning(
+            f"INVALID_KE_PAYLOAD notification received. Trying with the suggested group: {suggested_group}")
+        if suggested_group not in (x.id for x in my_proposal.transforms if x.type == Transform.Type.DH):
+            raise NoProposalChosen(
+                'Suggested DH group is not included in our proposal. Possible downgrade attack detected.')
+        new_dh = DiffieHellman.from_group(suggested_group)
+        payload_ke = self.request.get_payload(Payload.Type.KE, encrypted)
+        payload_ke.dh_group = suggested_group
+        payload_ke.ke_data = new_dh.public_key
+        return new_dh, self.generate_request(self.request.exchange_type,
+                                             self.request.encrypted_payloads if encrypted else self.request.payloads)
+
     def process_create_child_sa_response(self, response):
         """ Processes a CREATE_CHILD_SA response message
         """
@@ -1141,9 +1149,13 @@ class IkeSa(object):
                                                              PayloadNOTIFY.Type.FAILED_CP_REQUIRED,
                                                              PayloadNOTIFY.Type.INVALID_KE_PAYLOAD,
                                                              PayloadNOTIFY.Type.INVALID_KE_PAYLOAD])
-
         # IKE_SA rekey response
         if self.state == IkeSa.State.REK_IKE_SA_REQ_SENT:
+            # Recover from INVALID_KE_PAYLOAD
+            invalid_ke = response.get_notifies(PayloadNOTIFY.Type.INVALID_KE_PAYLOAD, True)
+            if invalid_ke:
+                self.new_ike_sa.dh, new_request = self.handle_invalid_ke(invalid_ke)
+                return new_request
             # If we are asked to wait, wait for a random amount of time before retrying to rekey the IKE_SA
             if response.get_notifies(PayloadNOTIFY.Type.TEMPORARY_FAILURE, True):
                 self.log_debug('Push back IKE_SA rekey as we received TEMPORARY_FAILURE')
@@ -1170,17 +1182,8 @@ class IkeSa(object):
             # Recover from INVALID_KE_PAYLOAD
             invalid_ke = response.get_notifies(PayloadNOTIFY.Type.INVALID_KE_PAYLOAD, True)
             if invalid_ke:
-                invalid_ke = invalid_ke[0]
-                self.log_warning("INVALID_KE_PAYLOAD notification received. Trying with the suggested group")
-                # # create DH and Paylaod KE
-                my_dh_group = unpack('>H', invalid_ke.notification_data)[0]
-                self.dh = DiffieHellman.from_group(my_dh_group)
-                new_payload_ke = PayloadKE(my_dh_group, self.dh.public_key)
-                payload_ke = self.request.get_payload(Payload.Type.KE, True)
-                payload_ke.dh_group = new_payload_ke.dh_group
-                payload_ke.ke_data = new_payload_ke.ke_data
-                return self.generate_request(Message.Exchange.CREATE_CHILD_SA, self.request.encrypted_payloads)
-
+                self.dh, new_request = self.handle_invalid_ke(invalid_ke)
+                return new_request
             prev_state = self.state
             self.state = IkeSa.State.ESTABLISHED
             try:
