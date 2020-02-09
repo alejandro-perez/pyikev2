@@ -132,15 +132,18 @@ class Configuration(object):
             raise ConfigurationError(f'Could not parse {ex} as an IP network')
 
     @staticmethod
-    def _load_payload_id_type(value):
+    def _get_payload_id(value):
         try:
             addr = ip_address(value)
-            return PayloadID.Type.ID_IPV4_ADDR if addr.version == 4 else PayloadID.Type.ID_IPV6_ADDR
+            type = PayloadID.Type.ID_IPV4_ADDR if addr.version == 4 else PayloadID.Type.ID_IPV6_ADDR
+            return PayloadID(type, addr.packed)
         except ValueError:
             pass
         if '@' in value:
-            return PayloadID.Type.ID_RFC822_ADDR
-        return PayloadID.Type.ID_FQDN
+            type = PayloadID.Type.ID_RFC822_ADDR
+        else:
+            type = PayloadID.Type.ID_FQDN
+        return PayloadID(type, value.encode())
 
     @staticmethod
     def _load_ip_address(hostname):
@@ -154,7 +157,7 @@ class Configuration(object):
         id_text = conf_dict.get('id', 'https://github.com/alejandro-perez/pyikev2')
         return AuthConfiguration(
             psk=conf_dict['psk'].encode() if 'psk' in conf_dict else None,
-            id=PayloadID(self._load_payload_id_type(id_text), id_text.encode()),
+            id=self._get_payload_id(id_text),
             pubkey=RsaPublicKey(conf_dict.get('pubkey').encode()) if 'pubkey' in conf_dict else None,
             privkey=RsaPrivateKey(conf_dict.get('privkey').encode()) if 'privkey' in conf_dict else None,
         )

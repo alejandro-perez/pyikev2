@@ -573,7 +573,7 @@ class PayloadID(Payload):
         if self.id_type in (PayloadID.Type.ID_RFC822_ADDR, PayloadID.Type.ID_FQDN):
             return self.id_data.decode()
         elif self.id_type in (PayloadID.Type.ID_IPV4_ADDR, PayloadID.Type.ID_IPV6_ADDR):
-            return str(ip_address(self.id_data.decode())),
+            return str(ip_address(self.id_data)),
         else:
             return self.id_data.hex()
 
