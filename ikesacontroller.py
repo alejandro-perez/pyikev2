@@ -134,8 +134,7 @@ class IkeSaController:
         logging.info(f'Listening control events on [{control_addr[0]}]:{control_addr[1]}')
 
         # create XFRM socket
-        xfrm_obj = xfrm.Xfrm()
-        xfrm_socket = xfrm_obj.get_socket()
+        xfrm_socket = xfrm.Xfrm.get_socket()
         logging.info('Listening XFRM events.')
 
         allsockets = list(udp_sockets.values()) + [xfrm_socket, control_socket]
@@ -152,7 +151,7 @@ class IkeSaController:
 
                 if xfrm_socket in readable:
                     data = xfrm_socket.recv(4096)
-                    header, msg, attributes = xfrm_obj.parse_message(data)
+                    header, msg, attributes = xfrm.Xfrm.parse_message(data)
                     reply_data, my_addr, peer_addr = None, None, None
                     if header.type == xfrm.XFRM_MSG_ACQUIRE:
                         reply_data, my_addr, peer_addr = self.process_acquire(msg, attributes)

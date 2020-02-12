@@ -1213,8 +1213,8 @@ class IkeSa(object):
 
         if self.state == IkeSa.State.DEL_CHILD_REQ_SENT:
             if self.deleting_child_sa not in self.child_sas:
-                self.log_warning(f'CHILD_SA {self.deleting_child_sa} was already deleted by the peer. '
-                                 f'Omitting actual deletion')
+                self.log_warning(
+                    f'CHILD_SA {self.deleting_child_sa} was already deleted by the peer. Omitting actual deletion')
             else:
                 # delete our side of the
 

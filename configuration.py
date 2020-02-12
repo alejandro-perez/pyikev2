@@ -82,16 +82,12 @@ IkeConfiguration = namedtuple('IkeConfiguration',
 
 AuthConfiguration = namedtuple('AuthConfiguration', ['psk', 'id', 'privkey', 'pubkey'])
 
-IpsecConfiguration = namedtuple('IpsecConfiguration',
-                                ['my_ts', 'index', 'peer_ts', 'lifetime', 'mode', 'proposal'])
+IpsecConfiguration = namedtuple('IpsecConfiguration', ['my_ts', 'index', 'peer_ts', 'lifetime', 'mode', 'proposal'])
 
 
 class Configuration(object):
-    """ Represents the daemon configuration.
-    """
-
     def __init__(self, my_addresses, conf_dict):
-        """ Creates a new Configuration object from a textual dict (e.g. coming from JSON or YAML)
+        """ Creates a new Configuration object from a textual dict
         """
         self.ike_configurations = []
         for connection_name, ikeconfdict in conf_dict.items():
