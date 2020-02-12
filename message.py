@@ -344,6 +344,10 @@ class Proposal:
         intersection = self.intersection(other)
         return (intersection is not None) and (intersection == self)
 
+    def copy_without_dh_transforms(self):
+        return Proposal(self.num, self.protocol_id, self.spi,
+                        [x for x in self.transforms if x.type != Transform.Type.DH])
+
 
 class PayloadSA(Payload):
     type = Payload.Type.SA

@@ -591,10 +591,11 @@ class IkeSa(object):
         result.append(PayloadTSr(child_sa.tsr))
 
         # generate Payload SA
-        if initial:
-            child_sa.proposal.transforms = [x for x in child_sa.proposal.transforms if x.type != Transform.Type.DH]
         child_sa.proposal.spi = child_sa.inbound_spi
-        result.append(PayloadSA([child_sa.proposal]))
+        if initial:
+            result.append(PayloadSA([child_sa.proposal.copy_without_dh_transforms()]))
+        else:
+            result.append(PayloadSA([child_sa.proposal]))
 
         # generate Payload KE (if required)
         try:
@@ -798,7 +799,9 @@ class IkeSa(object):
                 raise TsUnacceptable('Invalid mode requested')
 
             # generate the response payload SA with the chosen proposal
-            chosen_child_proposal = self._select_best_sa_proposal(ipsec_conf.proposal, request_payload_sa)
+            my_proposal = (ipsec_conf.proposal.copy_without_dh_transforms()
+                           if request.exchange_type == Message.Exchange.IKE_AUTH else ipsec_conf.proposal)
+            chosen_child_proposal = self._select_best_sa_proposal(my_proposal, request_payload_sa)
 
             keyseed = request_payload_nonce.nonce + response_payload_nonce.nonce
             # if KE exchange is required
@@ -940,8 +943,10 @@ class IkeSa(object):
             raise TsUnacceptable(f'Invalid mode requested {self.creating_child_sa.mode} vs {response_mode}')
 
         # Check responder provided a valid proposal
+        my_proposal = (self.creating_child_sa.proposal.copy_without_dh_transforms()
+                       if response.exchange_type == Message.Exchange.IKE_AUTH else self.creating_child_sa.proposal)
         chosen_child_proposal = response_payload_sa.proposals[0]
-        intersection = self.creating_child_sa.proposal.intersection(chosen_child_proposal)
+        intersection = my_proposal.intersection(chosen_child_proposal)
         if intersection is None or intersection != chosen_child_proposal:
             raise NoProposalChosen('Responder did not choose a valid proposal')
 
