@@ -25,7 +25,8 @@ from message import (Message, Payload, PayloadAUTH, PayloadDELETE, PayloadIDi, P
 __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
 Keyring = namedtuple('Keyring', ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er', 'sk_pi', 'sk_pr'])
-ChildSa = namedtuple('ChildSa', ['inbound_spi', 'outbound_spi', 'proposal', 'tsi', 'tsr', 'mode', 'lifetime'])
+ChildSa = namedtuple('ChildSa', ['inbound_spi', 'outbound_spi', 'original_proposal', 'proposal', 'tsi', 'tsr', 'mode',
+                                 'lifetime'])
 ChildSa.__str__ = lambda x: '({}, {})'.format(x.inbound_spi.hex(), x.outbound_spi.hex())
 ChildSa.to_dict = lambda x: {'spis': str(x),
                              'protocol': x.proposal.protocol_id.name,
@@ -381,10 +382,11 @@ class IkeSa(object):
 
         self.log_info("Received acquire from policy with index={}".format(index))
         # Create the ChildSa object with the values we know so far
-        child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, proposal=ipsec_conf.proposal,
-                           tsi=(tsi, ipsec_conf.my_ts), tsr=(tsr, ipsec_conf.peer_ts), mode=ipsec_conf.mode,
-                           lifetime=ipsec_conf.lifetime)
+        child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, original_proposal=ipsec_conf.proposal,
+                           proposal=ipsec_conf.proposal, tsi=(tsi, ipsec_conf.my_ts),
+                           tsr=(tsr, ipsec_conf.peer_ts), mode=ipsec_conf.mode, lifetime=ipsec_conf.lifetime)
         if self.state == IkeSa.State.INITIAL:
+            child_sa._replace(proposal=child_sa.proposal.copy_without_dh_transforms())
             request = self.generate_ike_sa_init_request(child_sa)
         else:
             request = self.generate_create_child_sa_request(child_sa)
@@ -408,9 +410,9 @@ class IkeSa(object):
         # if this is a soft expire, rekey the CHILD SA
         if not hard:
             # Create the ChildSa object with the values we know so far
-            new_child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, proposal=child_sa.proposal,
-                                   tsi=[child_sa.tsi], tsr=[child_sa.tsr], mode=child_sa.mode,
-                                   lifetime=child_sa.lifetime)
+            new_child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, proposal=child_sa.original_proposal,
+                                   original_proposal=child_sa.original_proposal, tsi=[child_sa.tsi],
+                                   tsr=[child_sa.tsr], mode=child_sa.mode, lifetime=child_sa.lifetime)
             request = self.generate_create_child_sa_request(new_child_sa, child_sa)
         # if this is a hard expire, delete the CHILD SA
         else:
@@ -583,7 +585,7 @@ class IkeSa(object):
     def spi_r(self):
         return self.peer_spi if self.is_initiator else self.my_spi
 
-    def _generate_child_sa_negotiation_req(self, child_sa, initial):
+    def _generate_child_sa_negotiation_req(self, child_sa):
         result = []
 
         # generate Payload TSi, TSr
@@ -592,10 +594,7 @@ class IkeSa(object):
 
         # generate Payload SA
         child_sa.proposal.spi = child_sa.inbound_spi
-        if initial:
-            result.append(PayloadSA([child_sa.proposal.copy_without_dh_transforms()]))
-        else:
-            result.append(PayloadSA([child_sa.proposal]))
+        result.append(PayloadSA([child_sa.proposal]))
 
         # generate Payload KE (if required)
         try:
@@ -617,7 +616,7 @@ class IkeSa(object):
         assert (self.state == IkeSa.State.INIT_REQ_SENT)
 
         # generate the CHILD_SA negotiation payloads
-        child_sa_payloads = self._generate_child_sa_negotiation_req(self.creating_child_sa, initial=True)
+        child_sa_payloads = self._generate_child_sa_negotiation_req(self.creating_child_sa)
 
         # generate IDi
         payload_idi = PayloadIDi(self.configuration.my_auth.id.id_type, self.configuration.my_auth.id.id_data)
@@ -823,7 +822,7 @@ class IkeSa(object):
             # create the IPsec SAs according to the negotiated CHILD SA
             child_sa = ChildSa(outbound_spi=chosen_child_proposal.spi, inbound_spi=os.urandom(4),
                                proposal=chosen_child_proposal, tsi=chosen_tsr, tsr=chosen_tsi, mode=mode,
-                               lifetime=ipsec_conf.lifetime)
+                               lifetime=ipsec_conf.lifetime, original_proposal=ipsec_conf.proposal)
 
             self.child_sas.append(child_sa)
             xfrm.Xfrm.create_child_sa(self, child_sa, child_sa_keyring, is_initiator=False)
@@ -1019,8 +1018,7 @@ class IkeSa(object):
         self.creating_child_sa = child_sa
 
         # generate the CHILD_SA negotiation payloads
-        child_sa_payloads = self._generate_child_sa_negotiation_req(child_sa, initial=False)
-        payloads = []
+        child_sa_payloads = self._generate_child_sa_negotiation_req(child_sa)
         if rekeyed_child_sa is not None:
             self.rekeying_child_sa = rekeyed_child_sa
             child_sa_payloads.insert(0, PayloadNOTIFY(rekeyed_child_sa.proposal.protocol_id,
