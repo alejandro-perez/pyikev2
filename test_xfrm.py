@@ -8,9 +8,7 @@ import subprocess
 import unittest
 from ipaddress import ip_address, ip_network
 
-from configuration import Configuration
-from message import TrafficSelector, Proposal, Transform
-from xfrm import Xfrm, Mode, XfrmAddress
+from xfrm import Xfrm, Mode, XfrmAddress, XFRM_POLICY_OUT, XFRM_MODE_TRANSPORT, XFRM_MODE_TUNNEL
 
 __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
@@ -31,102 +29,34 @@ class TestXfrm(unittest.TestCase):
         self.assertEqual(str(addr), '192.168.0.1')
 
     def test_create_transport_policy(self):
-        conf = Configuration(
-            [ip_address('192.168.1.1')],
-            {
-                "testconn": {
-                    "my_addr": '192.168.1.1',
-                    "peer_addr": '192.168.2.1',
-                    "my_auth": {"id": "alice@openikev2", "psk": "testing"},
-                    "peer_auth": {"id": "bob@openikev2", "psk": "testing2"},
-                    "protect": [{
-                        "index": 1,
-                        "ip_proto": "tcp",
-                        "mode": "transport",
-                        "lifetime": 5,
-                        "peer_port": 0,
-                        "ipsec_proto": "ah",
-                    }]
-                },
-            })
-        Xfrm.create_policies(conf.get_ike_configuration(ip_address('192.168.2.1')))
+        Xfrm.create_policy(ip_network('192.168.1.1/32'), ip_network('192.168.2.1/32'), 0, 0, socket.IPPROTO_TCP,
+                           XFRM_POLICY_OUT, socket.IPPROTO_AH, XFRM_MODE_TRANSPORT, ip_address('192.168.1.1'),
+                           ip_address('192.168.1.2'), index=1)
 
     def test_create_transport_policy_ipv6(self):
-        conf = Configuration(
-            [ip_address('2001::1')],
-            {
-                "testconn": {
-                    "my_addr": '2001::1',
-                    "peer_addr": '2001::2',
-                    "my_auth": {"id": "alice@openikev2", "psk": "testing"},
-                    "peer_auth": {"id": "bob@openikev2", "psk": "testing2"},
-                    "protect": [{
-                        "index": 1,
-                        "ip_proto": "tcp",
-                        "mode": "transport",
-                        "lifetime": 5,
-                        "peer_port": 0,
-                        "ipsec_proto": "ah",
-                    }]
-                },
-            })
-        Xfrm.create_policies(conf.get_ike_configuration(ip_address('2001::2')))
+        Xfrm.create_policy(ip_network('2001::1/128'), ip_network('2001::2/128'), 0, 0, socket.IPPROTO_TCP,
+                           XFRM_POLICY_OUT, socket.IPPROTO_AH, XFRM_MODE_TRANSPORT, ip_address('2001::1'),
+                           ip_address('2001::2'), index=1)
 
     def test_create_tunnel_policy(self):
-        conf = Configuration(
-            [ip_address('192.168.1.1')],
-            {
-                "testconn": {
-                    "my_addr": '192.168.1.1',
-                    "peer_addr": '192.168.2.1',
-                    "my_auth": {"id": "alice@openikev2", "psk": "testing"},
-                    "peer_auth": {"id": "bob@openikev2", "psk": "testing2"},
-                    "protect": [{
-                        "my_subnet": "10.0.0.0/24",
-                        "peer_subnet": "10.0.1.0/24",
-                        "index": 1,
-                        "ip_proto": "tcp",
-                        "mode": "tunnel",
-                        "lifetime": 5,
-                        "peer_port": 0,
-                        "ipsec_proto": "ah",
-                    }]
-                },
-            })
-        Xfrm.create_policies(conf.get_ike_configuration(ip_address('192.168.2.1')))
+        Xfrm.create_policy(ip_network('10.0.0.0/24'), ip_network('10.0.1.0/24'), 0, 0, socket.IPPROTO_TCP,
+                           XFRM_POLICY_OUT, socket.IPPROTO_AH, XFRM_MODE_TUNNEL, ip_address('192.168.1.1'),
+                           ip_address('192.168.1.2'), index=1)
 
     def test_create_tunnel_policy_ipv6(self):
-        conf = Configuration(
-            [ip_address('2001::1')],
-            {
-                "testconn": {
-                    "my_addr": '2001::1',
-                    "peer_addr": '2001::2',
-                    "my_auth": {"id": "alice@openikev2", "psk": "testing"},
-                    "peer_auth": {"id": "bob@openikev2", "psk": "testing2"},
-                    "protect": [{
-                        "my_subnet": "2008::/64",
-                        "peer_subnet": "2009::/64",
-                        "index": 1,
-                        "ip_proto": "tcp",
-                        "mode": "tunnel",
-                        "lifetime": 5,
-                        "peer_port": 0,
-                        "ipsec_proto": "ah",
-                    }]
-                },
-            })
-        Xfrm.create_policies(conf.get_ike_configuration(ip_address('2001::2')))
+        Xfrm.create_policy(ip_network('2009::0/64'), ip_network('2009::0/64'), 0, 0, socket.IPPROTO_TCP,
+                           XFRM_POLICY_OUT, socket.IPPROTO_AH, XFRM_MODE_TRANSPORT, ip_address('2001::1'),
+                           ip_address('2001::2'), index=1)
 
     def test_create_transport_ipsec_sa(self):
         Xfrm.create_sa(ip_network('192.168.1.1/32'), ip_network('192.168.1.2/32'), 0, 0, b'1234', socket.IPPROTO_TCP,
                        socket.IPPROTO_ESP, Mode.TRANSPORT, ip_address('192.168.1.1'), ip_address('192.168.1.2'),
-                        b'cbc(aes)', b'1' * 16, b'hmac(md5)', b'1' * 16)
+                       b'cbc(aes)', b'1' * 16, b'hmac(md5)', b'1' * 16)
 
     def test_create_tunnel_ipsec_sa(self):
         Xfrm.create_sa(ip_network('192.168.1.1/32'), ip_network('192.168.1.2/32'), 0, 0, b'1234', socket.IPPROTO_TCP,
                        socket.IPPROTO_ESP, Mode.TUNNEL, ip_address('192.168.1.1'), ip_address('192.168.1.2'),
-                        b'cbc(aes)', b'1' * 16, b'hmac(md5)', b'1' * 16)
+                       b'cbc(aes)', b'1' * 16, b'hmac(md5)', b'1' * 16)
 
     def test_delete_ipsec_sa(self):
         self.test_create_tunnel_ipsec_sa()
