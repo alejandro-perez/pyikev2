@@ -21,8 +21,7 @@ In order to prepare it, run:
 docker-compose up --build -d
 ```
 That will create the images and run the containers (`alice` and `bob`) in the background.
-You can connect to their log console by using `docker-compose logs`:
-
+You can connect to their log console by using `docker-compose logs`.
 
 In order to start the IKEv2 exchange, you must create traffic that is protected by the configuration. In this case, you must send traffic to Bob's port 23 (telnet). You can easily do that by executing:
 ```bash
@@ -44,8 +43,7 @@ alice_1  | [2020-02-18 11:44:41.509] [INFO   ] IKE_SA: bdea01b704f08e9e. Receive
 alice_1  | [2020-02-18 11:44:41.510] [INFO   ] IKE_SA: bdea01b704f08e9e. Created CHILD_SA (afb32cca, 5a1740fe)
 ```
 
-If you want to see more detailed output, add the `EXTRA_PARAMS: -v` to either Alice's or Bob's environment in the `docker-compose.yml` file.
-run it with the `-v` parameter. You should see something such as:
+If you want to see more detailed output, add the `EXTRA_PARAMS: -v` to Alice's and Bob's environment in the `docker-compose.yml` file. You should see something similar to the following when checking Alice's log:
 ```text
 Attaching to pyikev2_alice_1
 alice_1  | [2020-02-18 11:46:01.008] [INFO   ] Listening from [172.50.1.2]:500
