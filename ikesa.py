@@ -27,7 +27,8 @@ __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 Keyring = namedtuple('Keyring', ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er', 'sk_pi', 'sk_pr'])
 ChildSa = namedtuple('ChildSa', ['inbound_spi', 'outbound_spi', 'original_proposal', 'proposal', 'tsi', 'tsr', 'mode',
                                  'lifetime'])
-ChildSa.__str__ = lambda x: '({}, {})'.format(x.inbound_spi.hex(), x.outbound_spi.hex())
+ChildSa.__str__ = lambda x: '({}, {}, {}, {})'.format(x.inbound_spi.hex(), x.outbound_spi.hex(), x.mode.name,
+                                                      x.proposal.protocol_id.name)
 ChildSa.to_dict = lambda x: {'spis': str(x),
                              'protocol': x.proposal.protocol_id.name,
                              'mode': x.mode.name,
