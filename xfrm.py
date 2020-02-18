@@ -267,23 +267,11 @@ class Xfrm(NetlinkProtocol):
         XFRM_MSG_NEWPOLICY: XfrmUserPolicyInfo,
     })
 
-    _cipher_names = {
-        None: b'none',
-        Transform.EncrId.ENCR_AES_CBC: b'cbc(aes)',
-    }
-
-    _auth_names = {
-        Transform.IntegId.AUTH_HMAC_MD5_96: b'hmac(md5)',
-        Transform.IntegId.AUTH_HMAC_SHA1_96: b'hmac(sha1)',
-        Transform.IntegId.AUTH_HMAC_SHA2_256_128: b'hmac(sha256)',
-        Transform.IntegId.AUTH_HMAC_SHA2_512_256: b'hmac(sha512)',
-    }
-
     netlink_family = socket.NETLINK_XFRM
 
     @classmethod
-    def _create_sa(cls, src_selector, dst_selector, src_port, dst_port, spi, ip_proto, ipsec_proto, mode, src, dst,
-                   enc_algorithm, sk_e, auth_algorithm, sk_a, lifetime=-1):
+    def create_sa(cls, src_selector, dst_selector, src_port, dst_port, spi, ip_proto, ipsec_proto, mode, src, dst,
+                  enc_algorithm, sk_e, auth_algorithm, sk_a, lifetime=-1):
         usersa = XfrmUserSaInfo(
             sel=XfrmSelector(family=socket.AF_INET if src_selector[0].version == 4 else socket.AF_INET6,
                              daddr=XfrmAddress.from_ipaddr(dst_selector[0]),
@@ -296,8 +284,7 @@ class Xfrm(NetlinkProtocol):
                              prefixlen_s=src_selector.prefixlen,
                              proto=ip_proto),
             id=XfrmId(daddr=XfrmAddress.from_ipaddr(dst),
-                      proto=(socket.IPPROTO_ESP
-                             if ipsec_proto == Proposal.Protocol.ESP else socket.IPPROTO_AH),
+                      proto=ipsec_proto,
                       spi=create_byte_array(spi)),
             family=socket.AF_INET if src.version == 4 else socket.AF_INET6,
             saddr=XfrmAddress.from_ipaddr(src),
@@ -312,9 +299,9 @@ class Xfrm(NetlinkProtocol):
                                                                                 hard_use_expires_seconds=0),
         )
         attributes = {}
-        if ipsec_proto == Proposal.Protocol.ESP:
-            attributes[XFRMA_ALG_CRYPT] = XfrmAlgo.build(alg_name=cls._cipher_names[enc_algorithm], key=sk_e)
-        attributes[XFRMA_ALG_AUTH] = XfrmAlgo.build(alg_name=cls._auth_names[auth_algorithm], key=sk_a)
+        if ipsec_proto == socket.IPPROTO_ESP:
+            attributes[XFRMA_ALG_CRYPT] = XfrmAlgo.build(alg_name=enc_algorithm, key=sk_e)
+        attributes[XFRMA_ALG_AUTH] = XfrmAlgo.build(alg_name=auth_algorithm, key=sk_a)
         cls.send_recv(XFRM_MSG_NEWSA, (NLM_F_REQUEST | NLM_F_ACK), usersa, attributes)
 
     @classmethod
@@ -328,8 +315,8 @@ class Xfrm(NetlinkProtocol):
         cls.send_recv(XFRM_MSG_FLUSHSA, (NLM_F_REQUEST | NLM_F_ACK), usersaflush)
 
     @classmethod
-    def _create_policy(cls, src_selector, dst_selector, src_port, dst_port, ip_proto, direction,
-                       ipsec_proto, mode, src, dst, index=0):
+    def create_policy(cls, src_selector, dst_selector, src_port, dst_port, ip_proto, direction,
+                      ipsec_proto, mode, src, dst, index=0):
         policy = XfrmUserPolicyInfo(
             sel=XfrmSelector(family=socket.AF_INET if src_selector[0].version == 4 else socket.AF_INET6,
                              daddr=XfrmAddress.from_ipaddr(dst_selector[0]),
@@ -348,7 +335,7 @@ class Xfrm(NetlinkProtocol):
         )
         template = XfrmUserTmpl(
             id=XfrmId(daddr=XfrmAddress.from_ipaddr(dst),
-                      proto=(socket.IPPROTO_ESP if ipsec_proto == Proposal.Protocol.ESP else socket.IPPROTO_AH)),
+                      proto=ipsec_proto),
             family=socket.AF_INET if src.version == 4 else socket.AF_INET6,
             saddr=XfrmAddress.from_ipaddr(src),
             aalgos=0xFFFFFFFF,
@@ -362,7 +349,7 @@ class Xfrm(NetlinkProtocol):
         xfrm_id = XfrmUserSaId(
             daddr=XfrmAddress.from_ipaddr(daddr),
             family=socket.AF_INET if daddr.version == 4 else socket.AF_INET6,
-            proto=socket.IPPROTO_ESP if proto == Proposal.Protocol.ESP else socket.IPPROTO_AH,
+            proto=proto,
             spi=create_byte_array(spi))
         try:
             cls.send_recv(XFRM_MSG_DELSA, (NLM_F_REQUEST | NLM_F_ACK), xfrm_id)
@@ -371,8 +358,10 @@ class Xfrm(NetlinkProtocol):
 
     @classmethod
     def delete_child_sa(cls, ike_sa, child_sa):
-        cls.delete_sa(ike_sa.peer_addr, child_sa.proposal.protocol_id, child_sa.outbound_spi)
-        cls.delete_sa(ike_sa.my_addr, child_sa.proposal.protocol_id, child_sa.inbound_spi)
+        ipsec_protocol = (socket.IPPROTO_ESP if child_sa.proposal.protocol_id == Proposal.Protocol.ESP
+                          else socket.IPPROTO_AH)
+        cls.delete_sa(ike_sa.peer_addr, ipsec_protocol, child_sa.outbound_spi)
+        cls.delete_sa(ike_sa.my_addr, ipsec_protocol, child_sa.inbound_spi)
 
     @classmethod
     def create_policies(cls, ike_conf):
@@ -382,29 +371,44 @@ class Xfrm(NetlinkProtocol):
             src_port = ipsec_conf.my_ts.get_port()
             dst_port = ipsec_conf.peer_ts.get_port()
             ip_proto = ipsec_conf.my_ts.ip_proto
-            ipsec_proto = ipsec_conf.proposal.protocol_id
+            ipsec_proto = (socket.IPPROTO_ESP if ipsec_conf.proposal.protocol_id == Proposal.Protocol.ESP
+                           else socket.IPPROTO_AH)
 
             # generate an index for outbound policies
             index = ipsec_conf.index << 3 | XFRM_POLICY_OUT
-            cls._create_policy(src_selector, dst_selector, src_port, dst_port, ip_proto, XFRM_POLICY_OUT, ipsec_proto,
-                               ipsec_conf.mode, ike_conf.my_addr, ike_conf.peer_addr, index=index)
-            cls._create_policy(dst_selector, src_selector, dst_port, src_port, ip_proto, XFRM_POLICY_IN, ipsec_proto,
-                               ipsec_conf.mode, ike_conf.peer_addr, ike_conf.my_addr)
-            cls._create_policy(dst_selector, src_selector, dst_port, src_port, ip_proto, XFRM_POLICY_FWD, ipsec_proto,
-                               ipsec_conf.mode, ike_conf.peer_addr, ike_conf.my_addr)
-
-    @classmethod
-    def create_sa(cls, src, dst, src_sel, dst_sel, ipsec_protocol, spi, enc_algorith, sk_e,
-                  auth_algorithm, sk_a, mode, lifetime=-1):
-        cls._create_sa(src_sel.get_network(), dst_sel.get_network(), src_sel.get_port(),
-                       dst_sel.get_port(), spi, src_sel.ip_proto, ipsec_protocol, mode, src,
-                       dst, enc_algorith, sk_e, auth_algorithm, sk_a, lifetime)
+            cls.create_policy(src_selector, dst_selector, src_port, dst_port, ip_proto, XFRM_POLICY_OUT, ipsec_proto,
+                              ipsec_conf.mode, ike_conf.my_addr, ike_conf.peer_addr, index=index)
+            cls.create_policy(dst_selector, src_selector, dst_port, src_port, ip_proto, XFRM_POLICY_IN, ipsec_proto,
+                              ipsec_conf.mode, ike_conf.peer_addr, ike_conf.my_addr)
+            cls.create_policy(dst_selector, src_selector, dst_port, src_port, ip_proto, XFRM_POLICY_FWD, ipsec_proto,
+                              ipsec_conf.mode, ike_conf.peer_addr, ike_conf.my_addr)
 
     @classmethod
     def create_child_sa(cls, ike_sa, child_sa, keyring, is_initiator):
-        encr_alg = (child_sa.proposal.get_transform(Transform.Type.ENCR).id
-                    if child_sa.proposal.protocol_id == Proposal.Protocol.ESP else None)
-        integ_alg = child_sa.proposal.get_transform(Transform.Type.INTEG).id
+        _cipher_names = {
+            None: b'none',
+            Transform.EncrId.ENCR_AES_CBC: b'cbc(aes)',
+        }
+
+        _auth_names = {
+            Transform.IntegId.AUTH_HMAC_MD5_96: b'hmac(md5)',
+            Transform.IntegId.AUTH_HMAC_SHA1_96: b'hmac(sha1)',
+            Transform.IntegId.AUTH_HMAC_SHA2_256_128: b'hmac(sha256)',
+            Transform.IntegId.AUTH_HMAC_SHA2_512_256: b'hmac(sha512)',
+        }
+
+        src_selector = child_sa.tsi.get_network()
+        dst_selector = child_sa.tsr.get_network()
+        src_port = child_sa.tsi.get_port()
+        dst_port = child_sa.tsr.get_port()
+        ip_proto = child_sa.tsi.ip_proto
+        ipsec_proto = (socket.IPPROTO_ESP if child_sa.proposal.protocol_id == Proposal.Protocol.ESP
+                       else socket.IPPROTO_AH)
+
+
+        encr_alg = (_cipher_names[child_sa.proposal.get_transform(Transform.Type.ENCR).id]
+                    if ipsec_proto == socket.IPPROTO_ESP else None)
+        integ_alg = _auth_names[child_sa.proposal.get_transform(Transform.Type.INTEG).id]
         lifetime = child_sa.lifetime + random.randint(0, 5) if child_sa.lifetime != -1 else -1
 
         # if we are responders, swap the keys for the purpose (since TS are swapped as well)
@@ -413,17 +417,10 @@ class Xfrm(NetlinkProtocol):
         else:
             sk_ei, sk_er, sk_ai, sk_ar = keyring.sk_er, keyring.sk_ei, keyring.sk_ar, keyring.sk_ai
 
-        src_selector = child_sa.tsi.get_network()
-        dst_selector = child_sa.tsr.get_network()
-        src_port = child_sa.tsi.get_port()
-        dst_port = child_sa.tsr.get_port()
-        ip_proto = child_sa.tsi.ip_proto
-        ipsec_proto = child_sa.proposal.protocol_id
-
-        cls._create_sa(src_selector, dst_selector, src_port, dst_port, child_sa.outbound_spi, ip_proto, ipsec_proto,
-                       child_sa.mode, ike_sa.my_addr, ike_sa.peer_addr, encr_alg, sk_ei, integ_alg, sk_ai, lifetime)
-        cls._create_sa(dst_selector, src_selector, dst_port, src_port, child_sa.inbound_spi, ip_proto, ipsec_proto,
-                       child_sa.mode, ike_sa.peer_addr, ike_sa.my_addr, encr_alg, sk_er, integ_alg, sk_ar, lifetime)
+        cls.create_sa(src_selector, dst_selector, src_port, dst_port, child_sa.outbound_spi, ip_proto, ipsec_proto,
+                      child_sa.mode, ike_sa.my_addr, ike_sa.peer_addr, encr_alg, sk_ei, integ_alg, sk_ai, lifetime)
+        cls.create_sa(dst_selector, src_selector, dst_port, src_port, child_sa.inbound_spi, ip_proto, ipsec_proto,
+                      child_sa.mode, ike_sa.peer_addr, ike_sa.my_addr, encr_alg, sk_er, integ_alg, sk_ar, lifetime)
 
     @classmethod
     def get_socket(cls):

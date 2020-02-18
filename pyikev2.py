@@ -4,7 +4,6 @@
 import argparse
 import logging
 import signal
-import socket
 import sys
 from ipaddress import ip_address
 

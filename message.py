@@ -100,9 +100,8 @@ class Payload:
         self.critical = critical
 
     def to_dict(self):
-        return OrderedDict([
-            ('type', self.type.name),
-            ('critical', self.critical)])
+        return OrderedDict((('type', self.type.name),
+                            ('critical', self.critical)))
 
     def __str__(self):
         return self.type.name
@@ -112,7 +111,7 @@ class PayloadKE(Payload):
     type = Payload.Type.KE
 
     def __init__(self, dh_group, ke_data, critical=False):
-        super(PayloadKE, self).__init__(critical)
+        super().__init__(critical)
         self.dh_group = dh_group
         self.ke_data = ke_data
 
@@ -130,10 +129,9 @@ class PayloadKE(Payload):
         return data
 
     def to_dict(self):
-        result = super(PayloadKE, self).to_dict()
-        result.update(OrderedDict([
-            ('dh_group', self.dh_group),
-            ('ke_data', self.ke_data.hex())]))
+        result = super().to_dict()
+        result['dh_group'] = self.dh_group
+        result['ke_data'] = self.ke_data.hex()
         return result
 
 
@@ -176,6 +174,9 @@ class Transform:
         DH_16 = 16
         DH_17 = 17
         DH_18 = 18
+        DH_19 = 19
+        DH_20 = 20
+        DH_21 = 21
 
     class IntegId(SafeIntEnum):
         INTEG_NONE = 0
@@ -230,8 +231,8 @@ class Transform:
         return data
 
     def to_dict(self):
-        result = OrderedDict([('type', self.type.name),
-                              ('id', self.id.name)])
+        result = OrderedDict((('type', self.type.name),
+                              ('id', self.id.name)))
         if self.keylen:
             result['keylen'] = self.keylen
         return result
@@ -285,31 +286,26 @@ class Proposal:
             offset += length
 
         if n_transforms != len(transforms):
-            raise InvalidSyntax('Indicated # of transforms ({}) differs from the actual # of '
-                                ' transforms ({})'.format(n_transforms, len(transforms)))
-
+            raise InvalidSyntax(f'Indicated # of transforms ({n_transforms}) differs from the actual # of '
+                                f'transforms ({len(transforms)})')
         return Proposal(num, protocol_id, spi, transforms)
 
     def to_bytes(self):
         data = bytearray(pack('>BBBB', self.num, self.protocol_id, len(self.spi), len(self.transforms)))
         if len(self.spi):
             data += self.spi
-
         for index in range(0, len(self.transforms)):
             transform = self.transforms[index]
             transform_data = transform.to_bytes()
             data += pack('>BBH', 0 if index == len(self.transforms) - 1 else 3, 0, len(transform_data) + 4)
             data += transform_data
-
         return data
 
     def to_dict(self):
-        return OrderedDict([
-            ('num', self.num),
-            ('protocol_id', self.protocol_id.name),
-            ('spi', self.spi.hex()),
-            ('transforms', [x.to_dict() for x in self.transforms]),
-        ])
+        return OrderedDict((('num', self.num),
+                            ('protocol_id', self.protocol_id.name),
+                            ('spi', self.spi.hex()),
+                            ('transforms', [x.to_dict() for x in self.transforms])))
 
     def get_transform(self, type):
         return next(x for x in self.transforms if x.type == type)
@@ -334,19 +330,22 @@ class Proposal:
         return None
 
     def __eq__(self, other):
-        return ((self.protocol_id, set(self.transforms))
-                == (other.protocol_id, set(other.transforms)))
+        return (self.protocol_id, set(self.transforms)) == (other.protocol_id, set(other.transforms))
 
     def is_subset(self, other):
         intersection = self.intersection(other)
         return (intersection is not None) and (intersection == self)
+
+    def copy_without_dh_transforms(self):
+        return Proposal(self.num, self.protocol_id, self.spi,
+                        [x for x in self.transforms if x.type != Transform.Type.DH])
 
 
 class PayloadSA(Payload):
     type = Payload.Type.SA
 
     def __init__(self, proposals, critical=False):
-        super(PayloadSA, self).__init__(critical)
+        super().__init__(critical)
         self.proposals = proposals
         if len(self.proposals) == 0:
             raise InvalidSyntax('Emtpy Payload SA is not allowed')
@@ -375,9 +374,8 @@ class PayloadSA(Payload):
         return data
 
     def to_dict(self):
-        result = super(PayloadSA, self).to_dict()
-        result.update(OrderedDict([
-            ('proposals', [x.to_dict() for x in self.proposals])]))
+        result = super().to_dict()
+        result['proposals'] = [x.to_dict() for x in self.proposals]
         return result
 
 
@@ -385,7 +383,7 @@ class PayloadVENDOR(Payload):
     type = Payload.Type.VENDOR
 
     def __init__(self, vendor_id, critical=False):
-        super(PayloadVENDOR, self).__init__(critical)
+        super().__init__(critical)
         if len(vendor_id) == 0:
             raise InvalidSyntax('Vendor ID should have some data.')
         self.vendor_id = vendor_id
@@ -398,9 +396,8 @@ class PayloadVENDOR(Payload):
         return self.vendor_id
 
     def to_dict(self):
-        result = super(PayloadVENDOR, self).to_dict()
-        result.update(OrderedDict([
-            ('vendor_id', self.vendor_id.decode())]))
+        result = super().to_dict()
+        result['vendor_id'] = self.vendor_id.decode()
         return result
 
 
@@ -408,7 +405,7 @@ class PayloadNONCE(Payload):
     type = Payload.Type.NONCE
 
     def __init__(self, nonce=None, critical=False):
-        super(PayloadNONCE, self).__init__(critical)
+        super().__init__(critical)
         if nonce is not None:
             if len(nonce) < 16 or len(nonce) > 256:
                 raise InvalidSyntax('Invalid Payload NONCE length: {}'.format(len(nonce)))
@@ -426,8 +423,8 @@ class PayloadNONCE(Payload):
         return self.nonce
 
     def to_dict(self):
-        result = super(PayloadNONCE, self).to_dict()
-        result.update(OrderedDict([('nonce', self.nonce.hex())]))
+        result = super().to_dict()
+        result['nonce'] = self.nonce.hex()
         return result
 
 
@@ -466,7 +463,7 @@ class PayloadNOTIFY(Payload):
         NON_FIRST_FRAGMENTS_ALSO = 16395
 
     def __init__(self, protocol_id, notification_type, spi, notification_data, critical=False):
-        super(PayloadNOTIFY, self).__init__(critical)
+        super().__init__(critical)
         self.protocol_id = Proposal.Protocol(protocol_id)
         self.notification_type = self.Type(notification_type)
         self.spi = spi
@@ -519,12 +516,11 @@ class PayloadNOTIFY(Payload):
         return data
 
     def to_dict(self):
-        result = super(PayloadNOTIFY, self).to_dict()
-        result.update(OrderedDict([
-            ('protocol_id', self.protocol_id.name),
-            ('spi', self.spi.hex()),
-            ('notification_type', self.notification_type.name),
-            ('notification_data', self.notification_data.hex())]))
+        result = super().to_dict()
+        result['protocol_id'] = self.protocol_id.name
+        result['spi'] = self.spi.hex()
+        result['notification_type'] = self.notification_type.name
+        result['notification_data'] = self.notification_data.hex()
         return result
 
     def is_error(self):
@@ -547,7 +543,7 @@ class PayloadID(Payload):
         ID_KEY_ID = 11
 
     def __init__(self, id_type, id_data, critical=False):
-        super(PayloadID, self).__init__(critical)
+        super().__init__(critical)
         self.id_type = self.Type(id_type)
         self.id_data = id_data
 
@@ -570,15 +566,14 @@ class PayloadID(Payload):
         if self.id_type in (PayloadID.Type.ID_RFC822_ADDR, PayloadID.Type.ID_FQDN):
             return self.id_data.decode()
         elif self.id_type in (PayloadID.Type.ID_IPV4_ADDR, PayloadID.Type.ID_IPV6_ADDR):
-            return str(ip_address(self.id_data.decode())),
+            return str(ip_address(self.id_data)),
         else:
             return self.id_data.hex()
 
     def to_dict(self):
-        result = super(PayloadID, self).to_dict()
-        result.update(OrderedDict([
-            ('id_type', self.id_type.name),
-            ('id_data', self._id_data_str())]))
+        result = super().to_dict()
+        result['id_type'] = self.id_type.name
+        result['id_data'] = self._id_data_str()
         return result
 
 
@@ -599,7 +594,7 @@ class PayloadAUTH(Payload):
         DSS = 3
 
     def __init__(self, method, auth_data, critical=False):
-        super(PayloadAUTH, self).__init__(critical)
+        super().__init__(critical)
         self.method = self.Method(method)
         self.auth_data = auth_data
 
@@ -618,10 +613,9 @@ class PayloadAUTH(Payload):
         return data
 
     def to_dict(self):
-        result = super(PayloadAUTH, self).to_dict()
-        result.update(OrderedDict([
-            ('method', self.method.name),
-            ('auth_data', self.auth_data.hex()), ]))
+        result = super().to_dict()
+        result['method'] = self.method.name
+        result['auth_data'] = self.auth_data.hex()
         return result
 
     def __eq__(self, other):
@@ -651,9 +645,9 @@ class TrafficSelector(object):
 
     @classmethod
     def from_network(cls, subnet, port, ip_proto):
-        return TrafficSelector((TrafficSelector.Type.TS_IPV6_ADDR_RANGE if subnet[0].version == 6
-                                else TrafficSelector.Type.TS_IPV4_ADDR_RANGE), ip_proto, port,
-                               65535 if port == 0 else port, subnet[0], subnet[-1])
+        ts_type = (TrafficSelector.Type.TS_IPV6_ADDR_RANGE if subnet[0].version == 6
+                   else TrafficSelector.Type.TS_IPV4_ADDR_RANGE)
+        return TrafficSelector(ts_type, ip_proto, port, 65535 if port == 0 else port, subnet[0], subnet[-1])
 
     def get_network(self):
         network = ip_network(self.start_addr)
@@ -662,10 +656,7 @@ class TrafficSelector(object):
         return network
 
     def get_port(self):
-        if self.start_port == 0 and self.end_port == 65535:
-            return 0
-        else:
-            return self.end_port
+        return 0 if (self.start_port, self.end_port) == (0, 65535) else self.end_port
 
     @classmethod
     def parse(cls, data):
@@ -684,11 +675,10 @@ class TrafficSelector(object):
                     self.end_addr.packed)
 
     def to_dict(self):
-        return OrderedDict([
-            ('ts_type', self.ts_type.name),
-            ('ip_proto', self.ip_proto.name),
-            ('port-range', '{} - {}'.format(self.start_port, self.end_port)),
-            ('addr-range', '{} - {}'.format(self.start_addr, self.end_addr))])
+        return OrderedDict((('ts_type', self.ts_type.name),
+                            ('ip_proto', self.ip_proto.name),
+                            ('port-range', f'{self.start_port} - {self.end_port}'),
+                            ('addr-range', f'{self.start_port} - {self.end_port}')))
 
     def is_subset(self, other):
         if self.ts_type != other.ts_type:
@@ -712,7 +702,7 @@ class PayloadTS(Payload):
     type = Payload.Type.NONE
 
     def __init__(self, traffic_selectors, critical=False):
-        super(PayloadTS, self).__init__(critical)
+        super().__init__(critical)
         self.traffic_selectors = traffic_selectors
 
     @classmethod
@@ -733,8 +723,8 @@ class PayloadTS(Payload):
             traffic_selectors.append(ts)
             offset += length
         if n_ts != len(traffic_selectors):
-            raise InvalidSyntax('Payload TS has invalid number of selectors. Expected {} got {}'
-                                ''.format(n_ts, len(traffic_selectors)))
+            raise InvalidSyntax(f'Payload TS has invalid number of selectors. Expected {n_ts} '
+                                f'got {len(traffic_selectors)}')
         # we need to use cls as it might be PayloadTSi or PayloadTSr
         return cls(traffic_selectors, critical=critical)
 
@@ -745,8 +735,8 @@ class PayloadTS(Payload):
         return data
 
     def to_dict(self):
-        result = super(PayloadTS, self).to_dict()
-        result.update(OrderedDict([('traffic_selectors', [x.to_dict() for x in self.traffic_selectors])]))
+        result = super().to_dict()
+        result['traffic_selectors'] = [x.to_dict() for x in self.traffic_selectors]
         return result
 
 
@@ -762,7 +752,7 @@ class PayloadSK(Payload):
     type = Payload.Type.SK
 
     def __init__(self, ciphertext, critical=False):
-        super(PayloadSK, self).__init__(critical)
+        super().__init__(critical)
         self.ciphertext = ciphertext
 
     @classmethod
@@ -787,8 +777,8 @@ class PayloadSK(Payload):
         return PayloadSK(iv + encrypted + b'\x00' * crypto.integrity.hash_size)
 
     def to_dict(self):
-        result = super(PayloadSK, self).to_dict()
-        result.update(OrderedDict([('ciphertext', self.ciphertext.hex())]))
+        result = super().to_dict()
+        result['ciphertext'] = self.ciphertext.hex()
         return result
 
 
@@ -796,7 +786,7 @@ class PayloadDELETE(Payload):
     type = Payload.Type.DELETE
 
     def __init__(self, protocol_id, spis, critical=False):
-        super(PayloadDELETE, self).__init__(critical)
+        super().__init__(critical)
         self.protocol_id = Proposal.Protocol(protocol_id)
         self.spis = spis
 
@@ -820,10 +810,9 @@ class PayloadDELETE(Payload):
         return data
 
     def to_dict(self):
-        result = super(PayloadDELETE, self).to_dict()
-        result.update(OrderedDict([
-            ('protocol_id', self.protocol_id.name),
-            ('spis', [x.hex() for x in self.spis])]))
+        result = super().to_dict()
+        result['protocol_id'] = self.protocol_id.name
+        result['spis'] = [x.hex() for x in self.spis]
         return result
 
 
@@ -902,8 +891,7 @@ class Message:
 
         # check we read all the data
         if offset != len(data):
-            raise InvalidSyntax('Amount of actual payload data {} differs from'
-                                ' message length {}'.format(offset, len(data)))
+            raise InvalidSyntax(f'Amount of actual payload data {offset} differs from message length {len(data)}')
 
         return payloads
 
@@ -934,8 +922,7 @@ class Message:
             message.payloads = cls._parse_payloads(data[28:], Payload.Type(header[2]))
 
             # if there is a Payload SK
-            if (message.payloads and message.payloads[-1].type == Payload.Type.SK
-                    and crypto is not None):
+            if message.payloads and message.payloads[-1].type == Payload.Type.SK and crypto is not None:
                 # read the payload SK and remove it from the list
                 payload_sk = message.payloads.pop()
 
@@ -1000,25 +987,24 @@ class Message:
         # calculate checksum (if payload SK is present)
         if self.crypto is not None:
             checksum = self.crypto.integrity.compute(self.crypto.sk_a, data[:-self.crypto.integrity.hash_size])
-            pack_into('>{}s'.format(len(checksum)), data, len(data) - len(checksum), checksum)
+            pack_into(f'>{len(checksum)}s', data, len(data) - len(checksum), checksum)
 
         return data
 
     def to_dict(self):
-        return OrderedDict([
-            ('spi_i', self.spi_i.hex()),
-            ('spi_r', self.spi_r.hex()),
-            ('major', self.major),
-            ('minor', self.minor),
-            ('exchange_type', self.exchange_type.name),
-            ('is_request', self.is_request),
-            ('is_response', self.is_response),
-            ('can_use_higher_version', self.can_use_higher_version),
-            ('is_initiator', self.is_initiator),
-            ('is_responder', self.is_responder),
-            ('message_id', self.message_id),
-            ('payloads', [x.to_dict() for x in self.payloads]),
-            ('encrypted_payloads', [x.to_dict() for x in self.encrypted_payloads])])
+        return OrderedDict([('spi_i', self.spi_i.hex()),
+                            ('spi_r', self.spi_r.hex()),
+                            ('major', self.major),
+                            ('minor', self.minor),
+                            ('exchange_type', self.exchange_type.name),
+                            ('is_request', self.is_request),
+                            ('is_response', self.is_response),
+                            ('can_use_higher_version', self.can_use_higher_version),
+                            ('is_initiator', self.is_initiator),
+                            ('is_responder', self.is_responder),
+                            ('message_id', self.message_id),
+                            ('payloads', [x.to_dict() for x in self.payloads]),
+                            ('encrypted_payloads', [x.to_dict() for x in self.encrypted_payloads])])
 
     @property
     def is_request(self):

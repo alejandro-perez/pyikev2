@@ -13,10 +13,9 @@ from ipaddress import ip_address, ip_network
 from unittest import TestCase
 from unittest.mock import patch
 
-import xfrm
 from configuration import Configuration
-from message import TrafficSelector, Transform, Proposal, Message, Payload, PayloadAUTH, PayloadNOTIFY
 from ikesa import IkeSa
+from message import TrafficSelector, Proposal, Message, Payload, PayloadNOTIFY
 
 logging.indent = 2
 logging.basicConfig(level=logging.DEBUG,
@@ -37,7 +36,7 @@ class TestIkeSa(TestCase):
                 "peer_addr": str(self.ip2),
                 "my_auth": {"id": "alice@openikev2", "psk": "testing"},
                 "peer_auth": {"id": "bob@openikev2", "psk": "testing2"},
-                "dh": [14],
+                "dh": ['ecp256'],
                 "integ": ["sha256"],
                 "prf": ["sha256"],
                 "protect": [{
@@ -55,7 +54,7 @@ class TestIkeSa(TestCase):
                 "peer_addr": str(self.ip1),
                 "my_auth": {"id": "bob@openikev2", "psk": "testing2"},
                 "peer_auth": {"id": "alice@openikev2", "psk": "testing"},
-                "dh": [14],
+                "dh": ['ecp256'],
                 "integ": ["sha256"],
                 "prf": ["sha256"],
                 "protect": [{
@@ -211,7 +210,7 @@ sEuNUHHDSswFehNOFQIDAQAB
 
     @patch('xfrm.Xfrm.send_recv')
     def test_ike_sa_init_invalid_ke(self, mockclass):
-        self.confdict['testconn_alice']['dh'] = [16, 14]
+        self.confdict['testconn_alice']['dh'].insert(0, 16)
         self.update_ike_sas_configuration()
         small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
         small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
@@ -585,7 +584,50 @@ sEuNUHHDSswFehNOFQIDAQAB
         self.assertEqual(len(self.ike_sa2.child_sas), 1)
 
     @patch('xfrm.Xfrm.send_recv')
+    def test_rekey_child_sa_with_ke(self, mockclass):
+        self.confdict['testconn_alice']['protect'][0]['dh'] = [14]
+        self.confdict['testconn_bob']['protect'][0]['dh'] = [14]
+        self.update_ike_sas_configuration()
+        self.test_initial_exchanges_transport()
+        create_child_sa_req = self.ike_sa1.process_expire(self.ike_sa1.child_sas[0].inbound_spi)
+        create_child_sa_res = self.ike_sa2.process_message(create_child_sa_req)
+        delete_child_sa_req = self.ike_sa1.process_message(create_child_sa_res)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.DEL_CHILD_REQ_SENT)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 2)
+        self.assertEqual(len(self.ike_sa2.child_sas), 2)
+        delete_child_sa_res = self.ike_sa2.process_message(delete_child_sa_req)
+        request = self.ike_sa1.process_message(delete_child_sa_res)
+        self.assertIsNone(request)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 1)
+        self.assertEqual(len(self.ike_sa2.child_sas), 1)
+
+
+    @patch('xfrm.Xfrm.send_recv')
     def test_rekey_child_sa_from_responder(self, mockclass):
+        self.test_initial_exchanges_transport()
+        create_child_sa_req = self.ike_sa2.process_expire(self.ike_sa2.child_sas[0].inbound_spi)
+        create_child_sa_res = self.ike_sa1.process_message(create_child_sa_req)
+        delete_child_sa_req = self.ike_sa2.process_message(create_child_sa_res)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.DEL_CHILD_REQ_SENT)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 2)
+        self.assertEqual(len(self.ike_sa2.child_sas), 2)
+        delete_child_sa_res = self.ike_sa1.process_message(delete_child_sa_req)
+        request = self.ike_sa2.process_message(delete_child_sa_res)
+        self.assertIsNone(request)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 1)
+        self.assertEqual(len(self.ike_sa2.child_sas), 1)
+
+    @patch('xfrm.Xfrm.send_recv')
+    def test_rekey_child_sa_from_responder_with_ke(self, mockclass):
+        self.confdict['testconn_alice']['protect'][0]['dh'] = [14]
+        self.confdict['testconn_bob']['protect'][0]['dh'] = [14]
+        self.update_ike_sas_configuration()
         self.test_initial_exchanges_transport()
         create_child_sa_req = self.ike_sa2.process_expire(self.ike_sa2.child_sas[0].inbound_spi)
         create_child_sa_res = self.ike_sa1.process_message(create_child_sa_req)
@@ -609,6 +651,23 @@ sEuNUHHDSswFehNOFQIDAQAB
         self.assertIsNone(create_child_sa_req)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
         self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+
+    @patch('xfrm.Xfrm.send_recv')
+    def test_rekey_child_sa_invalid_ts(self, mockclass):
+        self.test_initial_exchanges_transport()
+        create_child_sa_req = self.ike_sa1.process_expire(self.ike_sa1.child_sas[0].inbound_spi)
+        message = Message.parse(create_child_sa_req, crypto=self.ike_sa1.my_crypto)
+        message.get_payload(Payload.Type.TSi, True).traffic_selectors.append(
+            TrafficSelector.from_network(ip_network("193.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP))
+        create_child_sa_req = message.to_bytes()
+        create_child_sa_res = self.ike_sa2.process_message(create_child_sa_req)
+        delete_child_sa_req = self.ike_sa1.process_message(create_child_sa_res)
+        self.assertIsNone(delete_child_sa_req)
+        self.assertMessageHasNotification(create_child_sa_res, self.ike_sa2, PayloadNOTIFY.Type.TS_UNACCEPTABLE)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(self.ike_sa2.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 1)
+        self.assertEqual(len(self.ike_sa2.child_sas), 1)
 
     @patch('xfrm.Xfrm.send_recv')
     def test_rekey_child_sa_invalid_spi_responder(self, mockclass):

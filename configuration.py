@@ -41,14 +41,22 @@ _prf_name_to_transform = {
 }
 
 _dh_name_to_transform = {
-    '1': Transform(Transform.Type.DH, Transform.DhId.DH_1),
-    '2': Transform(Transform.Type.DH, Transform.DhId.DH_2),
-    '5': Transform(Transform.Type.DH, Transform.DhId.DH_5),
     '14': Transform(Transform.Type.DH, Transform.DhId.DH_14),
     '15': Transform(Transform.Type.DH, Transform.DhId.DH_15),
     '16': Transform(Transform.Type.DH, Transform.DhId.DH_16),
     '17': Transform(Transform.Type.DH, Transform.DhId.DH_17),
     '18': Transform(Transform.Type.DH, Transform.DhId.DH_18),
+    '19': Transform(Transform.Type.DH, Transform.DhId.DH_19),
+    '20': Transform(Transform.Type.DH, Transform.DhId.DH_20),
+    '21': Transform(Transform.Type.DH, Transform.DhId.DH_21),
+    'modp2048': Transform(Transform.Type.DH, Transform.DhId.DH_14),
+    'modp3072': Transform(Transform.Type.DH, Transform.DhId.DH_15),
+    'modp4096': Transform(Transform.Type.DH, Transform.DhId.DH_16),
+    'modp6144': Transform(Transform.Type.DH, Transform.DhId.DH_17),
+    'modp8192': Transform(Transform.Type.DH, Transform.DhId.DH_18),
+    'ecp256': Transform(Transform.Type.DH, Transform.DhId.DH_19),
+    'ecp384': Transform(Transform.Type.DH, Transform.DhId.DH_20),
+    'ecp521': Transform(Transform.Type.DH, Transform.DhId.DH_21),
 }
 
 _ip_proto_name_to_enum = {
@@ -74,16 +82,12 @@ IkeConfiguration = namedtuple('IkeConfiguration',
 
 AuthConfiguration = namedtuple('AuthConfiguration', ['psk', 'id', 'privkey', 'pubkey'])
 
-IpsecConfiguration = namedtuple('IpsecConfiguration',
-                                ['my_ts', 'index', 'peer_ts', 'lifetime', 'mode', 'proposal'])
+IpsecConfiguration = namedtuple('IpsecConfiguration', ['my_ts', 'index', 'peer_ts', 'lifetime', 'mode', 'proposal'])
 
 
 class Configuration(object):
-    """ Represents the daemon configuration.
-    """
-
     def __init__(self, my_addresses, conf_dict):
-        """ Creates a new Configuration object from a textual dict (e.g. coming from JSON or YAML)
+        """ Creates a new Configuration object from a textual dict
         """
         self.ike_configurations = []
         for connection_name, ikeconfdict in conf_dict.items():
@@ -124,15 +128,18 @@ class Configuration(object):
             raise ConfigurationError(f'Could not parse {ex} as an IP network')
 
     @staticmethod
-    def _load_payload_id_type(value):
+    def _get_payload_id(value):
         try:
             addr = ip_address(value)
-            return PayloadID.Type.ID_IPV4_ADDR if addr.version == 4 else PayloadID.Type.ID_IPV6_ADDR
+            type = PayloadID.Type.ID_IPV4_ADDR if addr.version == 4 else PayloadID.Type.ID_IPV6_ADDR
+            return PayloadID(type, addr.packed)
         except ValueError:
             pass
         if '@' in value:
-            return PayloadID.Type.ID_RFC822_ADDR
-        return PayloadID.Type.ID_FQDN
+            type = PayloadID.Type.ID_RFC822_ADDR
+        else:
+            type = PayloadID.Type.ID_FQDN
+        return PayloadID(type, value.encode())
 
     @staticmethod
     def _load_ip_address(hostname):
@@ -146,7 +153,7 @@ class Configuration(object):
         id_text = conf_dict.get('id', 'https://github.com/alejandro-perez/pyikev2')
         return AuthConfiguration(
             psk=conf_dict['psk'].encode() if 'psk' in conf_dict else None,
-            id=PayloadID(self._load_payload_id_type(id_text), id_text.encode()),
+            id=self._get_payload_id(id_text),
             pubkey=RsaPublicKey(conf_dict.get('pubkey').encode()) if 'pubkey' in conf_dict else None,
             privkey=RsaPrivateKey(conf_dict.get('privkey').encode()) if 'privkey' in conf_dict else None,
         )

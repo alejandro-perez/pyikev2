@@ -109,7 +109,7 @@ class NetlinkProtocol(object):
                 payload = cls.payload_types[header.type].parse(data[sizeof(header):])
                 attributes = cls._parse_attributes(data[sizeof(header) + sizeof(payload):header.length])
             except KeyError:
-                logging.warning('Unknown Netlink payload type: {}'.format(header.type))
+                logging.warning(f'Unknown Netlink payload type: {header.type}')
                 pass
 
         return header, payload, attributes
@@ -131,7 +131,7 @@ class NetlinkProtocol(object):
         while len(data) > 0:
             header, payload, attributes = cls.parse_message(data)
             if header.type == NLMSG_ERROR and payload.error != 0:
-                raise NetlinkError('Received error header!: {}'.format(os.strerror(-payload.error)))
+                raise NetlinkError(f'Received error header!: {os.strerror(-payload.error)}')
             if header.type == NLMSG_DONE:
                 break
             data = data[header.length:]

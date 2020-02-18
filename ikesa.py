@@ -25,10 +25,11 @@ from message import (Message, Payload, PayloadAUTH, PayloadDELETE, PayloadIDi, P
 __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
 Keyring = namedtuple('Keyring', ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er', 'sk_pi', 'sk_pr'])
-ChildSa = namedtuple('ChildSa', ['inbound_spi', 'outbound_spi', 'proposal', 'tsi', 'tsr', 'mode', 'lifetime'])
+ChildSa = namedtuple('ChildSa', ['inbound_spi', 'outbound_spi', 'original_proposal', 'proposal', 'tsi', 'tsr', 'mode',
+                                 'lifetime'])
 ChildSa.__str__ = lambda x: '({}, {})'.format(x.inbound_spi.hex(), x.outbound_spi.hex())
 ChildSa.to_dict = lambda x: {'spis': str(x),
-                             'protocol': x.proposal.protocol_id,
+                             'protocol': x.proposal.protocol_id.name,
                              'mode': x.mode.name,
                              'selectors': '[{}]:{} <-> [{}]:{}'.format(x.tsi.get_network(), x.tsi.get_port(),
                                                                        x.tsr.get_network(), x.tsr.get_port())}
@@ -381,10 +382,11 @@ class IkeSa(object):
 
         self.log_info("Received acquire from policy with index={}".format(index))
         # Create the ChildSa object with the values we know so far
-        child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, proposal=ipsec_conf.proposal,
-                           tsi=(tsi, ipsec_conf.my_ts), tsr=(tsr, ipsec_conf.peer_ts), mode=ipsec_conf.mode,
-                           lifetime=ipsec_conf.lifetime)
+        child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, original_proposal=ipsec_conf.proposal,
+                           proposal=ipsec_conf.proposal, tsi=(tsi, ipsec_conf.my_ts),
+                           tsr=(tsr, ipsec_conf.peer_ts), mode=ipsec_conf.mode, lifetime=ipsec_conf.lifetime)
         if self.state == IkeSa.State.INITIAL:
+            child_sa._replace(proposal=child_sa.proposal.copy_without_dh_transforms())
             request = self.generate_ike_sa_init_request(child_sa)
         else:
             request = self.generate_create_child_sa_request(child_sa)
@@ -408,9 +410,9 @@ class IkeSa(object):
         # if this is a soft expire, rekey the CHILD SA
         if not hard:
             # Create the ChildSa object with the values we know so far
-            new_child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, proposal=child_sa.proposal,
-                                   tsi=[child_sa.tsi], tsr=[child_sa.tsr], mode=child_sa.mode,
-                                   lifetime=child_sa.lifetime)
+            new_child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, proposal=child_sa.original_proposal,
+                                   original_proposal=child_sa.original_proposal, tsi=[child_sa.tsi],
+                                   tsr=[child_sa.tsr], mode=child_sa.mode, lifetime=child_sa.lifetime)
             request = self.generate_create_child_sa_request(new_child_sa, child_sa)
         # if this is a hard expire, delete the CHILD SA
         else:
@@ -474,7 +476,7 @@ class IkeSa(object):
         my_dh_group = self.chosen_proposal.get_transform(Transform.Type.DH).id
         if my_dh_group != payload_ke.dh_group:
             raise InvalidKePayload('Invalid DH group used. I want {}'.format(my_dh_group), group=my_dh_group)
-        dh = DiffieHellman(payload_ke.dh_group)
+        dh = DiffieHellman.from_group(payload_ke.dh_group)
         dh.compute_secret(payload_ke.ke_data)
         self.log_debug(f'Generated DH shared secret: {dh.shared_secret.hex()}')
         response_payload_ke = PayloadKE(dh.group, dh.public_key)
@@ -523,7 +525,7 @@ class IkeSa(object):
 
         # create DH and Paylaod KE
         my_dh_group = self.chosen_proposal.get_transform(Transform.Type.DH).id
-        self.dh = DiffieHellman(my_dh_group)
+        self.dh = DiffieHellman.from_group(my_dh_group)
         payload_ke = PayloadKE(my_dh_group, self.dh.public_key)
 
         return [payload_sa, payload_nonce, payload_ke]
@@ -583,7 +585,7 @@ class IkeSa(object):
     def spi_r(self):
         return self.peer_spi if self.is_initiator else self.my_spi
 
-    def _generate_child_sa_negotiation_req(self, child_sa, initial):
+    def _generate_child_sa_negotiation_req(self, child_sa):
         result = []
 
         # generate Payload TSi, TSr
@@ -591,15 +593,13 @@ class IkeSa(object):
         result.append(PayloadTSr(child_sa.tsr))
 
         # generate Payload SA
-        if initial:
-            child_sa.proposal.transforms = [x for x in child_sa.proposal.transforms if x.type != Transform.DhId]
         child_sa.proposal.spi = child_sa.inbound_spi
         result.append(PayloadSA([child_sa.proposal]))
 
         # generate Payload KE (if required)
         try:
             my_dh_group = child_sa.proposal.get_transform(Transform.Type.DH).id
-            self.dh = DiffieHellman(my_dh_group)
+            self.dh = DiffieHellman.from_group(my_dh_group)
             result.append(PayloadKE(my_dh_group, self.dh.public_key))
         except StopIteration:
             pass
@@ -616,7 +616,7 @@ class IkeSa(object):
         assert (self.state == IkeSa.State.INIT_REQ_SENT)
 
         # generate the CHILD_SA negotiation payloads
-        child_sa_payloads = self._generate_child_sa_negotiation_req(self.creating_child_sa, initial=True)
+        child_sa_payloads = self._generate_child_sa_negotiation_req(self.creating_child_sa)
 
         # generate IDi
         payload_idi = PayloadIDi(self.configuration.my_auth.id.id_type, self.configuration.my_auth.id.id_data)
@@ -678,17 +678,9 @@ class IkeSa(object):
         # Recover from INVALID_KE_PAYLOAD
         invalid_ke = response.get_notifies(PayloadNOTIFY.Type.INVALID_KE_PAYLOAD)
         if invalid_ke:
-            invalid_ke = invalid_ke[0]
-            self.log_warning("INVALID_KE_PAYLOAD notification received. Trying with the suggested group")
-            # # create DH and Paylaod KE
-            my_dh_group = unpack('>H', invalid_ke.notification_data)[0]
-            self.dh = DiffieHellman(my_dh_group)
-            new_payload_ke = PayloadKE(my_dh_group, self.dh.public_key)
-            payload_ke = self.request.get_payload(Payload.Type.KE)
-            payload_ke.dh_group = new_payload_ke.dh_group
-            payload_ke.ke_data = new_payload_ke.ke_data
-            self.ike_sa_init_req_data = self.request.to_bytes()
             self.my_msg_id = 0
+            self.dh, self.request = self.handle_invalid_ke(invalid_ke)
+            self.ike_sa_init_req_data = self.request.to_bytes()
             return self.request
 
         # Recover from COOKIE
@@ -772,6 +764,11 @@ class IkeSa(object):
                 # if we are rekeying that SA, note there will be a redundant SA
                 if self.state == IkeSa.State.REK_CHILD_REQ_SENT and rekeyed_child_sa == self.rekeying_child_sa:
                     raise TemporaryFailure('The indicated SPI is already being rekeyed')
+
+                if (request_payload_tsi.traffic_selectors != [rekeyed_child_sa.tsr]
+                        or request_payload_tsr.traffic_selectors != [rekeyed_child_sa.tsi]):
+                    raise TsUnacceptable('Proposed Traffic Selectors do not match with those for the rekeyed CHILD_SA')
+
                 response_payloads.append(PayloadNOTIFY(request_payload_sa.proposals[0].protocol_id,
                                                        PayloadNOTIFY.Type.REKEY_SA, rekeyed_child_sa.inbound_spi, b''))
 
@@ -801,7 +798,9 @@ class IkeSa(object):
                 raise TsUnacceptable('Invalid mode requested')
 
             # generate the response payload SA with the chosen proposal
-            chosen_child_proposal = self._select_best_sa_proposal(ipsec_conf.proposal, request_payload_sa)
+            my_proposal = (ipsec_conf.proposal.copy_without_dh_transforms()
+                           if request.exchange_type == Message.Exchange.IKE_AUTH else ipsec_conf.proposal)
+            chosen_child_proposal = self._select_best_sa_proposal(my_proposal, request_payload_sa)
 
             keyseed = request_payload_nonce.nonce + response_payload_nonce.nonce
             # if KE exchange is required
@@ -810,7 +809,7 @@ class IkeSa(object):
                 my_dh_group = chosen_child_proposal.get_transform(Transform.Type.DH).id
                 if my_dh_group != request_payload_ke.dh_group:
                     raise InvalidKePayload('Invalid DH group used. I want {}'.format(my_dh_group), group=my_dh_group)
-                dh = DiffieHellman(request_payload_ke.dh_group)
+                dh = DiffieHellman.from_group(request_payload_ke.dh_group)
                 dh.compute_secret(request_payload_ke.ke_data)
                 keyseed = dh.shared_secret + keyseed
                 self.log_debug(f'Generated CHILD_SA DH shared secret: {dh.shared_secret.hex()}')
@@ -823,7 +822,7 @@ class IkeSa(object):
             # create the IPsec SAs according to the negotiated CHILD SA
             child_sa = ChildSa(outbound_spi=chosen_child_proposal.spi, inbound_spi=os.urandom(4),
                                proposal=chosen_child_proposal, tsi=chosen_tsr, tsr=chosen_tsi, mode=mode,
-                               lifetime=ipsec_conf.lifetime)
+                               lifetime=ipsec_conf.lifetime, original_proposal=ipsec_conf.proposal)
 
             self.child_sas.append(child_sa)
             xfrm.Xfrm.create_child_sa(self, child_sa, child_sa_keyring, is_initiator=False)
@@ -926,12 +925,6 @@ class IkeSa(object):
         response_payload_tsr = response.get_payload(Payload.Type.TSr, True)
         response_transport_mode = response.get_notifies(PayloadNOTIFY.Type.USE_TRANSPORT_MODE, True)
 
-        # recover some relevant payloads from the request
-        request_payload_sa = self.request.get_payload(Payload.Type.SA, True)
-        request_payload_tsi = self.request.get_payload(Payload.Type.TSi, True)
-        request_payload_tsr = self.request.get_payload(Payload.Type.TSr, True)
-        request_transport_mode = self.request.get_notifies(PayloadNOTIFY.Type.USE_TRANSPORT_MODE, True)
-
         # source of nonces is different for the initial exchange
         if response.exchange_type == Message.Exchange.IKE_AUTH:
             # parse IKE_SA_INIT req and response
@@ -944,14 +937,15 @@ class IkeSa(object):
             response_payload_nonce = response.get_payload(Payload.Type.NONCE, True)
 
         # check mode is consistent
-        request_mode = xfrm.Mode.TRANSPORT if request_transport_mode else xfrm.Mode.TUNNEL
         response_mode = xfrm.Mode.TRANSPORT if response_transport_mode else xfrm.Mode.TUNNEL
-        if request_mode != response_mode:
-            raise TsUnacceptable('Invalid mode requested {} vs {}'.format(request_mode, response_mode))
+        if self.creating_child_sa.mode != response_mode:
+            raise TsUnacceptable(f'Invalid mode requested {self.creating_child_sa.mode} vs {response_mode}')
 
         # Check responder provided a valid proposal
+        my_proposal = (self.creating_child_sa.proposal.copy_without_dh_transforms()
+                       if response.exchange_type == Message.Exchange.IKE_AUTH else self.creating_child_sa.proposal)
         chosen_child_proposal = response_payload_sa.proposals[0]
-        intersection = self.creating_child_sa.proposal.intersection(chosen_child_proposal)
+        intersection = my_proposal.intersection(chosen_child_proposal)
         if intersection is None or intersection != chosen_child_proposal:
             raise NoProposalChosen('Responder did not choose a valid proposal')
 
@@ -971,8 +965,8 @@ class IkeSa(object):
         # Check TSi and TSr are subsets of what we sent
         chosen_tsi = response_payload_tsi.traffic_selectors[0]
         chosen_tsr = response_payload_tsr.traffic_selectors[0]
-        matches_tsi = [x for x in request_payload_tsi.traffic_selectors if chosen_tsi.is_subset(x)]
-        matches_tsr = [x for x in request_payload_tsr.traffic_selectors if chosen_tsr.is_subset(x)]
+        matches_tsi = [x for x in self.creating_child_sa.tsi if chosen_tsi.is_subset(x)]
+        matches_tsr = [x for x in self.creating_child_sa.tsr if chosen_tsr.is_subset(x)]
         if not matches_tsi or not matches_tsr:
             raise TsUnacceptable('Responder did not select a subset of our proposed TS.')
 
@@ -1024,8 +1018,7 @@ class IkeSa(object):
         self.creating_child_sa = child_sa
 
         # generate the CHILD_SA negotiation payloads
-        child_sa_payloads = self._generate_child_sa_negotiation_req(child_sa, initial=False)
-        payloads = []
+        child_sa_payloads = self._generate_child_sa_negotiation_req(child_sa)
         if rekeyed_child_sa is not None:
             self.rekeying_child_sa = rekeyed_child_sa
             child_sa_payloads.insert(0, PayloadNOTIFY(rekeyed_child_sa.proposal.protocol_id,
@@ -1127,6 +1120,23 @@ class IkeSa(object):
         except StopIteration:
             return None
 
+    def handle_invalid_ke(self, invalid_ke):
+        invalid_ke = invalid_ke[0]
+        encrypted = self.request.exchange_type > Message.Exchange.IKE_SA_INIT
+        my_proposal = self.request.get_payload(Payload.Type.SA, encrypted).proposals[0]
+        suggested_group = unpack('>H', invalid_ke.notification_data)[0]
+        self.log_warning(
+            f"INVALID_KE_PAYLOAD notification received. Trying with the suggested group: {suggested_group}")
+        if suggested_group not in (x.id for x in my_proposal.transforms if x.type == Transform.Type.DH):
+            raise NoProposalChosen(
+                'Suggested DH group is not included in our proposal. Possible downgrade attack detected.')
+        new_dh = DiffieHellman.from_group(suggested_group)
+        payload_ke = self.request.get_payload(Payload.Type.KE, encrypted)
+        payload_ke.dh_group = suggested_group
+        payload_ke.ke_data = new_dh.public_key
+        return new_dh, self.generate_request(self.request.exchange_type,
+                                             self.request.encrypted_payloads if encrypted else self.request.payloads)
+
     def process_create_child_sa_response(self, response):
         """ Processes a CREATE_CHILD_SA response message
         """
@@ -1142,9 +1152,13 @@ class IkeSa(object):
                                                              PayloadNOTIFY.Type.FAILED_CP_REQUIRED,
                                                              PayloadNOTIFY.Type.INVALID_KE_PAYLOAD,
                                                              PayloadNOTIFY.Type.INVALID_KE_PAYLOAD])
-
         # IKE_SA rekey response
         if self.state == IkeSa.State.REK_IKE_SA_REQ_SENT:
+            # Recover from INVALID_KE_PAYLOAD
+            invalid_ke = response.get_notifies(PayloadNOTIFY.Type.INVALID_KE_PAYLOAD, True)
+            if invalid_ke:
+                self.new_ike_sa.dh, new_request = self.handle_invalid_ke(invalid_ke)
+                return new_request
             # If we are asked to wait, wait for a random amount of time before retrying to rekey the IKE_SA
             if response.get_notifies(PayloadNOTIFY.Type.TEMPORARY_FAILURE, True):
                 self.log_debug('Push back IKE_SA rekey as we received TEMPORARY_FAILURE')
@@ -1171,17 +1185,8 @@ class IkeSa(object):
             # Recover from INVALID_KE_PAYLOAD
             invalid_ke = response.get_notifies(PayloadNOTIFY.Type.INVALID_KE_PAYLOAD, True)
             if invalid_ke:
-                invalid_ke = invalid_ke[0]
-                self.log_warning("INVALID_KE_PAYLOAD notification received. Trying with the suggested group")
-                # # create DH and Paylaod KE
-                my_dh_group = unpack('>H', invalid_ke.notification_data)[0]
-                self.dh = DiffieHellman(my_dh_group)
-                new_payload_ke = PayloadKE(my_dh_group, self.dh.public_key)
-                payload_ke = self.request.get_payload(Payload.Type.KE, True)
-                payload_ke.dh_group = new_payload_ke.dh_group
-                payload_ke.ke_data = new_payload_ke.ke_data
-                return self.generate_request(Message.Exchange.CREATE_CHILD_SA, self.request.encrypted_payloads)
-
+                self.dh, new_request = self.handle_invalid_ke(invalid_ke)
+                return new_request
             prev_state = self.state
             self.state = IkeSa.State.ESTABLISHED
             try:
@@ -1206,8 +1211,8 @@ class IkeSa(object):
 
         if self.state == IkeSa.State.DEL_CHILD_REQ_SENT:
             if self.deleting_child_sa not in self.child_sas:
-                self.log_warning(f'CHILD_SA {self.deleting_child_sa} was already deleted by the peer. '
-                                 f'Omitting actual deletion')
+                self.log_warning(
+                    f'CHILD_SA {self.deleting_child_sa} was already deleted by the peer. Omitting actual deletion')
             else:
                 # delete our side of the
 

@@ -233,7 +233,7 @@ class TestPayloadNOTIFY(TestPayloadMixin, unittest.TestCase):
 class TestPayloadIDIpAddr(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
         super(TestPayloadIDIpAddr, self).setUp()
-        self.object = PayloadID(PayloadID.Type.ID_IPV4_ADDR, b'192.168.1.1')
+        self.object = PayloadID(PayloadID.Type.ID_IPV4_ADDR, ip_address('192.168.1.1').packed)
 
 
 class TestPayloadIDEmail(TestPayloadMixin, unittest.TestCase):
