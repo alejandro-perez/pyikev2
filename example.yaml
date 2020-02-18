@@ -38,7 +38,7 @@ test-tunnel:
   encr: [aes256, aes128]
   integ: [sha512, sha256, sha1]
   prf: [sha512, sha256, sha1]
-  dh: [18, 17, 16, 15, 14]
+  dh: [21, 20, 19, 18, 17, 16, 15, 14]
 
   # list of traffic to protect (ie. policies)
   protect:
