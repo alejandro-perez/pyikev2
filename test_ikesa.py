@@ -839,8 +839,7 @@ sEuNUHHDSswFehNOFQIDAQAB
         rekey_req = self.ike_sa1.check_rekey_ike_sa_timer()
         rekey_res = self.ike_sa2.process_message(rekey_req)
         message = Message.parse(rekey_res, crypto=self.ike_sa2.my_crypto)
-        message.encrypted_payloads = [
-            PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.NO_ADDITIONAL_SAS, b'', b'')]
+        message.encrypted_payloads = [PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.NO_ADDITIONAL_SAS)]
         rekey_res = message.to_bytes()
         delete_req = self.ike_sa1.process_message(rekey_res)
         self.assertIsNotNone(delete_req)

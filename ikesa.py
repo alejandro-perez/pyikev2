@@ -607,7 +607,7 @@ class IkeSa(object):
 
         # generate USE_TRANSPORT_MODE notify if needed
         if child_sa.mode == xfrm.Mode.TRANSPORT:
-            result.append(PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.USE_TRANSPORT_MODE, b'', b''))
+            result.append(PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.USE_TRANSPORT_MODE))
 
         return result
 
@@ -771,7 +771,7 @@ class IkeSa(object):
                     raise TsUnacceptable('Proposed Traffic Selectors do not match with those for the rekeyed CHILD_SA')
 
                 response_payloads.append(PayloadNOTIFY(request_payload_sa.proposals[0].protocol_id,
-                                                       PayloadNOTIFY.Type.REKEY_SA, rekeyed_child_sa.inbound_spi, b''))
+                                                       PayloadNOTIFY.Type.REKEY_SA, rekeyed_child_sa.inbound_spi))
 
             # source of nonces is different for the initial exchange
             if request.exchange_type == Message.Exchange.IKE_AUTH:
@@ -789,14 +789,14 @@ class IkeSa(object):
                                                                                request_payload_tsr)
 
             # check which mode peer wants and compare to ours
-            mode = xfrm.Mode.TUNNEL
+            requested_mode = xfrm.Mode.TUNNEL
             if request.get_notifies(PayloadNOTIFY.Type.USE_TRANSPORT_MODE, True):
-                mode = xfrm.Mode.TRANSPORT
-                response_payloads.append(
-                    PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.USE_TRANSPORT_MODE, b'', b''))
+                requested_mode = xfrm.Mode.TRANSPORT
+                response_payloads.append(PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.USE_TRANSPORT_MODE))
 
-            if ipsec_conf.mode != mode:
-                raise TsUnacceptable('Invalid mode requested')
+            if ipsec_conf.mode != requested_mode:
+                raise TsUnacceptable(f'Invalid mode requested. Requested={requested_mode.name}. '
+                                     f'Desired={ipsec_conf.mode.name}')
 
             # generate the response payload SA with the chosen proposal
             my_proposal = (ipsec_conf.proposal.copy_without_dh_transforms()
@@ -822,7 +822,7 @@ class IkeSa(object):
 
             # create the IPsec SAs according to the negotiated CHILD SA
             child_sa = ChildSa(outbound_spi=chosen_child_proposal.spi, inbound_spi=os.urandom(4),
-                               proposal=chosen_child_proposal, tsi=chosen_tsr, tsr=chosen_tsi, mode=mode,
+                               proposal=chosen_child_proposal, tsi=chosen_tsr, tsr=chosen_tsi, mode=requested_mode,
                                lifetime=ipsec_conf.lifetime, original_proposal=ipsec_conf.proposal)
 
             self.child_sas.append(child_sa)
@@ -844,7 +844,7 @@ class IkeSa(object):
         # Generic error happening while negotiating the CHILD_SA should be reported as NO_PROPOSAL_CHOSEN
         except (IkeSaError, xfrm.NetlinkError) as ex:
             self.log_warning('CHILD_SA negotiation failed. {}'.format(ex))
-            return [PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN, b'', b'')]
+            return [PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN)]
 
     def _check_in_states(self, message, list_of_valid_states):
         if self.state not in list_of_valid_states:
@@ -940,7 +940,7 @@ class IkeSa(object):
         # check mode is consistent
         response_mode = xfrm.Mode.TRANSPORT if response_transport_mode else xfrm.Mode.TUNNEL
         if self.creating_child_sa.mode != response_mode:
-            raise TsUnacceptable(f'Invalid mode requested {self.creating_child_sa.mode} vs {response_mode}')
+            raise TsUnacceptable(f'Invalid mode requested {self.creating_child_sa.mode.name} vs {response_mode.name}')
 
         # Check responder provided a valid proposal
         my_proposal = (self.creating_child_sa.proposal.copy_without_dh_transforms()
