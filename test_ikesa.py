@@ -16,6 +16,7 @@ from unittest.mock import patch
 from configuration import Configuration
 from ikesa import IkeSa
 from message import TrafficSelector, Proposal, Message, Payload, PayloadNOTIFY
+from xfrm import Mode
 
 logging.indent = 2
 logging.basicConfig(level=logging.DEBUG,

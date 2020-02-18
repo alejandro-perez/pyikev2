@@ -17,22 +17,21 @@ __author__ = 'Alejandro Perez <alejandro.perez.mendez@gmail.com>'
 __version__ = "0.3"
 
 # parses the arguments
-parser = argparse.ArgumentParser(description='Opensource IKEv2 daemon written in Python.',
-                                 prog='pyikev2')
+parser = argparse.ArgumentParser(description='Opensource IKEv2 daemon written in Python.', prog='pyikev2')
 parser.add_argument('--verbose', '-v', action='store_true',
-                    help='Enable (much) more verbosity. WARNING: This will make your key '
-                         'material to be shown in the log output!')
+                    help='Enable (much) more verbosity. WARNING: This will make your key material to be shown in '
+                         'the log output!')
 parser.add_argument('--ip-address', '-i', metavar='IPADDR', action='append',
                     help='IP address where the daemon will listen from.')
-parser.add_argument('--configuration-file', '-c', required=True, metavar='FILE',
-                    help='Configuration file.')
+parser.add_argument('--configuration-file', '-c', required=True, metavar='FILE', help='Configuration file.')
 parser.add_argument('--no-indent', '-ni', action='store_true',
                     help='Disables JSON indentation to provide a more compact log output.')
 parser.add_argument('--version', action='version', version='%(prog)s {}'.format(__version__))
 args = parser.parse_args()
 
+# Get the listening IP addresses
+ip_addresses = []
 try:
-    ip_addresses = []
     if args.ip_address:
         for ip in args.ip_address:
             ip_addresses.append(ip_address(ip))
@@ -45,7 +44,7 @@ try:
                 if '%' not in address['addr']:
                     ip_addresses.append(ip_address(address['addr']))
 except ValueError as ex:
-    print(ex)
+    print(f'There was an error trying to configure the listening sockets: {ex}')
     sys.exit(1)
 
 # set logger

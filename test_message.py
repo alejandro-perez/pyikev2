@@ -123,10 +123,7 @@ class TestProposal(TestPayloadMixin, unittest.TestCase):
         super(TestProposal, self).setUp()
         transform1 = Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96)
         transform2 = Transform(Transform.Type.PRF, Transform.PrfId.PRF_HMAC_SHA1)
-        self.object = Proposal(
-            20, Proposal.Protocol.IKE, b'aspiwhatever',
-            [transform1, transform2]
-        )
+        self.object = Proposal(20, Proposal.Protocol.IKE, b'aspiwhatever', [transform1, transform2])
 
     def test_parse_random(self):
         with self.assertRaises(InvalidSyntax):
@@ -173,18 +170,9 @@ class TestProposal(TestPayloadMixin, unittest.TestCase):
         transform1 = Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96)
         transform2 = Transform(Transform.Type.PRF, Transform.PrfId.PRF_HMAC_SHA1)
         transform3 = Transform(Transform.Type.PRF, Transform.PrfId.PRF_HMAC_MD5)
-        proposal = Proposal(
-            20, Proposal.Protocol.IKE, b'aspiwhatever',
-            [transform2, transform1]
-        )
-        proposal2 = Proposal(
-            20, Proposal.Protocol.IKE, b'aspiwhatever',
-            [transform2]
-        )
-        proposal3 = Proposal(
-            20, Proposal.Protocol.IKE, b'aspiwhatever',
-            [transform1, transform2, transform3]
-        )
+        proposal = Proposal(20, Proposal.Protocol.IKE, b'aspiwhatever', [transform2, transform1])
+        proposal2 = Proposal(20, Proposal.Protocol.IKE, b'aspiwhatever', [transform2])
+        proposal3 = Proposal(20, Proposal.Protocol.IKE, b'aspiwhatever', [transform1, transform2, transform3])
         self.assertEqual(self.object, proposal)
         self.assertNotEqual(self.object, proposal2)
         self.assertNotEqual(self.object, proposal3)
@@ -193,17 +181,11 @@ class TestProposal(TestPayloadMixin, unittest.TestCase):
 class TestPayloadSA(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
         super(TestPayloadSA, self).setUp()
-        transform1 = Transform(Transform.Type.INTEG,
-                               Transform.IntegId.AUTH_HMAC_SHA1_96)
+        transform1 = Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96)
         transform2 = Transform(Transform.Type.PRF, Transform.PrfId.PRF_HMAC_SHA1)
         transform3 = Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC, 128)
-        proposal1 = Proposal(
-            20, Proposal.Protocol.IKE, b'aspiwhatever',
-            [transform1, transform2]
-        )
-        proposal2 = Proposal(
-            20, Proposal.Protocol.IKE, b'anotherone', [transform3]
-        )
+        proposal1 = Proposal(20, Proposal.Protocol.IKE, b'aspiwhatever', [transform1, transform2])
+        proposal2 = Proposal(20, Proposal.Protocol.IKE, b'anotherone', [transform3])
         self.object = PayloadSA([proposal1, proposal2])
 
     def test_parse_random(self):
@@ -218,9 +200,8 @@ class TestPayloadSA(TestPayloadMixin, unittest.TestCase):
 class TestPayloadNOTIFY(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
         super(TestPayloadNOTIFY, self).setUp()
-        self.object = PayloadNOTIFY(
-            Proposal.Protocol.IKE, PayloadNOTIFY.Type.NO_ADDITIONAL_SAS,
-            b'12345678', b'this is notification data')
+        self.object = PayloadNOTIFY(Proposal.Protocol.IKE, PayloadNOTIFY.Type.NO_ADDITIONAL_SAS, b'12345678',
+                                    b'this is notification data')
 
     def test_no_spi(self):
         payload = PayloadNOTIFY(Proposal.Protocol.IKE, PayloadNOTIFY.Type.NO_ADDITIONAL_SAS,
@@ -251,50 +232,36 @@ class TestPayloadIDOther(TestPayloadMixin, unittest.TestCase):
 class TestTrafficSelector(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
         super(TestTrafficSelector, self).setUp()
-        self.object = TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
-                                      TrafficSelector.IpProtocol.UDP, 0, 10,
-                                      ip_address('192.168.1.1'),
-                                      ip_address('192.168.10.10'))
+        self.object = TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE, TrafficSelector.IpProtocol.UDP, 0, 10,
+                                      ip_address('192.168.1.1'), ip_address('192.168.10.10'))
 
     def test_issubnet(self):
-        ts2 = TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
-                              TrafficSelector.IpProtocol.UDP, 4, 10,
-                              ip_address('192.168.1.5'),
-                              ip_address('192.168.10.10'))
+        ts2 = TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE, TrafficSelector.IpProtocol.UDP, 4, 10,
+                              ip_address('192.168.1.5'), ip_address('192.168.10.10'))
         self.assertTrue(ts2.is_subset(self.object))
 
     def test_isnotsubset(self):
-        ts2 = TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
-                              TrafficSelector.IpProtocol.TCP, 0, 10,
-                              ip_address('192.168.1.1'),
-                              ip_address('192.168.10.10'))
+        ts2 = TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE, TrafficSelector.IpProtocol.TCP, 0, 10,
+                              ip_address('192.168.1.1'), ip_address('192.168.10.10'))
         self.assertFalse(ts2.is_subset(self.object))
 
     def test_from_network(self):
-        ts = TrafficSelector.from_network(
-            ip_network('192.168.2.0/22', strict=False), 0, 0)
+        ts = TrafficSelector.from_network(ip_network('192.168.2.0/22', strict=False), 0, 0)
         self.assertEqual(ts.end_addr, ip_address('192.168.3.255'))
 
     def test_get_network(self):
-        ts2 = TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
-                              TrafficSelector.IpProtocol.TCP, 0, 10,
-                              ip_address('192.168.1.1'),
-                              ip_address('192.168.10.10'))
+        ts2 = TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE, TrafficSelector.IpProtocol.TCP, 0, 10,
+                              ip_address('192.168.1.1'), ip_address('192.168.10.10'))
         self.assertEqual(ts2.get_network(), ip_network('192.168.0.0/20'))
 
 
 class TestPayloadTS(TestPayloadMixin, unittest.TestCase):
     def setUp(self):
         super(TestPayloadTS, self).setUp()
-        ts1 = TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
-                              TrafficSelector.IpProtocol.UDP, 0, 10,
-                              ip_address('192.168.1.1'),
-                              ip_address('192.168.10.10'))
-        ts2 = TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE,
-                              TrafficSelector.IpProtocol.ICMP, 100, 200,
-                              ip_address('192.168.1.1'),
-                              ip_address('192.168.10.10'))
-
+        ts1 = TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE, TrafficSelector.IpProtocol.UDP, 0, 10,
+                              ip_address('192.168.1.1'), ip_address('192.168.10.10'))
+        ts2 = TrafficSelector(TrafficSelector.Type.TS_IPV4_ADDR_RANGE, TrafficSelector.IpProtocol.ICMP, 100, 200,
+                              ip_address('192.168.1.1'), ip_address('192.168.10.10'))
         self.object = PayloadTS([ts1, ts2])
 
     def test_parse_random(self):
@@ -323,7 +290,7 @@ class TestMessage(TestPayloadMixin, unittest.TestCase):
         transform1 = Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA1_96)
         transform2 = Transform(Transform.Type.PRF, Transform.PrfId.PRF_HMAC_SHA1)
         transform3 = Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC, 256)
-        proposal1 = Proposal( 20, Proposal.Protocol.IKE, b'aspiwhatever',[transform1, transform2, transform3])
+        proposal1 = Proposal(20, Proposal.Protocol.IKE, b'aspiwhatever', [transform1, transform2, transform3])
         proposal2 = Proposal(20, Proposal.Protocol.IKE, b'anotherone', [transform3])
         payload_sa = PayloadSA([proposal1, proposal2])
         payload_nonce = PayloadNONCE()
@@ -360,10 +327,8 @@ class TestMessage(TestPayloadMixin, unittest.TestCase):
         payload_sa = PayloadSA([proposal1])
         payload_nonce = PayloadNONCE(b'123456789012341232132132131')
 
-        crypto = Crypto(Cipher(Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC, 256)),
-                        b'a' * 32,
-                        Integrity(Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA2_512_256)),
-                        b'a' * 8,
+        crypto = Crypto(Cipher(Transform(Transform.Type.ENCR, Transform.EncrId.ENCR_AES_CBC, 256)), b'a' * 32,
+                        Integrity(Transform(Transform.Type.INTEG, Transform.IntegId.AUTH_HMAC_SHA2_512_256)), b'a' * 8,
                         None, b'')
 
         message = Message(
