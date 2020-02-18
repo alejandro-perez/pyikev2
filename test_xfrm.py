@@ -6,9 +6,9 @@
 import socket
 import subprocess
 import unittest
-from ipaddress import ip_address, ip_network
+from ipaddress import ip_address
 
-from configuration import IkeConfiguration, IpsecConfiguration, Configuration
+from configuration import Configuration
 from message import TrafficSelector, Proposal, Transform
 from xfrm import Xfrm, Mode, XfrmAddress
 
