@@ -1,11 +1,11 @@
-with-alice:
-  my_addr: 172.50.1.3
-  peer_addr: 172.50.1.2
+with-bob:
+  my_addr: 172.50.1.2
+  peer_addr: 172.50.1.3
   my_auth:
-    id: bob.openikev2
+    id: alice.openikev2
     psk: testing
   peer_auth:
-    id: alice.openikev2
+    id: bob.openikev2
     psk: testing
   lifetime: 100
   dpd: 60
@@ -14,14 +14,13 @@ with-alice:
   prf: [sha512]
   dh: [21]
   protect:
-    - my_port: 23
-      peer_port: 0
+    - my_port: 0
+      peer_port: 23
       ip_proto: tcp
       mode: tunnel
-      lifetime: 1000
+      lifetime: 10
       ipsec_proto: esp
       encr: [aes256]
       integ: [sha512]
       dh: [21]
-
 

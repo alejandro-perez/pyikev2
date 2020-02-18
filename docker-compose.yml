@@ -1,0 +1,32 @@
+version: '3'
+
+services:
+  alice:
+    privileged: true
+    environment:
+      CONFIG: alice.yaml
+      EXTRA_PARAMS: -v
+    build:
+      context: .
+      dockerfile: Dockerfile
+    networks:
+      testnet:
+        ipv4_address: 172.50.1.2
+  bob:
+    privileged: true
+    environment:
+      CONFIG: bob.yaml
+    build:
+      context: .
+      dockerfile: Dockerfile
+    networks:
+      testnet:
+        ipv4_address: 172.50.1.3
+
+networks:
+  testnet:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.50.1.0/24
+
