@@ -40,6 +40,10 @@ class IkeSaStateError(Exception):
     pass
 
 
+class ChildSaRejectedError(Exception):
+    pass
+
+
 class IkeSa(object):
     """ This class controls the state machine of a IKE SA
         It is triggered with received Messages and/or IPsec events
@@ -918,7 +922,8 @@ class IkeSa(object):
                       PayloadNOTIFY.Type.CHILD_SA_NOT_FOUND, PayloadNOTIFY.Type.TEMPORARY_FAILURE,
                       PayloadNOTIFY.Type.NO_ADDITIONAL_SAS):
             if response.get_notifies(error, True):
-                raise IkeSaError(f'CHILD_SA negotiation failed because {error.name}. Skipping creation of CHILD_SA.')
+                raise ChildSaRejectedError(
+                    f'CHILD_SA negotiation failed because {error.name}. Skipping creation of CHILD_SA.')
 
         # get some relevant payloads from the message
         response_payload_sa = response.get_payload(Payload.Type.SA, True)
@@ -940,7 +945,8 @@ class IkeSa(object):
         # check mode is consistent
         response_mode = xfrm.Mode.TRANSPORT if response_transport_mode else xfrm.Mode.TUNNEL
         if self.creating_child_sa.mode != response_mode:
-            raise TsUnacceptable(f'Invalid mode requested {self.creating_child_sa.mode.name} vs {response_mode.name}')
+            raise TsUnacceptable(f'Invalid mode received. Requested={self.creating_child_sa.mode.name}. '
+                                 f'Received={response_mode.name}')
 
         # Check responder provided a valid proposal
         my_proposal = (self.creating_child_sa.proposal.copy_without_dh_transforms()
@@ -1004,9 +1010,11 @@ class IkeSa(object):
         # process the CHILD_SA creation negotiation
         try:
             self._process_create_child_sa_negotiation_res(response)
-        except IkeSaError as ex:
+        except ChildSaRejectedError as ex:
             self.log_warning(str(ex))
-
+        except IkeSaError as ex:
+            self.log_warning(f'Peer created an invalid CHILD_SA: {ex}. Deleting it')
+            return self.generate_delete_child_sa_request(self.creating_child_sa)
         self.state = IkeSa.State.ESTABLISHED
         return None
 
@@ -1199,8 +1207,11 @@ class IkeSa(object):
                     else:
                         self.log_warning(f'CHILD_SA {self.rekeying_child_sa} was already deleted. '
                                          f'Not starting a DELETE exchange')
+            except ChildSaRejectedError as ex:
+                self.log_warning(str(ex))
             except IkeSaError as ex:
-                self.log_warning(f'CHILD_SA could not be created: {ex}')
+                self.log_warning(f'Peer created an invalid CHILD_SA: {ex}. Deleting it')
+                return self.generate_delete_child_sa_request(self.creating_child_sa)
             return None
 
     def process_informational_response(self, response):
@@ -1212,8 +1223,8 @@ class IkeSa(object):
 
         if self.state == IkeSa.State.DEL_CHILD_REQ_SENT:
             if self.deleting_child_sa not in self.child_sas:
-                self.log_warning(
-                    f'CHILD_SA {self.deleting_child_sa} was already deleted by the peer. Omitting actual deletion')
+                self.log_warning(f'CHILD_SA {self.deleting_child_sa} was already deleted by the peer. '
+                                 f'Omitting actual deletion')
             else:
                 # delete our side of the
 
