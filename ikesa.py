@@ -383,7 +383,7 @@ class IkeSa(object):
 
         self.log_info("Received acquire from policy with index={}".format(index))
         # Create the ChildSa object with the values we know so far
-        child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, original_proposal=ipsec_conf.proposal,
+        child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=b'\0' * 4, original_proposal=ipsec_conf.proposal,
                            proposal=ipsec_conf.proposal, tsi=(tsi, ipsec_conf.my_ts),
                            tsr=(tsr, ipsec_conf.peer_ts), mode=ipsec_conf.mode, lifetime=ipsec_conf.lifetime)
         if self.state == IkeSa.State.INITIAL:
@@ -411,9 +411,9 @@ class IkeSa(object):
         # if this is a soft expire, rekey the CHILD SA
         if not hard:
             # Create the ChildSa object with the values we know so far
-            new_child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, proposal=child_sa.original_proposal,
-                                   original_proposal=child_sa.original_proposal, tsi=[child_sa.tsi],
-                                   tsr=[child_sa.tsr], mode=child_sa.mode, lifetime=child_sa.lifetime)
+            new_child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=b'\0' * 4, mode=child_sa.mode,
+                                   proposal=child_sa.original_proposal, original_proposal=child_sa.original_proposal,
+                                   tsi=[child_sa.tsi], tsr=[child_sa.tsr], lifetime=child_sa.lifetime)
             request = self.generate_create_child_sa_request(new_child_sa, child_sa)
         # if this is a hard expire, delete the CHILD SA
         else:
