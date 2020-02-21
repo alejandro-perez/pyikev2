@@ -27,7 +27,7 @@ class IkeSaController:
         # establish policies
         xfrm.Xfrm.flush_policies()
         xfrm.Xfrm.flush_sas()
-        for ike_conf in self.configuration.ike_configurations:
+        for ike_conf in self.configuration.ike_configurations.values():
             xfrm.Xfrm.create_policies(ike_conf)
 
     def _get_ike_sa_by_spi(self, spi):
@@ -48,7 +48,7 @@ class IkeSaController:
         # if IKE_SA_INIT request, then a new IkeSa must be created
         if header.exchange_type == Message.Exchange.IKE_SA_INIT and header.is_request:
             # look for matching configuration
-            ike_conf = self.configuration.get_ike_configuration(ip_address(peer_addr))
+            ike_conf = self.configuration.get_ike_configuration(ip_address(my_addr), ip_address(peer_addr))
             ike_sa = IkeSa(is_initiator=False, peer_spi=header.spi_i, configuration=ike_conf,
                            my_addr=ip_address(my_addr), peer_addr=ip_address(peer_addr))
             self.ike_sas.append(ike_sa)
@@ -84,6 +84,7 @@ class IkeSaController:
     def process_acquire(self, xfrm_acquire, attributes):
         family = attributes[xfrm.XFRMA_TMPL].family
         peer_addr = xfrm_acquire.id.daddr.to_ipaddr(family)
+        my_addr = xfrm_acquire.saddr.to_ipaddr(family)
         logging.debug('Received acquire for {}'.format(peer_addr))
 
         # look for an active IKE_SA with the peer
@@ -91,7 +92,7 @@ class IkeSaController:
             ike_sa = self._get_ike_sa_by_peer_addr(peer_addr)
         except StopIteration:
             my_addr = xfrm_acquire.saddr.to_ipaddr(family)
-            ike_conf = self.configuration.get_ike_configuration(peer_addr)
+            ike_conf = self.configuration.get_ike_configuration(my_addr, peer_addr)
             # create new IKE_SA (for now)
             ike_sa = IkeSa(is_initiator=True, peer_spi=b'\0'*8, configuration=ike_conf, my_addr=my_addr,
                            peer_addr=peer_addr)

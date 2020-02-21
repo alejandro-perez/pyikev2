@@ -1226,8 +1226,7 @@ class IkeSa(object):
                 self.log_warning(f'CHILD_SA {self.deleting_child_sa} was already deleted by the peer. '
                                  f'Omitting actual deletion')
             else:
-                # delete our side of the
-
+                # delete our side of the CHILD_SA
                 xfrm.Xfrm.delete_child_sa(self, self.deleting_child_sa)
                 self.child_sas.remove(self.deleting_child_sa)
                 self.log_info(f'Removing CHILD_SA {self.deleting_child_sa}')

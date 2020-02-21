@@ -71,16 +71,16 @@ class TestIkeSa(TestCase):
         }
         self.configuration = Configuration([self.ip1, self.ip2], self.confdict)
         self.ike_sa1 = IkeSa(is_initiator=True, peer_spi=b'\0' * 8,
-                             configuration=self.configuration.get_ike_configuration(self.ip2), my_addr=self.ip1,
+                             configuration=self.configuration.get_ike_configuration(self.ip1, self.ip2), my_addr=self.ip1,
                              peer_addr=self.ip2)
         self.ike_sa2 = IkeSa(is_initiator=False, peer_spi=self.ike_sa1.my_spi,
-                             configuration=self.configuration.get_ike_configuration(self.ip1), my_addr=self.ip2,
+                             configuration=self.configuration.get_ike_configuration(self.ip2, self.ip1), my_addr=self.ip2,
                              peer_addr=self.ip1)
 
     def update_ike_sas_configuration(self):
         self.configuration = Configuration([self.ip1, self.ip2], self.confdict)
-        self.ike_sa1.configuration = self.configuration.get_ike_configuration(self.ip2)
-        self.ike_sa2.configuration = self.configuration.get_ike_configuration(self.ip1)
+        self.ike_sa1.configuration = self.configuration.get_ike_configuration(self.ip1, self.ip2)
+        self.ike_sa2.configuration = self.configuration.get_ike_configuration(self.ip2, self.ip1)
 
     def assertMessageHasNotification(self, message_data, ikesa, notification_type):
         message = Message.parse(message_data, crypto=ikesa.my_crypto)
@@ -220,7 +220,7 @@ sEuNUHHDSswFehNOFQIDAQAB
         self.assertMessageHasNotification(ike_sa_init_res, self.ike_sa2, PayloadNOTIFY.Type.INVALID_KE_PAYLOAD)
         ike_sa_init_req_newgroup = self.ike_sa1.process_message(ike_sa_init_res)
         ike_sa3 = IkeSa(is_initiator=False, peer_spi=self.ike_sa1.my_spi, my_addr=self.ip2, peer_addr=self.ip1,
-                        configuration=self.configuration.get_ike_configuration(self.ip1))
+                        configuration=self.configuration.get_ike_configuration(self.ip2, self.ip1))
         ike_sa_init_res = ike_sa3.process_message(ike_sa_init_req_newgroup)
         self.ike_sa1.process_message(ike_sa_init_res)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.AUTH_REQ_SENT)
@@ -240,7 +240,7 @@ sEuNUHHDSswFehNOFQIDAQAB
         self.assertMessageHasNotification(ike_sa_init_res, self.ike_sa2, PayloadNOTIFY.Type.COOKIE)
         ike_sa_init_req_cookie = self.ike_sa1.process_message(ike_sa_init_res)
         ike_sa3 = IkeSa(is_initiator=False, peer_spi=self.ike_sa1.my_spi, my_addr=self.ip2, peer_addr=self.ip1,
-                        configuration=self.configuration.get_ike_configuration(self.ip1))
+                        configuration=self.configuration.get_ike_configuration(self.ip2, self.ip1))
         ike_sa_init_res = ike_sa3.process_message(ike_sa_init_req_cookie)
         self.ike_sa1.process_message(ike_sa_init_res)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.AUTH_REQ_SENT)

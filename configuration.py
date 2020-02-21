@@ -89,10 +89,11 @@ class Configuration(object):
     def __init__(self, my_addresses, conf_dict):
         """ Creates a new Configuration object from a textual dict
         """
-        self.ike_configurations = []
+        self.ike_configurations = {}
         for connection_name, ikeconfdict in conf_dict.items():
             try:
-                self.ike_configurations.append(self._load_ike_conf(connection_name, ikeconfdict, my_addresses))
+                ikeconf = self._load_ike_conf(connection_name, ikeconfdict, my_addresses)
+                self.ike_configurations[(ikeconf.my_addr, ikeconf.peer_addr)] = ikeconf
             except KeyError as ex:
                 raise ConfigurationError(f'Mandatory parameter {ex} missing for connection "{connection_name}"')
 
@@ -182,11 +183,11 @@ class Configuration(object):
             proposal=Proposal(1, ipsec_proto, b'', encr + integ + dh + no_esn),
         )
 
-    def get_ike_configuration(self, peer_addr):
+    def get_ike_configuration(self, src_addr, peer_addr):
         try:
-            return next(x for x in self.ike_configurations if x.peer_addr == peer_addr)
-        except StopIteration:
-            raise ConfigurationNotFound(f'Could not find a configuration for peer addr "{peer_addr}"')
+            return self.ike_configurations[(src_addr, peer_addr)]
+        except KeyError:
+            raise ConfigurationNotFound(f'Could not find a configuration for "{src_addr}, {peer_addr}"')
 
     @staticmethod
     def _load_from_dict(key, cnf_dict):
