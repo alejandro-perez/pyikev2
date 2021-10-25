@@ -25,10 +25,19 @@ You can connect to their log console by using `docker-compose logs`.
 
 In order to start the IKEv2 exchange, you must create traffic that is protected by the configuration. In this case, you must send traffic to Bob's port 23 (telnet). You can easily do that by executing:
 ```bash
-docker-compose exec alice telnet bob
+docker-compose exec alice ncat bob 23
+```
+This command creates a TCP connection to port 23 and keeps attached to the console. You should see any line you type echoed by the server.
+
+```bash
+docker-compose exec alice ncat bob 23
+Hello, this is a test
+Hello, this is a test
+This is working
+This is working
 ```
 
-You should see something similar to the following when checking Alice's log:
+In addtion, you should see something similar to the following when checking Alice's log:
 ```text
 Attaching to pyikev2_alice_1
 alice_1  | [2020-02-18 11:44:30.588] [INFO   ] Listening from [172.50.1.2]:500
