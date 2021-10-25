@@ -27,7 +27,8 @@ __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 Keyring = namedtuple('Keyring', ['sk_d', 'sk_ai', 'sk_ar', 'sk_ei', 'sk_er', 'sk_pi', 'sk_pr'])
 ChildSa = namedtuple('ChildSa', ['inbound_spi', 'outbound_spi', 'original_proposal', 'proposal', 'tsi', 'tsr', 'mode',
                                  'lifetime'])
-ChildSa.__str__ = lambda x: '({}, {})'.format(x.inbound_spi.hex(), x.outbound_spi.hex())
+ChildSa.__str__ = lambda x: '({}, {}, {}, {})'.format(x.inbound_spi.hex(), x.outbound_spi.hex(), x.mode.name,
+                                                      x.proposal.protocol_id.name)
 ChildSa.to_dict = lambda x: {'spis': str(x),
                              'protocol': x.proposal.protocol_id.name,
                              'mode': x.mode.name,
@@ -36,6 +37,10 @@ ChildSa.to_dict = lambda x: {'spis': str(x),
 
 
 class IkeSaStateError(Exception):
+    pass
+
+
+class ChildSaRejectedError(Exception):
     pass
 
 
@@ -382,7 +387,7 @@ class IkeSa(object):
 
         self.log_info("Received acquire from policy with index={}".format(index))
         # Create the ChildSa object with the values we know so far
-        child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, original_proposal=ipsec_conf.proposal,
+        child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=b'\0' * 4, original_proposal=ipsec_conf.proposal,
                            proposal=ipsec_conf.proposal, tsi=(tsi, ipsec_conf.my_ts),
                            tsr=(tsr, ipsec_conf.peer_ts), mode=ipsec_conf.mode, lifetime=ipsec_conf.lifetime)
         if self.state == IkeSa.State.INITIAL:
@@ -410,9 +415,9 @@ class IkeSa(object):
         # if this is a soft expire, rekey the CHILD SA
         if not hard:
             # Create the ChildSa object with the values we know so far
-            new_child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=None, proposal=child_sa.original_proposal,
-                                   original_proposal=child_sa.original_proposal, tsi=[child_sa.tsi],
-                                   tsr=[child_sa.tsr], mode=child_sa.mode, lifetime=child_sa.lifetime)
+            new_child_sa = ChildSa(inbound_spi=os.urandom(4), outbound_spi=b'\0' * 4, mode=child_sa.mode,
+                                   proposal=child_sa.original_proposal, original_proposal=child_sa.original_proposal,
+                                   tsi=[child_sa.tsi], tsr=[child_sa.tsr], lifetime=child_sa.lifetime)
             request = self.generate_create_child_sa_request(new_child_sa, child_sa)
         # if this is a hard expire, delete the CHILD SA
         else:
@@ -606,7 +611,7 @@ class IkeSa(object):
 
         # generate USE_TRANSPORT_MODE notify if needed
         if child_sa.mode == xfrm.Mode.TRANSPORT:
-            result.append(PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.USE_TRANSPORT_MODE, b'', b''))
+            result.append(PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.USE_TRANSPORT_MODE))
 
         return result
 
@@ -770,7 +775,7 @@ class IkeSa(object):
                     raise TsUnacceptable('Proposed Traffic Selectors do not match with those for the rekeyed CHILD_SA')
 
                 response_payloads.append(PayloadNOTIFY(request_payload_sa.proposals[0].protocol_id,
-                                                       PayloadNOTIFY.Type.REKEY_SA, rekeyed_child_sa.inbound_spi, b''))
+                                                       PayloadNOTIFY.Type.REKEY_SA, rekeyed_child_sa.inbound_spi))
 
             # source of nonces is different for the initial exchange
             if request.exchange_type == Message.Exchange.IKE_AUTH:
@@ -788,14 +793,14 @@ class IkeSa(object):
                                                                                request_payload_tsr)
 
             # check which mode peer wants and compare to ours
-            mode = xfrm.Mode.TUNNEL
+            requested_mode = xfrm.Mode.TUNNEL
             if request.get_notifies(PayloadNOTIFY.Type.USE_TRANSPORT_MODE, True):
-                mode = xfrm.Mode.TRANSPORT
-                response_payloads.append(
-                    PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.USE_TRANSPORT_MODE, b'', b''))
+                requested_mode = xfrm.Mode.TRANSPORT
+                response_payloads.append(PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.USE_TRANSPORT_MODE))
 
-            if ipsec_conf.mode != mode:
-                raise TsUnacceptable('Invalid mode requested')
+            if ipsec_conf.mode != requested_mode:
+                raise TsUnacceptable(f'Invalid mode requested. Requested={requested_mode.name}. '
+                                     f'Desired={ipsec_conf.mode.name}')
 
             # generate the response payload SA with the chosen proposal
             my_proposal = (ipsec_conf.proposal.copy_without_dh_transforms()
@@ -821,7 +826,7 @@ class IkeSa(object):
 
             # create the IPsec SAs according to the negotiated CHILD SA
             child_sa = ChildSa(outbound_spi=chosen_child_proposal.spi, inbound_spi=os.urandom(4),
-                               proposal=chosen_child_proposal, tsi=chosen_tsr, tsr=chosen_tsi, mode=mode,
+                               proposal=chosen_child_proposal, tsi=chosen_tsr, tsr=chosen_tsi, mode=requested_mode,
                                lifetime=ipsec_conf.lifetime, original_proposal=ipsec_conf.proposal)
 
             self.child_sas.append(child_sa)
@@ -843,7 +848,7 @@ class IkeSa(object):
         # Generic error happening while negotiating the CHILD_SA should be reported as NO_PROPOSAL_CHOSEN
         except (IkeSaError, xfrm.NetlinkError) as ex:
             self.log_warning('CHILD_SA negotiation failed. {}'.format(ex))
-            return [PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN, b'', b'')]
+            return [PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.NO_PROPOSAL_CHOSEN)]
 
     def _check_in_states(self, message, list_of_valid_states):
         if self.state not in list_of_valid_states:
@@ -917,7 +922,8 @@ class IkeSa(object):
                       PayloadNOTIFY.Type.CHILD_SA_NOT_FOUND, PayloadNOTIFY.Type.TEMPORARY_FAILURE,
                       PayloadNOTIFY.Type.NO_ADDITIONAL_SAS):
             if response.get_notifies(error, True):
-                raise IkeSaError(f'CHILD_SA negotiation failed because {error.name}. Skipping creation of CHILD_SA.')
+                raise ChildSaRejectedError(
+                    f'CHILD_SA negotiation failed because {error.name}. Skipping creation of CHILD_SA.')
 
         # get some relevant payloads from the message
         response_payload_sa = response.get_payload(Payload.Type.SA, True)
@@ -939,7 +945,8 @@ class IkeSa(object):
         # check mode is consistent
         response_mode = xfrm.Mode.TRANSPORT if response_transport_mode else xfrm.Mode.TUNNEL
         if self.creating_child_sa.mode != response_mode:
-            raise TsUnacceptable(f'Invalid mode requested {self.creating_child_sa.mode} vs {response_mode}')
+            raise TsUnacceptable(f'Invalid mode received. Requested={self.creating_child_sa.mode.name}. '
+                                 f'Received={response_mode.name}')
 
         # Check responder provided a valid proposal
         my_proposal = (self.creating_child_sa.proposal.copy_without_dh_transforms()
@@ -1003,9 +1010,11 @@ class IkeSa(object):
         # process the CHILD_SA creation negotiation
         try:
             self._process_create_child_sa_negotiation_res(response)
-        except IkeSaError as ex:
+        except ChildSaRejectedError as ex:
             self.log_warning(str(ex))
-
+        except IkeSaError as ex:
+            self.log_warning(f'Peer created an invalid CHILD_SA: {ex}. Deleting it')
+            return self.generate_delete_child_sa_request(self.creating_child_sa)
         self.state = IkeSa.State.ESTABLISHED
         return None
 
@@ -1198,8 +1207,11 @@ class IkeSa(object):
                     else:
                         self.log_warning(f'CHILD_SA {self.rekeying_child_sa} was already deleted. '
                                          f'Not starting a DELETE exchange')
+            except ChildSaRejectedError as ex:
+                self.log_warning(str(ex))
             except IkeSaError as ex:
-                self.log_warning(f'CHILD_SA could not be created: {ex}')
+                self.log_warning(f'Peer created an invalid CHILD_SA: {ex}. Deleting it')
+                return self.generate_delete_child_sa_request(self.creating_child_sa)
             return None
 
     def process_informational_response(self, response):
@@ -1211,11 +1223,10 @@ class IkeSa(object):
 
         if self.state == IkeSa.State.DEL_CHILD_REQ_SENT:
             if self.deleting_child_sa not in self.child_sas:
-                self.log_warning(
-                    f'CHILD_SA {self.deleting_child_sa} was already deleted by the peer. Omitting actual deletion')
+                self.log_warning(f'CHILD_SA {self.deleting_child_sa} was already deleted by the peer. '
+                                 f'Omitting actual deletion')
             else:
-                # delete our side of the
-
+                # delete our side of the CHILD_SA
                 xfrm.Xfrm.delete_child_sa(self, self.deleting_child_sa)
                 self.child_sas.remove(self.deleting_child_sa)
                 self.log_info(f'Removing CHILD_SA {self.deleting_child_sa}')

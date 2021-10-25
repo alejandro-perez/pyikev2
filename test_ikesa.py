@@ -16,6 +16,7 @@ from unittest.mock import patch
 from configuration import Configuration
 from ikesa import IkeSa
 from message import TrafficSelector, Proposal, Message, Payload, PayloadNOTIFY
+from xfrm import Mode
 
 logging.indent = 2
 logging.basicConfig(level=logging.DEBUG,
@@ -70,16 +71,16 @@ class TestIkeSa(TestCase):
         }
         self.configuration = Configuration([self.ip1, self.ip2], self.confdict)
         self.ike_sa1 = IkeSa(is_initiator=True, peer_spi=b'\0' * 8,
-                             configuration=self.configuration.get_ike_configuration(self.ip2), my_addr=self.ip1,
+                             configuration=self.configuration.get_ike_configuration(self.ip1, self.ip2), my_addr=self.ip1,
                              peer_addr=self.ip2)
         self.ike_sa2 = IkeSa(is_initiator=False, peer_spi=self.ike_sa1.my_spi,
-                             configuration=self.configuration.get_ike_configuration(self.ip1), my_addr=self.ip2,
+                             configuration=self.configuration.get_ike_configuration(self.ip2, self.ip1), my_addr=self.ip2,
                              peer_addr=self.ip1)
 
     def update_ike_sas_configuration(self):
         self.configuration = Configuration([self.ip1, self.ip2], self.confdict)
-        self.ike_sa1.configuration = self.configuration.get_ike_configuration(self.ip2)
-        self.ike_sa2.configuration = self.configuration.get_ike_configuration(self.ip1)
+        self.ike_sa1.configuration = self.configuration.get_ike_configuration(self.ip1, self.ip2)
+        self.ike_sa2.configuration = self.configuration.get_ike_configuration(self.ip2, self.ip1)
 
     def assertMessageHasNotification(self, message_data, ikesa, notification_type):
         message = Message.parse(message_data, crypto=ikesa.my_crypto)
@@ -219,7 +220,7 @@ sEuNUHHDSswFehNOFQIDAQAB
         self.assertMessageHasNotification(ike_sa_init_res, self.ike_sa2, PayloadNOTIFY.Type.INVALID_KE_PAYLOAD)
         ike_sa_init_req_newgroup = self.ike_sa1.process_message(ike_sa_init_res)
         ike_sa3 = IkeSa(is_initiator=False, peer_spi=self.ike_sa1.my_spi, my_addr=self.ip2, peer_addr=self.ip1,
-                        configuration=self.configuration.get_ike_configuration(self.ip1))
+                        configuration=self.configuration.get_ike_configuration(self.ip2, self.ip1))
         ike_sa_init_res = ike_sa3.process_message(ike_sa_init_req_newgroup)
         self.ike_sa1.process_message(ike_sa_init_res)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.AUTH_REQ_SENT)
@@ -239,7 +240,7 @@ sEuNUHHDSswFehNOFQIDAQAB
         self.assertMessageHasNotification(ike_sa_init_res, self.ike_sa2, PayloadNOTIFY.Type.COOKIE)
         ike_sa_init_req_cookie = self.ike_sa1.process_message(ike_sa_init_res)
         ike_sa3 = IkeSa(is_initiator=False, peer_spi=self.ike_sa1.my_spi, my_addr=self.ip2, peer_addr=self.ip1,
-                        configuration=self.configuration.get_ike_configuration(self.ip1))
+                        configuration=self.configuration.get_ike_configuration(self.ip2, self.ip1))
         ike_sa_init_res = ike_sa3.process_message(ike_sa_init_req_cookie)
         self.ike_sa1.process_message(ike_sa_init_res)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.AUTH_REQ_SENT)
@@ -478,9 +479,31 @@ sEuNUHHDSswFehNOFQIDAQAB
         message = Message.parse(create_child_sa_res, crypto=self.ike_sa2.my_crypto)
         message.encrypted_payloads.remove(message.get_notifies(PayloadNOTIFY.Type.USE_TRANSPORT_MODE, True)[0])
         create_child_sa_res = message.to_bytes()
-        request = self.ike_sa1.process_message(create_child_sa_res)
+        delete_child_req = self.ike_sa1.process_message(create_child_sa_res)
+        delete_child_res = self.ike_sa2.process_message(delete_child_req)
+        request = self.ike_sa1.process_message(delete_child_res)
         self.assertIsNone(request)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 1)
+        self.assertEqual(len(self.ike_sa2.child_sas), 1)
+
+    @patch('xfrm.Xfrm.send_recv')
+    def test_invalid_proposal_in_response(self, mockclass):
+        self.test_initial_exchanges_transport()
+        small_tsi = TrafficSelector.from_network(ip_network("192.168.0.1/32"), 8765, TrafficSelector.IpProtocol.TCP)
+        small_tsr = TrafficSelector.from_network(ip_network("192.168.0.2/32"), 23, TrafficSelector.IpProtocol.TCP)
+        create_child_sa_req = self.ike_sa1.process_acquire(small_tsi, small_tsr, 1)
+        create_child_sa_res = self.ike_sa2.process_message(create_child_sa_req)
+        message = Message.parse(create_child_sa_res, crypto=self.ike_sa2.my_crypto)
+        message.encrypted_payloads.remove(message.get_payload(Payload.Type.SA, True))
+        create_child_sa_res = message.to_bytes()
+        delete_child_req = self.ike_sa1.process_message(create_child_sa_res)
+        delete_child_res = self.ike_sa2.process_message(delete_child_req)
+        request = self.ike_sa1.process_message(delete_child_res)
+        self.assertIsNone(request)
+        self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
+        self.assertEqual(len(self.ike_sa1.child_sas), 1)
+        self.assertEqual(len(self.ike_sa2.child_sas), 1)
 
     @patch('xfrm.Xfrm.send_recv')
     def test_invalid_message_id_on_request(self, mockclass):
@@ -839,8 +862,7 @@ sEuNUHHDSswFehNOFQIDAQAB
         rekey_req = self.ike_sa1.check_rekey_ike_sa_timer()
         rekey_res = self.ike_sa2.process_message(rekey_req)
         message = Message.parse(rekey_res, crypto=self.ike_sa2.my_crypto)
-        message.encrypted_payloads = [
-            PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.NO_ADDITIONAL_SAS, b'', b'')]
+        message.encrypted_payloads = [PayloadNOTIFY(Proposal.Protocol.NONE, PayloadNOTIFY.Type.NO_ADDITIONAL_SAS)]
         rekey_res = message.to_bytes()
         delete_req = self.ike_sa1.process_message(rekey_res)
         self.assertIsNotNone(delete_req)

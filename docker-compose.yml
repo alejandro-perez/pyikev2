@@ -5,7 +5,6 @@ services:
     privileged: true
     environment:
       CONFIG: alice.yaml
-      EXTRA_PARAMS: -v
     build:
       context: .
       dockerfile: Dockerfile

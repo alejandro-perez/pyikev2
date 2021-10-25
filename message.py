@@ -462,7 +462,7 @@ class PayloadNOTIFY(Payload):
         ESP_TFC_PADDING_NOT_SUPPORTED = 16394
         NON_FIRST_FRAGMENTS_ALSO = 16395
 
-    def __init__(self, protocol_id, notification_type, spi, notification_data, critical=False):
+    def __init__(self, protocol_id, notification_type, spi=b'', notification_data=b'', critical=False):
         super().__init__(critical)
         self.protocol_id = Proposal.Protocol(protocol_id)
         self.notification_type = self.Type(notification_type)

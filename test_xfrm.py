@@ -8,7 +8,7 @@ import subprocess
 import unittest
 from ipaddress import ip_address, ip_network
 
-from xfrm import Xfrm, Mode, XfrmAddress, XFRM_POLICY_OUT, XFRM_MODE_TRANSPORT, XFRM_MODE_TUNNEL
+from xfrm import Xfrm, Mode, XfrmAddress, XFRM_POLICY_OUT
 
 __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
@@ -30,22 +30,22 @@ class TestXfrm(unittest.TestCase):
 
     def test_create_transport_policy(self):
         Xfrm.create_policy(ip_network('192.168.1.1/32'), ip_network('192.168.2.1/32'), 0, 0, socket.IPPROTO_TCP,
-                           XFRM_POLICY_OUT, socket.IPPROTO_AH, XFRM_MODE_TRANSPORT, ip_address('192.168.1.1'),
+                           XFRM_POLICY_OUT, socket.IPPROTO_AH, Mode.TRANSPORT, ip_address('192.168.1.1'),
                            ip_address('192.168.1.2'), index=1)
 
     def test_create_transport_policy_ipv6(self):
         Xfrm.create_policy(ip_network('2001::1/128'), ip_network('2001::2/128'), 0, 0, socket.IPPROTO_TCP,
-                           XFRM_POLICY_OUT, socket.IPPROTO_AH, XFRM_MODE_TRANSPORT, ip_address('2001::1'),
+                           XFRM_POLICY_OUT, socket.IPPROTO_AH, Mode.TRANSPORT, ip_address('2001::1'),
                            ip_address('2001::2'), index=1)
 
     def test_create_tunnel_policy(self):
         Xfrm.create_policy(ip_network('10.0.0.0/24'), ip_network('10.0.1.0/24'), 0, 0, socket.IPPROTO_TCP,
-                           XFRM_POLICY_OUT, socket.IPPROTO_AH, XFRM_MODE_TUNNEL, ip_address('192.168.1.1'),
+                           XFRM_POLICY_OUT, socket.IPPROTO_AH, Mode.TUNNEL, ip_address('192.168.1.1'),
                            ip_address('192.168.1.2'), index=1)
 
     def test_create_tunnel_policy_ipv6(self):
         Xfrm.create_policy(ip_network('2009::0/64'), ip_network('2009::0/64'), 0, 0, socket.IPPROTO_TCP,
-                           XFRM_POLICY_OUT, socket.IPPROTO_AH, XFRM_MODE_TRANSPORT, ip_address('2001::1'),
+                           XFRM_POLICY_OUT, socket.IPPROTO_AH, Mode.TRANSPORT, ip_address('2001::1'),
                            ip_address('2001::2'), index=1)
 
     def test_create_transport_ipsec_sa(self):
