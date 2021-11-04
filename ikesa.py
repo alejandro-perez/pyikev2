@@ -786,7 +786,7 @@ class IkeSa(object):
             else:
                 request_payload_nonce = request.get_payload(Payload.Type.NONCE, encrypted=True)
                 response_payload_nonce = PayloadNONCE()
-            response_payloads.append(response_payload_nonce)
+                response_payloads.append(response_payload_nonce)
 
             # Find matching IPsec configuration and narrow TS (reverse order as we are responders)
             ipsec_conf, chosen_tsr, chosen_tsi = self._get_ipsec_configuration(request_payload_tsi,

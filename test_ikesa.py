@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 from configuration import Configuration
 from ikesa import IkeSa
-from message import TrafficSelector, Proposal, Message, Payload, PayloadNOTIFY
+from message import TrafficSelector, Proposal, Message, Payload, PayloadNOTIFY, PayloadNotFound
 from xfrm import Mode
 
 logging.indent = 2
@@ -95,6 +95,11 @@ class TestIkeSa(TestCase):
         ike_sa_init_res = self.ike_sa2.process_message(ike_sa_init_req)
         ike_auth_req = self.ike_sa1.process_message(ike_sa_init_res)
         ike_auth_res = self.ike_sa2.process_message(ike_auth_req)
+        # check there is no NONCE in the IKE_AUTH response
+        with self.assertRaises(PayloadNotFound):
+            message = Message.parse(ike_auth_res, crypto=self.ike_sa1.peer_crypto)
+            message.get_payload(Payload.Type.NONCE, encrypted=True)
+
         request = self.ike_sa1.process_message(ike_auth_res)
         self.assertIsNone(request)
         self.assertEqual(self.ike_sa1.state, IkeSa.State.ESTABLISHED)
