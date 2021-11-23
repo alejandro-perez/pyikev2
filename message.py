@@ -678,7 +678,7 @@ class TrafficSelector(object):
         return OrderedDict((('ts_type', self.ts_type.name),
                             ('ip_proto', self.ip_proto.name),
                             ('port-range', f'{self.start_port} - {self.end_port}'),
-                            ('addr-range', f'{self.start_port} - {self.end_port}')))
+                            ('addr-range', f'{self.start_addr} - {self.end_addr}')))
 
     def is_subset(self, other):
         if self.ts_type != other.ts_type:
