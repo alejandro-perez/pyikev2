@@ -1,9 +1,11 @@
-FROM debian:10
+FROM debian:11
 
 RUN apt-get -y update
 RUN apt-get install -y python3-pip
 RUN pip3 install netifaces pyyaml
 RUN apt-get install -y ncat
+COPY requirements.txt .
+RUN pip install -r requirements.txt
 COPY . /code
 WORKDIR /code
 ENV CONFIG=config.yaml
