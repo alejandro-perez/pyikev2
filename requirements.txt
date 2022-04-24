@@ -1,1 +1,3 @@
 cryptography
+netifaces
+pyyaml
