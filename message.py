@@ -357,7 +357,7 @@ class PayloadSA(Payload):
         if len(data):
             offset = 0
             while offset < len(data):
-                more, _, length = unpack_from('>BBH', data)
+                more, _, length = unpack_from('>BBH', data, offset)
                 start = offset + 4
                 end = offset + length
                 proposal = Proposal.parse(data[start:end])
@@ -882,7 +882,7 @@ class Message:
                 # offset is increased in any case
                 payloads.append(payload)
             except KeyError:
-                logging.warning(f'Unrecognized payload with type {payload_type.name}')
+                logging.warning(f'Unrecognized payload with type {payload_type}')
                 if critical:
                     raise UnsupportedCriticalPayload
 
