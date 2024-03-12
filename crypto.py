@@ -14,6 +14,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import dh, padding, ec
 from cryptography.hazmat.primitives.ciphers import Cipher as _Cipher, algorithms, modes
+from cryptography import x509
 
 from message import Transform, InvalidSyntax
 
@@ -109,6 +110,13 @@ class Cipher:
 
 class MODPDH:
     _group_dict = {
+        Transform.DhId.DH_1: # MODP768
+            'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DD'
+            'EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A63A3620FFFFFFFFFFFFFFFF',
+        Transform.DhId.DH_2: # MODP1024
+            'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DD'
+            'EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED'
+            'EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE65381FFFFFFFFFFFFFFFF',
         Transform.DhId.DH_14: # MODP2048
             'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3C'
             'D3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE'
@@ -283,9 +291,37 @@ class RsaPublicKey:
     def __init__(self, pem):
         self.key = serialization.load_pem_public_key(pem, backend=default_backend())
 
-    def verify(self, signature, data):
+    def verify(self, signature, data, hasher = hashes.SHA256):
+        if hasher == hashlib.sha1:
+            hasher = hashes.SHA1
+        elif hasher == hashlib.sha256:
+            hasher = hashes.SHA256
+        elif hasher == hashlib.sha512:
+            hasher = hashes.SHA512
+
         try:
-            self.key.verify(signature, data, padding.PKCS1v15(), hashes.SHA256())
+            self.key.verify(signature, data, padding.PKCS1v15(), hasher())
             return True
         except InvalidSignature:
             return False
+
+class Certificate:
+    def __init__(self, data):
+         self.cert = cryptography.x509.load_der_x509_certificate(data)
+
+    def verify(self, signature, data, hasher = hashes.SHA256):
+        if hasher == hashlib.sha1:
+            hasher = hashes.SHA1
+        elif hasher == hashlib.sha256:
+            hasher = hashes.SHA256
+        elif hasher == hashlib.sha512:
+            hasher = hashes.SHA512
+
+        try:
+            self.cert.public_key().verify(signature, data, padding.PKCS1v15(), hasher())
+            return True
+        except InvalidSignature:
+            return False
+
+    def fingerprint(self):
+        return self.cert.fingerprint(hashes.SHA256()).hex()

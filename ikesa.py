@@ -14,13 +14,14 @@ from collections import namedtuple, OrderedDict
 from enum import IntEnum
 from hmac import HMAC
 from struct import unpack
+from eap import EAPClient
 
 import xfrm
-from crypto import Cipher, Crypto, DiffieHellman, Integrity, Prf
+from crypto import Cipher, Crypto, DiffieHellman, Integrity, Prf, Certificate
 from message import (AuthenticationFailed, ChildSaNotFound, IkeSaError, InvalidKePayload,
                      NoProposalChosen, TemporaryFailure, TsUnacceptable, CookieRequired)
 from message import (Message, Payload, PayloadAUTH, PayloadDELETE, PayloadIDi, PayloadIDr, PayloadKE, PayloadNONCE,
-                     PayloadNOTIFY, PayloadSA, PayloadTSi, PayloadTSr, PayloadVENDOR, Proposal, Transform)
+                     PayloadNOTIFY, PayloadSA, PayloadTSi, PayloadTSr, PayloadVENDOR, Proposal, Transform, PayloadCERT)
 
 __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
@@ -72,7 +73,7 @@ class IkeSa(object):
         REKEYED = 20
         DELETED = 21
 
-    def __init__(self, is_initiator, peer_spi, configuration, my_addr, peer_addr, cookie_secret=None):
+    def __init__(self, is_initiator, peer_spi, configuration, my_addr, peer_addr, cookie_secret=None, disableXfrm = False):
         self.state = IkeSa.State.INITIAL
         self.my_spi = os.urandom(8)
         self.peer_spi = peer_spi
@@ -103,6 +104,9 @@ class IkeSa(object):
         self.delete_ike_sa_at = self.rekey_ike_sa_at + 30
         self.pending_events = []
         self.dh = None
+        self.disableXfrm = disableXfrm
+        self.lastPeerCerts = []
+        self.eapClient = EAPClient(self.configuration.my_auth.eap) if self.configuration.my_auth.eap else None
 
     def __str__(self):
         return self.my_spi.hex()
@@ -166,8 +170,9 @@ class IkeSa(object):
         return ike_sa_keyring
 
     def delete_child_sas(self):
-        for child_sa in self.child_sas:
-            xfrm.Xfrm.delete_child_sa(self, child_sa)
+        if not self.disableXfrm:
+            for child_sa in self.child_sas:
+                xfrm.Xfrm.delete_child_sa(self, child_sa)
         self.child_sas.clear()
 
     def generate_child_sa_key_material(self, child_proposal, keyseed, sk_d):
@@ -374,6 +379,10 @@ class IkeSa(object):
         else:
             return self._process_response(message)
 
+    def connect(self):
+        request = self.generate_ike_sa_init_request(None)
+        return self._send_request(request)
+
     def process_acquire(self, tsi, tsr, index):
         if self.state not in (IkeSa.State.INITIAL, IkeSa.State.ESTABLISHED):
             self.log_debug('Cannot process acquire while waiting for a response. Queuing')
@@ -568,7 +577,7 @@ class IkeSa(object):
         # check state
         assert (self.state == IkeSa.State.ESTABLISHED)
 
-        self.new_ike_sa = IkeSa(True, b'', self.configuration, self.my_addr, self.peer_addr)
+        self.new_ike_sa = IkeSa(True, b'', self.configuration, self.my_addr, self.peer_addr, disableXfrm = self.disableXfrm)
 
         # generate the IKE SA negotiation payloads
         ike_sa_payloads = self.new_ike_sa._generate_ike_sa_negotiation_request()
@@ -621,7 +630,10 @@ class IkeSa(object):
         assert (self.state == IkeSa.State.INIT_REQ_SENT)
 
         # generate the CHILD_SA negotiation payloads
-        child_sa_payloads = self._generate_child_sa_negotiation_req(self.creating_child_sa)
+        if self.creating_child_sa is not None:
+            child_sa_payloads = self._generate_child_sa_negotiation_req(self.creating_child_sa)
+        else:
+            child_sa_payloads = []
 
         # generate IDi
         payload_idi = PayloadIDi(self.configuration.my_auth.id.id_type, self.configuration.my_auth.id.id_data)
@@ -633,8 +645,11 @@ class IkeSa(object):
                                                    self.my_crypto.sk_p)
 
         # generate the message
-        self.request = self.generate_request(Message.Exchange.IKE_AUTH,
-                                             child_sa_payloads + [payload_idi, payload_auth])
+        payloads = child_sa_payloads + [payload_idi]
+        if payload_auth is not None:
+            payloads += [payload_auth]
+        self.lastAuthRequestPayloads = payloads
+        self.request = self.generate_request(Message.Exchange.IKE_AUTH, payloads)
 
         # transition
         self.state = IkeSa.State.AUTH_REQ_SENT
@@ -719,7 +734,10 @@ class IkeSa(object):
     def _verify_rsa_auth_payload(self, authdata, data_to_be_signed):
         if not self.configuration.peer_auth.pubkey:
             return False
-        return self.configuration.peer_auth.pubkey.verify(authdata, data_to_be_signed)
+        return self.configuration.peer_auth.pubkey.verify(authdata, data_to_be_signed, self.my_crypto.prf.hasher)
+
+    def _verify_cert_auth_payload(self, cert, authdata, data_to_be_signed):
+        return cert.verify(authdata, data_to_be_signed, self.my_crypto.prf.hasher)
 
     def _generate_auth_payload(self, message_data, nonce, payload_id, sk_p):
         data_to_be_signed = (message_data + nonce + self.my_crypto.prf.prf(sk_p, payload_id.to_bytes()))
@@ -727,10 +745,12 @@ class IkeSa(object):
             return self._generate_rsa_auth_payload(data_to_be_signed)
         elif self.configuration.my_auth.psk:
             return self._generate_psk_auth_payload(self.configuration.my_auth.psk, data_to_be_signed)
+        elif self.configuration.my_auth.eap:
+            return None # is iniated by peer
         else:
             raise AuthenticationFailed('Could not generate AUTH payload due to a lack of auth configuration')
 
-    def _verify_auth_payload(self, payload_auth, message_data, nonce, payload_id, sk_p):
+    def _verify_auth_payload(self, payload_auth, message_data, nonce, payload_id, sk_p, certs = None):
         data_to_be_signed = (message_data + nonce + self.my_crypto.prf.prf(sk_p, payload_id.to_bytes()))
         if payload_auth.method == PayloadAUTH.Method.PSK and self.configuration.peer_auth.psk:
             if self._generate_psk_auth_payload(self.configuration.peer_auth.psk, data_to_be_signed) != payload_auth:
@@ -738,6 +758,21 @@ class IkeSa(object):
         elif payload_auth.method == PayloadAUTH.Method.RSA and self.configuration.peer_auth.pubkey:
             if not self._verify_rsa_auth_payload(payload_auth.auth_data, data_to_be_signed):
                 raise AuthenticationFailed('RSA authentication failed')
+        elif payload_auth.method == PayloadAUTH.Method.RSA and self.configuration.peer_auth.certfp is not None:
+            if certs is None or len(certs) < 1:
+                raise AuthenticationFailed('RSA authentication failed - No certificate send by peer')
+            if certs[0].encoding != PayloadCERT.Encoding.X509CertificateSignature:
+                raise AuthenticationFailed('RSA authentication failed - Certificate encoding used by peer not supported')
+
+            peerCert = Certificate(certs[0].cert_data)
+            peerCertFp = peerCert.fingerprint()
+            if self.configuration.peer_auth.certfp != peerCertFp:
+                raise AuthenticationFailed(f'RSA authentication failed - Certificate send by peer has fingerprint {peerCertFp}')
+
+            if not self._verify_cert_auth_payload(peerCert, payload_auth.auth_data, data_to_be_signed):
+                raise AuthenticationFailed('RSA authentication failed (using certificate from peer)')
+        elif self.configuration.peer_auth.ignore:
+            self.log_warning('Ignore peer authentication signature')
         else:
             raise AuthenticationFailed('Authentication method not supported')
 
@@ -830,8 +865,11 @@ class IkeSa(object):
                                lifetime=ipsec_conf.lifetime, original_proposal=ipsec_conf.proposal)
 
             self.child_sas.append(child_sa)
-            xfrm.Xfrm.create_child_sa(self, child_sa, child_sa_keyring, is_initiator=False)
-            self.log_info('Created CHILD_SA {} with lifetime = {}'.format(child_sa, child_sa.lifetime))
+            if not self.disableXfrm:
+                xfrm.Xfrm.create_child_sa(self, child_sa, child_sa_keyring, is_initiator=False)
+                self.log_info('Created CHILD_SA {} with lifetime = {}'.format(child_sa, child_sa.lifetime))
+            else:
+                self.log_info('SKIPPED Created CHILD_SA {} with lifetime = {}'.format(child_sa, child_sa.lifetime))
 
             # generate the response Payload SA
             chosen_child_proposal.spi = child_sa.inbound_spi
@@ -887,10 +925,10 @@ class IkeSa(object):
         ike_sa_init_res = Message.parse(self.ike_sa_init_res_data)
 
         if request_payload_idi.id_type != self.configuration.peer_auth.id.id_type:
-            raise AuthenticationFailed('Received ID type does not match with the configured one for the peer')
+            raise AuthenticationFailed(f'Received ID type does not match with the configured one for the peer: rx {request_payload_idi.id_type} != cfg {self.configuration.peer_auth.id.id_type}')
 
         if request_payload_idi.id_data != self.configuration.peer_auth.id.id_data:
-            raise AuthenticationFailed('Received ID data does not match with the configured one for the peer')
+            raise AuthenticationFailed(f'Received ID data does not match with the configured one for the peer: rx {request_payload_idi.id_data} != cfg {self.configuration.peer_auth.id.id_data}')
 
         self._verify_auth_payload(request_payload_auth, self.ike_sa_init_req_data,
                                   ike_sa_init_res.get_payload(Payload.Type.NONCE).nonce, request_payload_idi,
@@ -907,7 +945,9 @@ class IkeSa(object):
                                                             ike_sa_init_req.get_payload(Payload.Type.NONCE).nonce,
                                                             response_payload_idr, self.my_crypto.sk_p)
 
-        response_payloads += [response_payload_idr, response_payload_auth]
+        response_payloads += [response_payload_idr]
+        if response_payload_auth is not None:
+            response_payloads += [response_payload_auth]
 
         # generate the message
         response = self.generate_response(Message.Exchange.IKE_AUTH, response_payloads)
@@ -982,8 +1022,11 @@ class IkeSa(object):
                                                                  proposal=chosen_child_proposal, tsi=chosen_tsi,
                                                                  tsr=chosen_tsr)
         self.child_sas.append(self.creating_child_sa)
-        xfrm.Xfrm.create_child_sa(self, self.creating_child_sa, child_sa_keyring, is_initiator=True)
-        self.log_info(f'Created CHILD_SA {self.creating_child_sa}')
+        if not self.disableXfrm:
+            xfrm.Xfrm.create_child_sa(self, self.creating_child_sa, child_sa_keyring, is_initiator=True)
+            self.log_info(f'Created CHILD_SA {self.creating_child_sa}')
+        else:
+            self.log_info(f'SKIPPED Created CHILD_SA {self.creating_child_sa}')
 
     def process_ike_auth_response(self, response):
         self._check_in_states(response, [IkeSa.State.AUTH_REQ_SENT])
@@ -995,29 +1038,54 @@ class IkeSa(object):
         # get some relevant payloads from the message
         response_payload_idr = response.get_payload(Payload.Type.IDr, True)
         response_payload_auth = response.get_payload(Payload.Type.AUTH, True)
+        response_payload_certs = response.get_payloads(Payload.Type.CERT, True)
+        if len(response_payload_certs) < 1:
+            response_payload_certs = self.lastPeerCerts
+        else:
+            self.lastPeerCerts = response_payload_certs
+        response_payload_eaps = response.get_payloads(Payload.Type.EAP, True)
 
         if response_payload_idr.id_type != self.configuration.peer_auth.id.id_type:
-            raise AuthenticationFailed('Received ID type does not match with the configured one for the peer')
+            raise AuthenticationFailed(f'Received ID type does not match with the configured one for the peer: rx {response_payload_idr.id_type} != cfg {self.configuration.peer_auth.id.id_type}')
 
         if response_payload_idr.id_data != self.configuration.peer_auth.id.id_data:
-            raise AuthenticationFailed('Received ID data does not match with the configured one for the peer')
+            raise AuthenticationFailed(f'Received ID data does not match with the configured one for the peer: rx {response_payload_idr.id_data} != cfg {self.configuration.peer_auth.id.id_data}')
 
         ike_sa_init_req = Message.parse(self.ike_sa_init_req_data)
         self._verify_auth_payload(response_payload_auth, self.ike_sa_init_res_data,
                                   ike_sa_init_req.get_payload(Payload.Type.NONCE).nonce,
-                                  response_payload_idr, self.peer_crypto.sk_p)
+                                  response_payload_idr, self.peer_crypto.sk_p, certs = response_payload_certs)
+
+        # Handle EAP
+        if len(response_payload_eaps) > 1:
+            raise AuthenticationFailed("Too many EAP")
+        elif len(response_payload_eaps) > 0 and self.eapClient:
+            eapReply = self.eapClient.handleMessage(response_payload_eaps[0].eap_message)
+            if not isinstance(eapReply, bool):
+                self.log_debug('Sending EAP reply')
+                payloads = self.lastAuthRequestPayloads + [PayloadEAP(eapReply)]
+                self.request = self.generate_request(Message.Exchange.IKE_AUTH, payloads)
+                return self.request
+            if not eapReply:
+                raise AuthenticationFailed("EAP Failure")
+        elif len(response_payload_eaps) > 0:
+            raise AuthenticationFailed("EAP requested but not configured")
 
         # process the CHILD_SA creation negotiation
         try:
-            self._process_create_child_sa_negotiation_res(response)
+            if self.creating_child_sa is not None:
+                self._process_create_child_sa_negotiation_res(response)
         except ChildSaRejectedError as ex:
             self.log_warning(str(ex))
         except IkeSaError as ex:
             self.log_warning(f'Peer created an invalid CHILD_SA: {ex}. Deleting it')
-            return self.generate_delete_child_sa_request(self.creating_child_sa)
+            if self.creating_child_sa is not None:
+                return self.generate_delete_child_sa_request(self.creating_child_sa)
+            else:
+                return None
         self.state = IkeSa.State.ESTABLISHED
         return None
-
+    
     def generate_create_child_sa_request(self, child_sa, rekeyed_child_sa=None):
         """ Creates a CREATE_CHILD_SA request message for creating a new CHILD or rekeying an existing one
         """
@@ -1083,7 +1151,8 @@ class IkeSa(object):
                 for del_spi in delete_payload.spis:
                     child_sa = self.get_child_sa(del_spi)
                     if child_sa is not None and child_sa.proposal.protocol_id == delete_payload.protocol_id:
-                        xfrm.Xfrm.delete_child_sa(self, child_sa)
+                        if not self.disableXfrm:
+                            xfrm.Xfrm.delete_child_sa(self, child_sa)
                         self.child_sas.remove(child_sa)
                         response_payloads.append(PayloadDELETE(delete_payload.protocol_id, [child_sa.inbound_spi]))
                         self.log_info('Removing CHILD_SA {}'.format(child_sa))
@@ -1109,7 +1178,7 @@ class IkeSa(object):
                 self.log_warning('Cannot process IKE_SA rekeying while doing anything else. Sending TEMPORARY_FAILURE')
                 response_payloads = [PayloadNOTIFY.from_exception(TemporaryFailure())]
             else:
-                self.new_ike_sa = IkeSa(False, proposal.spi, self.configuration, self.my_addr, self.peer_addr)
+                self.new_ike_sa = IkeSa(False, proposal.spi, self.configuration, self.my_addr, self.peer_addr, disableXfrm = self.disableXfrm)
                 # take over the existing child sas
                 self.new_ike_sa.child_sas = self.child_sas
                 self.child_sas = []
@@ -1199,7 +1268,8 @@ class IkeSa(object):
             prev_state = self.state
             self.state = IkeSa.State.ESTABLISHED
             try:
-                self._process_create_child_sa_negotiation_res(response)
+                if self.creating_child_sa is not None:
+                    self._process_create_child_sa_negotiation_res(response)
                 if prev_state == IkeSa.State.REK_CHILD_REQ_SENT:
                     # CHILD_SA might have been deleted while we were waiting for our response
                     if self.rekeying_child_sa in self.child_sas:
@@ -1227,7 +1297,8 @@ class IkeSa(object):
                                  f'Omitting actual deletion')
             else:
                 # delete our side of the CHILD_SA
-                xfrm.Xfrm.delete_child_sa(self, self.deleting_child_sa)
+                if not self.disableXfrm:
+                    xfrm.Xfrm.delete_child_sa(self, self.deleting_child_sa)
                 self.child_sas.remove(self.deleting_child_sa)
                 self.log_info(f'Removing CHILD_SA {self.deleting_child_sa}')
             self.state = IkeSa.State.ESTABLISHED
