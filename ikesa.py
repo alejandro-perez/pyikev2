@@ -19,9 +19,9 @@ from eap import EAPClient
 import xfrm
 from crypto import Cipher, Crypto, DiffieHellman, Integrity, Prf, Certificate
 from message import (AuthenticationFailed, ChildSaNotFound, IkeSaError, InvalidKePayload,
-                     NoProposalChosen, TemporaryFailure, TsUnacceptable, CookieRequired)
+                     NoProposalChosen, TemporaryFailure, TsUnacceptable, CookieRequired, PayloadNotFound)
 from message import (Message, Payload, PayloadAUTH, PayloadDELETE, PayloadIDi, PayloadIDr, PayloadKE, PayloadNONCE,
-                     PayloadNOTIFY, PayloadSA, PayloadTSi, PayloadTSr, PayloadVENDOR, Proposal, Transform, PayloadCERT)
+                     PayloadNOTIFY, PayloadSA, PayloadTSi, PayloadTSr, PayloadVENDOR, Proposal, Transform, PayloadCERT, PayloadEAP)
 
 __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
@@ -73,7 +73,7 @@ class IkeSa(object):
         REKEYED = 20
         DELETED = 21
 
-    def __init__(self, is_initiator, peer_spi, configuration, my_addr, peer_addr, cookie_secret=None, disableXfrm = False):
+    def __init__(self, is_initiator, peer_spi, configuration, my_addr, peer_addr, cookie_secret=None, disableXfrm = False, eapTlsClientSocket = None):
         self.state = IkeSa.State.INITIAL
         self.my_spi = os.urandom(8)
         self.peer_spi = peer_spi
@@ -106,7 +106,8 @@ class IkeSa(object):
         self.dh = None
         self.disableXfrm = disableXfrm
         self.lastPeerCerts = []
-        self.eapClient = EAPClient(self.configuration.my_auth.eap) if self.configuration.my_auth.eap else None
+        self.lastPeerIdr = None
+        self.eapClient = EAPClient(self.configuration.my_auth.eap, eapTlsClientSocket) if self.configuration.my_auth.eap else None
 
     def __str__(self):
         return self.my_spi.hex()
@@ -168,6 +169,11 @@ class IkeSa(object):
             hexkey = getattr(ike_sa_keyring, keyname).hex()
             self.log_debug(f'Generated {keyname}: {hexkey}')
         return ike_sa_keyring
+
+    def before_remove(self):
+        self.delete_child_sas()
+        if self.eapClient is not None:
+            self.eapClient.stop()
 
     def delete_child_sas(self):
         if not self.disableXfrm:
@@ -925,10 +931,10 @@ class IkeSa(object):
         ike_sa_init_res = Message.parse(self.ike_sa_init_res_data)
 
         if request_payload_idi.id_type != self.configuration.peer_auth.id.id_type:
-            raise AuthenticationFailed(f'Received ID type does not match with the configured one for the peer: rx {request_payload_idi.id_type} != cfg {self.configuration.peer_auth.id.id_type}')
+            raise AuthenticationFailed(f'Received ID type does not match with the configured one for the peer: rx {request_payload_idi.id_type.hex()} != cfg {self.configuration.peer_auth.id.id_type.hex()}')
 
         if request_payload_idi.id_data != self.configuration.peer_auth.id.id_data:
-            raise AuthenticationFailed(f'Received ID data does not match with the configured one for the peer: rx {request_payload_idi.id_data} != cfg {self.configuration.peer_auth.id.id_data}')
+            raise AuthenticationFailed(f'Received ID data does not match with the configured one for the peer: rx {request_payload_idi.id_data.hex()} != cfg {self.configuration.peer_auth.id.id_data.hex()}')
 
         self._verify_auth_payload(request_payload_auth, self.ike_sa_init_req_data,
                                   ike_sa_init_res.get_payload(Payload.Type.NONCE).nonce, request_payload_idi,
@@ -1036,25 +1042,38 @@ class IkeSa(object):
                                                                        PayloadNOTIFY.Type.TS_UNACCEPTABLE])
 
         # get some relevant payloads from the message
-        response_payload_idr = response.get_payload(Payload.Type.IDr, True)
-        response_payload_auth = response.get_payload(Payload.Type.AUTH, True)
+        try:
+            response_payload_idr = response.get_payload(Payload.Type.IDr, True)
+            self.lastPeerIdr = response_payload_idr
+        except PayloadNotFound as ex:
+            if self.lastPeerIdr is None or self.eapClient is None or not self.eapClient.running:
+                raise ex
+            response_payload_idr = self.lastPeerIdr
+        
         response_payload_certs = response.get_payloads(Payload.Type.CERT, True)
         if len(response_payload_certs) < 1:
             response_payload_certs = self.lastPeerCerts
         else:
             self.lastPeerCerts = response_payload_certs
+
         response_payload_eaps = response.get_payloads(Payload.Type.EAP, True)
 
-        if response_payload_idr.id_type != self.configuration.peer_auth.id.id_type:
-            raise AuthenticationFailed(f'Received ID type does not match with the configured one for the peer: rx {response_payload_idr.id_type} != cfg {self.configuration.peer_auth.id.id_type}')
+        try:
+            response_payload_auth = response.get_payload(Payload.Type.AUTH, True)
+            if response_payload_idr.id_type != self.configuration.peer_auth.id.id_type:
+                raise AuthenticationFailed(f'Received ID type does not match with the configured one for the peer: rx {response_payload_idr.id_type.hex()} != cfg {self.configuration.peer_auth.id.id_type.hex()}')
 
-        if response_payload_idr.id_data != self.configuration.peer_auth.id.id_data:
-            raise AuthenticationFailed(f'Received ID data does not match with the configured one for the peer: rx {response_payload_idr.id_data} != cfg {self.configuration.peer_auth.id.id_data}')
+            if response_payload_idr.id_data != self.configuration.peer_auth.id.id_data:
+                raise AuthenticationFailed(f'Received ID data does not match with the configured one for the peer: rx {response_payload_idr.id_data.hex()} != cfg {self.configuration.peer_auth.id.id_data.hex()}')
 
-        ike_sa_init_req = Message.parse(self.ike_sa_init_req_data)
-        self._verify_auth_payload(response_payload_auth, self.ike_sa_init_res_data,
-                                  ike_sa_init_req.get_payload(Payload.Type.NONCE).nonce,
-                                  response_payload_idr, self.peer_crypto.sk_p, certs = response_payload_certs)
+            ike_sa_init_req = Message.parse(self.ike_sa_init_req_data)
+            self._verify_auth_payload(response_payload_auth, self.ike_sa_init_res_data,
+                                      ike_sa_init_req.get_payload(Payload.Type.NONCE).nonce,
+                                      response_payload_idr, self.peer_crypto.sk_p, certs = response_payload_certs)
+        except PayloadNotFound as ex:
+            if self.eapClient is None or not self.eapClient.running:
+                raise ex
+            response_payload_auth = None
 
         # Handle EAP
         if len(response_payload_eaps) > 1:

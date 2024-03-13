@@ -18,7 +18,7 @@ __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
 
 class IkeSaController:
-    def __init__(self, my_addrs, configuration, disableXfrm, my_port):
+    def __init__(self, my_addrs, configuration, disableXfrm, my_port, eapTlsPassThrough):
         self.ike_sas = []
         self.configuration = configuration
         self.my_addrs = my_addrs
@@ -27,6 +27,7 @@ class IkeSaController:
         self.cookie_secret = os.urandom(8)
         # establish policies
         self.disableXfrm = disableXfrm
+        self.eapTlsPassThrough = eapTlsPassThrough
         if not self.disableXfrm:
             xfrm.Xfrm.flush_policies()
             xfrm.Xfrm.flush_sas()
@@ -78,7 +79,7 @@ class IkeSaController:
 
         # if the IKE_SA needs to be closed
         if ike_sa.state == IkeSa.State.DELETED:
-            ike_sa.delete_child_sas()
+            ike_sa.before_remove()
             self.ike_sas.remove(ike_sa)
             logging.info(f'Deleted IKE_SA={ike_sa}. Count={len(self.ike_sas)}')
 
@@ -137,6 +138,16 @@ class IkeSaController:
         control_socket.listen()
         logging.info(f'Listening control events on [{control_addr[0]}]:{control_addr[1]}')
 
+        if self.eapTlsPassThrough:
+            self.tlsclient_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.tlsclient_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            tlsclient_addr = ("127.0.0.1", 8443)
+            self.tlsclient_socket.bind(tlsclient_addr)
+            self.tlsclient_socket.listen()
+            logging.info(f'Listening tlsclient events on [{tlsclient_addr[0]}]:{tlsclient_addr[1]}')
+        else:
+            self.tlsclient_socket = None
+
         # create XFRM socket
         if not self.disableXfrm:
             xfrm_socket = xfrm.Xfrm.get_socket()
@@ -147,8 +158,10 @@ class IkeSaController:
         allsockets = list(udp_sockets.values()) + [control_socket]
         if xfrm_socket is not None:
             allsockets.append(xfrm_socket)
+        if self.tlsclient_socket is not None:
+            allsockets.append(self.tlsclient_socket)
 
-        if self.disableXfrm:
+        if self.disableXfrm and not self.eapTlsPassThrough:
             for ike_conf in self.configuration.ike_configurations.values():
                 logging.info(f'Connect to {ike_conf.my_addr} -> {ike_conf.peer_addr}')
                 ike_sa = IkeSa(is_initiator=True, peer_spi=b'\0'*8, configuration=ike_conf, my_addr=ike_conf.my_addr,
@@ -159,7 +172,7 @@ class IkeSaController:
                 udp_sockets[ike_conf.my_addr].sendto(reply_data, dst_addr)
 
         # do server
-        while True:
+        while len(self.ike_sas) > 0 or not self.disableXfrm or self.eapTlsPassThrough:
             try:
                 readable = select(allsockets, [], [], 1)[0]
                 for my_addr, sock in udp_sockets.items():
@@ -190,6 +203,18 @@ class IkeSaController:
                     conn.sendall(json.dumps(result).encode())
                     conn.close()
 
+                if self.tlsclient_socket in readable:
+                    conn, addr = self.tlsclient_socket.accept()
+                    for ike_conf in self.configuration.ike_configurations.values():
+                        logging.info(f'Connect to {ike_conf.my_addr} -> {ike_conf.peer_addr}')
+                        ike_sa = IkeSa(is_initiator=True, peer_spi=b'\0'*8, configuration=ike_conf, my_addr=ike_conf.my_addr,
+                                       peer_addr=ike_conf.peer_addr, disableXfrm = self.disableXfrm, eapTlsClientSocket = conn)
+                        self.ike_sas.append(ike_sa)
+                        reply_data = ike_sa.connect()
+                        dst_addr = (str(ike_conf.peer_addr), 500)
+                        udp_sockets[ike_conf.my_addr].sendto(reply_data, dst_addr)
+
+
                 # check retransmissions
                 for ikesa in self.ike_sas:
                     request_data = ikesa.check_retransmission_timer()
@@ -197,7 +222,7 @@ class IkeSaController:
                         dst_addr = (str(ikesa.peer_addr), 500)
                         udp_sockets[ikesa.my_addr].sendto(request_data, dst_addr)
                     if ikesa.state == IkeSa.State.DELETED:
-                        ikesa.delete_child_sas()
+                        ikesa.before_remove()
                         self.ike_sas.remove(ikesa)
                         logging.info('Deleted IKE_SA {}. Count={}'.format(ikesa, len(self.ike_sas)))
 
