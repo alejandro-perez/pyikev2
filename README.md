@@ -389,4 +389,60 @@ alice_1  | [2020-02-18 11:46:11.049] [DEBUG  ] IKE_SA: 4032e4155ba9ceb6. Generat
 alice_1  | [2020-02-18 11:46:11.050] [DEBUG  ] IKE_SA: 4032e4155ba9ceb6. Generated sk_ei: 18339f5431707fd825698fdfa8dfc4f203de6d08ceb66e762fb56670dd7f772c
 alice_1  | [2020-02-18 11:46:11.050] [DEBUG  ] IKE_SA: 4032e4155ba9ceb6. Generated sk_er: e93a45f53f61686224028c89ec7a6f8870bc2b729fc13b5851ca53d59c5a347f
 alice_1  | [2020-02-18 11:46:11.050] [INFO   ] IKE_SA: 4032e4155ba9ceb6. Created CHILD_SA (0edffee0, 92ea861a)
-``` 
+```
+
+# doing sslscan with EAP-TLS
+## example config
+
+```
+test-tunnel:
+  my_addr: 1.2.3.4
+  peer_addr: vpn.example.org
+
+  my_auth:
+    id: "client.example.org"
+    eap:
+      identity: user@example.org
+
+  # peer's authentication details
+  peer_auth:
+    id: 
+      type: ID_DER_ASN1_DN
+      hex: <HEX of peer ID as shown in debug log>
+
+    # peer authentication can be ignored
+    #ignore: true
+
+    # peer authentication can be based on cert provided (the peer cert, not its issuer cert)
+    certfp: 41e752df0a4fd753e6c514cb9ff8d5e453a8a39f898311b3dd09b4627269e81a
+
+  # IKE_SA lifetime (in seconds)
+  lifetime: 600
+
+  # dead peer detection (in seconds)
+  dpd: 60
+
+  # IKE_SA crypto algorithms to use
+  encr: [aes256, aes128]
+  integ: [sha512, sha256, sha1]
+  prf: [sha512, sha256, sha1]
+  dh: [2]
+
+  # no protect needed for testing
+  protect:
+
+```
+
+## pyikev2 as EAP-TLS Proxy
+
+```python3 pyikev2.py --verbose --disableXfrm -c config.yaml --listen-port 0 --eapTlsPassThrough```
+
+* disableXfrm disables actually configuring anything with the linux kernel
+* listen-port avoids the need to bind to port 500 which would require root privileges
+* eapTlsPassThrough makes pyikve2 listen on port 8443 and for each inbound connection spans an IKEv2 session and passes through all TLS messages
+
+## sslscan with pyikev2
+
+```sslscan 127.0.0.1:8443```
+
+* connect to pyikve2 and scan the EAP-TLS TLS-Server settings (TLS versions and ciphers supported)

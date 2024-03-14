@@ -23,11 +23,18 @@ parser.add_argument('--verbose', '-v', action='store_true',
                          'the log output!')
 parser.add_argument('--ip-address', '-i', metavar='IPADDR', action='append',
                     help='IP address where the daemon will listen from.')
+parser.add_argument('--listen-port', metavar='PORT', action='store',
+                    help='Port where to listen from.')
 parser.add_argument('--configuration-file', '-c', required=True, metavar='FILE', help='Configuration file.')
 parser.add_argument('--no-indent', '-ni', action='store_true',
                     help='Disables JSON indentation to provide a more compact log output.')
 parser.add_argument('--version', action='version', version='%(prog)s {}'.format(__version__))
+parser.add_argument('--disableXfrm', action='store_true')
+parser.add_argument('--eapTlsPassThrough', action='store_true')
 args = parser.parse_args()
+
+disableXfrm = args.disableXfrm
+eapTlsPassThrough = args.eapTlsPassThrough
 
 # Get the listening IP addresses
 ip_addresses = []
@@ -46,6 +53,8 @@ try:
 except ValueError as ex:
     print(f'There was an error trying to configure the listening sockets: {ex}')
     sys.exit(1)
+
+listen_port = args.listen_port
 
 # set logger
 logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
@@ -68,8 +77,7 @@ except ConfigurationError as ex:
     sys.exit(1)
 
 # create IkeSaController
-ike_sa_controller = IkeSaController(ip_addresses, configuration)
-
+ike_sa_controller = IkeSaController(ip_addresses, configuration, disableXfrm, listen_port, eapTlsPassThrough)
 
 def signal_handler(*unused):
     print('SIGINT received. Exiting.')

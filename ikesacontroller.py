@@ -18,17 +18,21 @@ __author__ = 'Alejandro Perez-Mendez <alejandro.perez.mendez@gmail.com>'
 
 
 class IkeSaController:
-    def __init__(self, my_addrs, configuration):
+    def __init__(self, my_addrs, configuration, disableXfrm, my_port, eapTlsPassThrough):
         self.ike_sas = []
         self.configuration = configuration
         self.my_addrs = my_addrs
+        self.my_port = my_port
         self.cookie_threshold = 10
         self.cookie_secret = os.urandom(8)
         # establish policies
-        xfrm.Xfrm.flush_policies()
-        xfrm.Xfrm.flush_sas()
-        for ike_conf in self.configuration.ike_configurations.values():
-            xfrm.Xfrm.create_policies(ike_conf)
+        self.disableXfrm = disableXfrm
+        self.eapTlsPassThrough = eapTlsPassThrough
+        if not self.disableXfrm:
+            xfrm.Xfrm.flush_policies()
+            xfrm.Xfrm.flush_sas()
+            for ike_conf in self.configuration.ike_configurations.values():
+                xfrm.Xfrm.create_policies(ike_conf)
 
     def _get_ike_sa_by_spi(self, spi):
         return next(x for x in self.ike_sas if x.my_spi == spi)
@@ -50,7 +54,7 @@ class IkeSaController:
             # look for matching configuration
             ike_conf = self.configuration.get_ike_configuration(ip_address(my_addr), ip_address(peer_addr))
             ike_sa = IkeSa(is_initiator=False, peer_spi=header.spi_i, configuration=ike_conf,
-                           my_addr=ip_address(my_addr), peer_addr=ip_address(peer_addr))
+                           my_addr=ip_address(my_addr), peer_addr=ip_address(peer_addr), disableXfrm=self.disableXfrm)
             self.ike_sas.append(ike_sa)
             if sum(1 for x in self.ike_sas if x.state < IkeSa.State.ESTABLISHED) > self.cookie_threshold:
                 ike_sa.cookie_secret = self.cookie_secret
@@ -75,7 +79,7 @@ class IkeSaController:
 
         # if the IKE_SA needs to be closed
         if ike_sa.state == IkeSa.State.DELETED:
-            ike_sa.delete_child_sas()
+            ike_sa.before_remove()
             self.ike_sas.remove(ike_sa)
             logging.info(f'Deleted IKE_SA={ike_sa}. Count={len(self.ike_sas)}')
 
@@ -95,7 +99,7 @@ class IkeSaController:
             ike_conf = self.configuration.get_ike_configuration(my_addr, peer_addr)
             # create new IKE_SA (for now)
             ike_sa = IkeSa(is_initiator=True, peer_spi=b'\0'*8, configuration=ike_conf, my_addr=my_addr,
-                           peer_addr=peer_addr)
+                           peer_addr=peer_addr, disableXfrm = self.disableXfrm)
             self.ike_sas.append(ike_sa)
             logging.info(f'Starting the creation of IKE SA={ike_sa}. Count={len(self.ike_sas)}')
         sel_family = xfrm_acquire.sel.family
@@ -121,11 +125,11 @@ class IkeSaController:
     def main_loop(self):
         # create network sockets
         udp_sockets = {}
-        port = 500
+        port = int(self.my_port) if self.my_port is not None else 500
         for addr in self.my_addrs:
+            logging.info(f'Listening from [{addr}]:{port}')
             udp_sockets[addr] = socket.socket(socket.AF_INET6 if addr.version == 6 else socket.AF_INET, socket.SOCK_DGRAM)
             udp_sockets[addr].bind((str(addr), port))
-            logging.info(f'Listening from [{addr}]:{port}')
 
         self.control_socket = control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.control_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -134,13 +138,41 @@ class IkeSaController:
         control_socket.listen()
         logging.info(f'Listening control events on [{control_addr[0]}]:{control_addr[1]}')
 
-        # create XFRM socket
-        xfrm_socket = xfrm.Xfrm.get_socket()
-        logging.info('Listening XFRM events.')
+        if self.eapTlsPassThrough:
+            self.tlsclient_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.tlsclient_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            tlsclient_addr = ("127.0.0.1", 8443)
+            self.tlsclient_socket.bind(tlsclient_addr)
+            self.tlsclient_socket.listen()
+            logging.info(f'Listening tlsclient events on [{tlsclient_addr[0]}]:{tlsclient_addr[1]}')
+        else:
+            self.tlsclient_socket = None
 
-        allsockets = list(udp_sockets.values()) + [xfrm_socket, control_socket]
+        # create XFRM socket
+        if not self.disableXfrm:
+            xfrm_socket = xfrm.Xfrm.get_socket()
+            logging.info('Listening XFRM events.')
+        else:
+            xfrm_socket = None
+
+        allsockets = list(udp_sockets.values()) + [control_socket]
+        if xfrm_socket is not None:
+            allsockets.append(xfrm_socket)
+        if self.tlsclient_socket is not None:
+            allsockets.append(self.tlsclient_socket)
+
+        if self.disableXfrm and not self.eapTlsPassThrough:
+            for ike_conf in self.configuration.ike_configurations.values():
+                logging.info(f'Connect to {ike_conf.my_addr} -> {ike_conf.peer_addr}')
+                ike_sa = IkeSa(is_initiator=True, peer_spi=b'\0'*8, configuration=ike_conf, my_addr=ike_conf.my_addr,
+                               peer_addr=ike_conf.peer_addr, disableXfrm = self.disableXfrm)
+                self.ike_sas.append(ike_sa)
+                reply_data = ike_sa.connect()
+                dst_addr = (str(ike_conf.peer_addr), 500)
+                udp_sockets[ike_conf.my_addr].sendto(reply_data, dst_addr)
+
         # do server
-        while True:
+        while len(self.ike_sas) > 0 or not self.disableXfrm or self.eapTlsPassThrough:
             try:
                 readable = select(allsockets, [], [], 1)[0]
                 for my_addr, sock in udp_sockets.items():
@@ -150,7 +182,7 @@ class IkeSaController:
                         if data:
                             sock.sendto(data, peer_addr)
 
-                if xfrm_socket in readable:
+                if xfrm_socket in readable and not disableXfrm:
                     data = xfrm_socket.recv(4096)
                     header, msg, attributes = xfrm.Xfrm.parse_message(data)
                     reply_data, my_addr, peer_addr = None, None, None
@@ -171,6 +203,18 @@ class IkeSaController:
                     conn.sendall(json.dumps(result).encode())
                     conn.close()
 
+                if self.tlsclient_socket in readable:
+                    conn, addr = self.tlsclient_socket.accept()
+                    for ike_conf in self.configuration.ike_configurations.values():
+                        logging.info(f'Connect to {ike_conf.my_addr} -> {ike_conf.peer_addr}')
+                        ike_sa = IkeSa(is_initiator=True, peer_spi=b'\0'*8, configuration=ike_conf, my_addr=ike_conf.my_addr,
+                                       peer_addr=ike_conf.peer_addr, disableXfrm = self.disableXfrm, eapTlsClientSocket = conn)
+                        self.ike_sas.append(ike_sa)
+                        reply_data = ike_sa.connect()
+                        dst_addr = (str(ike_conf.peer_addr), 500)
+                        udp_sockets[ike_conf.my_addr].sendto(reply_data, dst_addr)
+
+
                 # check retransmissions
                 for ikesa in self.ike_sas:
                     request_data = ikesa.check_retransmission_timer()
@@ -178,7 +222,7 @@ class IkeSaController:
                         dst_addr = (str(ikesa.peer_addr), 500)
                         udp_sockets[ikesa.my_addr].sendto(request_data, dst_addr)
                     if ikesa.state == IkeSa.State.DELETED:
-                        ikesa.delete_child_sas()
+                        ikesa.before_remove()
                         self.ike_sas.remove(ikesa)
                         logging.info('Deleted IKE_SA {}. Count={}'.format(ikesa, len(self.ike_sas)))
 
@@ -202,7 +246,8 @@ class IkeSaController:
                 logging.error(f'Could not find socket with the appropriate source address: {str(ex)}')
 
     def close(self):
-        xfrm.Xfrm.flush_policies()
-        xfrm.Xfrm.flush_sas()
+        if not self.disableXfrm:
+            xfrm.Xfrm.flush_policies()
+            xfrm.Xfrm.flush_sas()
         logging.info('Closing IKE_SA controller')
         self.control_socket.close()

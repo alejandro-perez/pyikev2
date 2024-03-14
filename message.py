@@ -386,6 +386,8 @@ class PayloadVENDOR(Payload):
         super().__init__(critical)
         if len(vendor_id) == 0:
             raise InvalidSyntax('Vendor ID should have some data.')
+        if type(vendor_id) == str and vendor_id.startswith("0x"):
+            vendor_id = bytes.fromhex(vendor_id[2:])
         self.vendor_id = vendor_id
 
     @classmethod
@@ -397,7 +399,10 @@ class PayloadVENDOR(Payload):
 
     def to_dict(self):
         result = super().to_dict()
-        result['vendor_id'] = self.vendor_id.decode()
+        try:
+            result['vendor_id'] = self.vendor_id.decode()
+        except:
+            result['vendor_id'] = "0x%s" % (self.vendor_id.hex(),) # not able to decode
         return result
 
 
@@ -584,6 +589,53 @@ class PayloadIDi(PayloadID):
 class PayloadIDr(PayloadID):
     type = Payload.Type.IDr
 
+class PayloadCERT(Payload):
+    type = Payload.Type.CERT
+
+    class Encoding(SafeIntEnum):
+        PKCS7 = 1,
+        PGPCERT = 2,
+        DnsSignedKey = 3,
+        X509CertificateSignature = 4,
+        KerberosToken = 6,  #    UNSPECIFIED
+        CRL = 7,
+        ARL = 8,  #    UNSPECIFIED
+        SPKICertificate = 9,  #    UNSPECIFIED
+        X509CertificateAttribute = 10,  #   UNSPECIFIED
+        RawRsaKey = 11,  # DEPRECATED
+        HashAndUrlOfX509Certificate = 12,
+        HashAndUrlOfX509Bundle = 13,
+
+    def __init__(self, encoding, cert_data, critical=False):
+        super().__init__(critical)
+        self.encoding = self.Encoding(encoding)
+        self.cert_data = cert_data
+
+    @classmethod
+    def parse(cls, data, critical=False):
+        try:
+            encoding, = unpack_from('>B', data)
+        except struct_error:
+            raise InvalidSyntax('Error parsing Payload AUTH.')
+        cert_data = data[1:]
+        return cls(encoding, cert_data, critical=critical)
+
+    def to_bytes(self):
+        data = bytearray(pack('>B', self.encoding))
+        data += self.cert_data
+        return data
+
+    def to_dict(self):
+        result = super().to_dict()
+        result['encoding'] = self.encoding.name
+        result['cert_data'] = self.cert_data.hex()
+        return result
+
+    def __eq__(self, other):
+        return (self.encoding, self.cert_data) == (other.encoding, other.cert_data)
+
+class PayloadCERTREQ(PayloadCERT):
+    type = Payload.Type.CERTREQ
 
 class PayloadAUTH(Payload):
     type = Payload.Type.AUTH
@@ -782,6 +834,30 @@ class PayloadSK(Payload):
         return result
 
 
+class PayloadEAP(Payload):
+    type = Payload.Type.EAP
+
+    def __init__(self, eap_message, critical=False):
+        super().__init__(critical)
+        self.eap_message = eap_message
+
+    @classmethod
+    def parse(cls, data, critical=False):
+        eap_message = data
+        return cls(eap_message, critical=critical)
+
+    def to_bytes(self):
+        data = self.eap_message
+        return data
+
+    def to_dict(self):
+        result = super().to_dict()
+        result['eap_message'] = self.eap_message.hex()
+        return result
+
+    def __eq__(self, other):
+        return self.eap_message == other.eap_message
+
 class PayloadDELETE(Payload):
     type = Payload.Type.DELETE
 
@@ -828,6 +904,8 @@ class Message:
         Payload.Type.KE: PayloadKE,
         Payload.Type.IDi: PayloadIDi,
         Payload.Type.IDr: PayloadIDr,
+        Payload.Type.CERT: PayloadCERT,
+        Payload.Type.CERTREQ: PayloadCERTREQ,
         Payload.Type.AUTH: PayloadAUTH,
         Payload.Type.NONCE: PayloadNONCE,
         Payload.Type.VENDOR: PayloadVENDOR,
@@ -835,6 +913,7 @@ class Message:
         Payload.Type.TSi: PayloadTSi,
         Payload.Type.TSr: PayloadTSr,
         Payload.Type.SK: PayloadSK,
+        Payload.Type.EAP: PayloadEAP,
         Payload.Type.DELETE: PayloadDELETE,
     }
 

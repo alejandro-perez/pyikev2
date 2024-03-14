@@ -41,6 +41,8 @@ _prf_name_to_transform = {
 }
 
 _dh_name_to_transform = {
+    '1': Transform(Transform.Type.DH, Transform.DhId.DH_1),
+    '2': Transform(Transform.Type.DH, Transform.DhId.DH_2),
     '14': Transform(Transform.Type.DH, Transform.DhId.DH_14),
     '15': Transform(Transform.Type.DH, Transform.DhId.DH_15),
     '16': Transform(Transform.Type.DH, Transform.DhId.DH_16),
@@ -49,6 +51,8 @@ _dh_name_to_transform = {
     '19': Transform(Transform.Type.DH, Transform.DhId.DH_19),
     '20': Transform(Transform.Type.DH, Transform.DhId.DH_20),
     '21': Transform(Transform.Type.DH, Transform.DhId.DH_21),
+    'modp768': Transform(Transform.Type.DH, Transform.DhId.DH_1),
+    'modp1024': Transform(Transform.Type.DH, Transform.DhId.DH_2),
     'modp2048': Transform(Transform.Type.DH, Transform.DhId.DH_14),
     'modp3072': Transform(Transform.Type.DH, Transform.DhId.DH_15),
     'modp4096': Transform(Transform.Type.DH, Transform.DhId.DH_16),
@@ -80,7 +84,7 @@ IkeConfiguration = namedtuple('IkeConfiguration',
                               ['name', 'my_addr', 'peer_addr', 'my_auth', 'peer_auth', 'lifetime', 'dpd', 'proposal',
                                'protect'])
 
-AuthConfiguration = namedtuple('AuthConfiguration', ['psk', 'id', 'privkey', 'pubkey'])
+AuthConfiguration = namedtuple('AuthConfiguration', ['psk', 'id', 'privkey', 'pubkey', 'eap', 'ignore', 'certfp'])
 
 IpsecConfiguration = namedtuple('IpsecConfiguration', ['my_ts', 'index', 'peer_ts', 'lifetime', 'mode', 'proposal'])
 
@@ -117,8 +121,9 @@ class Configuration(object):
             raise ConfigurationError(
                 f'Connection {name} has invalid "my_addr" {ikeconf.my_addr}. You need to listen from it')
 
-        for ipsecconf_dict in conf_dict['protect']:
-            ikeconf.protect.append(self._load_ipsec_conf(ikeconf, ipsecconf_dict))
+        if conf_dict['protect'] is not None:
+            for ipsecconf_dict in conf_dict['protect']:
+                ikeconf.protect.append(self._load_ipsec_conf(ikeconf, ipsecconf_dict))
         return ikeconf
 
     @staticmethod
@@ -130,17 +135,27 @@ class Configuration(object):
 
     @staticmethod
     def _get_payload_id(value):
+        if isinstance(value, dict):
+            idtype = PayloadID.Type[value["type"]]
+            if "hex" in value:
+                iddata = bytes.fromhex(value["hex"])
+            elif "str" in value:
+                iddata = value["str"].encode()
+            else:
+                raise ConfigurationError("Missing hex or str id config")
+            return PayloadID(idtype, iddata)
+
         try:
             addr = ip_address(value)
-            type = PayloadID.Type.ID_IPV4_ADDR if addr.version == 4 else PayloadID.Type.ID_IPV6_ADDR
-            return PayloadID(type, addr.packed)
+            idtype = PayloadID.Type.ID_IPV4_ADDR if addr.version == 4 else PayloadID.Type.ID_IPV6_ADDR
+            return PayloadID(idtype, addr.packed)
         except ValueError:
             pass
         if '@' in value:
-            type = PayloadID.Type.ID_RFC822_ADDR
+            idtype = PayloadID.Type.ID_RFC822_ADDR
         else:
-            type = PayloadID.Type.ID_FQDN
-        return PayloadID(type, value.encode())
+            idtype = PayloadID.Type.ID_FQDN
+        return PayloadID(idtype, value.encode())
 
     @staticmethod
     def _load_ip_address(hostname):
@@ -157,6 +172,9 @@ class Configuration(object):
             id=self._get_payload_id(id_text),
             pubkey=RsaPublicKey(conf_dict.get('pubkey').encode()) if 'pubkey' in conf_dict else None,
             privkey=RsaPrivateKey(conf_dict.get('privkey').encode()) if 'privkey' in conf_dict else None,
+            eap=conf_dict['eap'] if 'eap' in conf_dict else None,
+            ignore=conf_dict['ignore'] if 'ignore' in conf_dict else False,
+            certfp=conf_dict['certfp'] if 'certfp' in conf_dict else None,
         )
 
     def _load_ipsec_conf(self, ikeconf, conf_dict):
