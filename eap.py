@@ -10,6 +10,8 @@ class EAPClient:
         self.eapTlsClientSocket = eapTlsClientSocket
         self.lastId = None
         self.lastReply = None
+        self.maxFragmentSize = 2048
+        self.remainFragToEap = b""
 
     def stop(self):
         if self.eapTlsClientSocket is not None:
@@ -74,12 +76,21 @@ class EAPClient:
                 self.tlsStarted = True
             assert(self.tlsStarted == True)
 
+            if len(self.remainFragToEap) > 0:
+                self.log_debug("Sending next fragment of data...")
+                assert(len(eap_request.tls_data) == 0)
+                assert(eap_request.L == 0)
+                assert(eap_request.M == 0)
+                assert(eap_request.S == 0)
+                fromTlsClient = self.remainFragToEap[:self.maxFragmentSize]
+                self.remainFragToEap = self.remainFragToEap[self.maxFragmentSize:]
+                hasMore = 1 if len(self.remainFragToEap) > 0 else 0
+                return EAP_TLS(code=EAP.RESPONSE, id=eap_request.id, type=eap_request.type, L=0, M=hasMore, S=0, tls_data=fromTlsClient)
+
             if len(eap_request.tls_data) > 0:
                 self.log_debug(f"writing {len(eap_request.tls_data)} bytes to eapTlsClient")
                 self.eapTlsClientSocket.sendall(eap_request.tls_data)
 
-            self.log_debug(eap_request)
-            self.log_debug(f"M={eap_request.M}")
             if eap_request.M == 0:
                 self.log_debug("Reading from eapTlsClient")
                 # no more data from EAP peer
@@ -101,7 +112,15 @@ class EAPClient:
                 if len(fromTlsClient) == 0:
                     self.log_warning("Received no reply from eapTlsClient")
                 self.log_debug(f"EAP_TLS reply having {len(fromTlsClient)} bytes")
-                return EAP_TLS(code=EAP.RESPONSE, id=eap_request.id, type=eap_request.type, L=1, M=0, S=0, tls_message_len=len(fromTlsClient), tls_data=fromTlsClient)
+
+                dataLen = len(fromTlsClient)
+                if (len(fromTlsClient) > self.maxFragmentSize):
+                    self.remainFragToEap = fromTlsClient[self.maxFragmentSize:]
+                    fromTlsClient = fromTlsClient[:self.maxFragmentSize]
+
+                hasMore = 1 if len(self.remainFragToEap) > 0 else 0
+
+                return EAP_TLS(code=EAP.RESPONSE, id=eap_request.id, type=eap_request.type, L=1, M=hasMore, S=0, tls_message_len=dataLen, tls_data=fromTlsClient)
             else:
                 self.log_debug("Waiting for more EAP TLS messages")
                 # returning EAP_TLS message with empty EAP message
